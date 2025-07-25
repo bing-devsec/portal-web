@@ -1,0 +1,10 @@
+{
+  // https://nuxt.com/docs/guide/concepts/typescript
+  "$schema": "https://json.schemastore.org/jsconfig",
+  "extends": "./.nuxt/tsconfig.json",
+  "compilerOptions": {
+    "paths": {
+      "~/*": ["./*"]
+    }
+  }
+}
