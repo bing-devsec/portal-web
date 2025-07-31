@@ -1,3 +1,6 @@
+import { copyFileSync, mkdirSync, existsSync } from 'fs'
+import { resolve } from 'path'
+
 export default defineNuxtConfig({
 	// ==================== 核心配置 ====================
 	app: {
@@ -37,12 +40,14 @@ export default defineNuxtConfig({
 	},
 
 	// ==================== 运行时配置 ====================
-    runtimeConfig: {
-        public: {
-            baseURL: '/api'
-        },
-        ssrApiBase: 'http://portal-web/api'
-    },
+	runtimeConfig: {
+		public: {
+			// baseURL: '/api-backend'
+			baseURL: 'http://127.0.0.1:8080'
+		},
+		// ssrApiBase: 'http://meta-api:8080'
+		ssrApiBase: 'http://127.0.0.1:8080'
+	},
 
 	// ==================== 样式配置 ====================
 	css: [
@@ -58,6 +63,13 @@ export default defineNuxtConfig({
 			cacheMaxAgeSeconds: 6 * 60 * 60,
 			autoLastmod: true,
 			xsl: true,
+			robots: [
+				{
+					UserAgent: '*',
+					Allow: '/',
+					Sitemap: 'https://liubing.xyz/sitemap.xml'
+				}
+			]
 		}
 	]],
 
@@ -68,6 +80,15 @@ export default defineNuxtConfig({
 			'lodash-es'
 		],
 		analyze: { filename: "stats.html" }
+	},
+
+	hooks: {
+		'nitro:build:public-assets': () => {
+			const src = resolve(process.cwd(), 'keys/public_key.pem')
+			const destDir = resolve(process.cwd(), '.output/keys')
+			if (!existsSync(destDir)) mkdirSync(destDir, { recursive: true })
+			copyFileSync(src, resolve(destDir, 'public_key.pem'))
+		}
 	},
 
 	// ==================== Vite配置 ====================

@@ -22,13 +22,6 @@ export default defineNuxtPlugin(async (nuxtApp) => {
         }
     };
 
-    // 应用加载时立即计算指纹
-    try {
-        await recalculateFingerprint();
-    } catch (error) {
-        throw error;
-    }
-
     return {
         provide: {
             fingerprint: globalFingerprintId,

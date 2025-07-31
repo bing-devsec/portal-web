@@ -140,13 +140,6 @@ function optimizeForMobile() {
     }
 }
 
-// 清理函数，在组件卸载时重置数据和移除事件监听
-const resetData = () => {
-    article.value = null;
-    isContentReady.value = false;
-    visibleContent.value = '';
-};
-
 // 直接获取文章内容的方法 - 在指纹计算完成后调用
 const fetchArticleContent = async () => {
     if (!articleId.value || !fingerprintValue.value) return;

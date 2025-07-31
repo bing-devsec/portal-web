@@ -43,19 +43,31 @@ export class FingerprintDetector {
     private fingerprintComponents: Partial<FingerprintComponents> = {};
     private fingerprintId: string = '';
     private encryptedFingerprint: string = '';
-    
-    // 公钥内容
-    private readonly PUBLIC_KEY: string = `-----BEGIN PUBLIC KEY-----
-MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAoSJ8jSSs8+o4a9g5Oaaj
-E9k6oFqJAMuvAAtOPgxbSAfEfubdmP0JpT59zoeMkf8G8jXqFkxKzKK4uVi6oRK9
-J6JwvVjpD3ouHzERKaOGPOyEb6blM2QmQRDb2ixLeb5t0LRpta+ACyXtfvSsxDb8
-rZHNGxCQZqMJNMFvPCxOrSkuEB8UK0zHElf8OZ9EfxlAb1Gm7nE6Veh1BwzZMNhl
-B+ukiMEq0b+sRhzksSBSBOyHaffNmdw0U72eM2JCV/Jkqd8fkfQGJiVbtvSvI8oJ
-VdvzHilunTYVJJy49YhakDMOGLoPaFiFlDoN0lgmPGeJxkdg1ZO7AS9ByZoDv2G2
-qwIDAQAB
------END PUBLIC KEY-----`;
+    private publicKeyCache: string = '';
 
-    private constructor() {}
+    private async fetchPublicKey(): Promise<string> {
+        if (this.publicKeyCache) {
+            return this.publicKeyCache;
+        }
+
+        try {
+            const response = await fetch('/api/keys');
+            if (!response.ok) {
+                throw new Error('Failed to fetch public key');
+            }
+            const data = await response.json();
+            if (data.error) {
+                throw new Error(data.error);
+            }
+            if (!data.publicKey) {
+                throw new Error('Public key is empty');
+            }
+            this.publicKeyCache = data.publicKey;
+            return this.publicKeyCache;
+        } catch (error) {
+            throw error;
+        }
+    }
 
     public static getInstance(): FingerprintDetector {
         if (!FingerprintDetector.instance) {
@@ -69,10 +81,16 @@ qwIDAQAB
      * @param data 要加密的数据
      * @returns 加密后的数据
      */
-    private encryptWithPublicKey(data: string): string {
+    private async encryptWithPublicKey(data: string): Promise<string> {
+        const publicKey = await this.fetchPublicKey();
+        
+        if (!publicKey) {
+            throw new Error('公钥未设置');
+        }
+        
         try {
             const encrypt = new JSEncrypt();
-            encrypt.setPublicKey(this.PUBLIC_KEY);
+            encrypt.setPublicKey(publicKey);
             const encrypted = encrypt.encrypt(data);
             
             if (!encrypted) {
@@ -150,11 +168,11 @@ qwIDAQAB
                 webGlBasics,
                 webGlExtensions
             };
-            
+
             this.fingerprintComponents = extendedComponents;
             this.fingerprintId = FingerprintJS.hashComponents(extendedComponents);
-            this.encryptedFingerprint = this.encryptWithPublicKey(this.fingerprintId);
-            
+            this.encryptedFingerprint = await this.encryptWithPublicKey(this.fingerprintId);
+
             return {
                 fingerprintId: this.encryptedFingerprint,
                 components: this.fingerprintComponents
