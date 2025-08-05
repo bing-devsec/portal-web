@@ -59,7 +59,8 @@ export default defineNuxtConfig({
 	modules: ["@pinia/nuxt", "@element-plus/nuxt", [
 		"@nuxtjs/sitemap",
 		{
-			siteUrl: 'https://liubing.xyz',
+			// siteUrl: 'https://liubing.xyz',
+			siteUrl: 'http://127.0.0.1:3000',
 			cacheMaxAgeSeconds: 6 * 60 * 60,
 			autoLastmod: true,
 			xsl: true,
@@ -67,7 +68,8 @@ export default defineNuxtConfig({
 				{
 					UserAgent: '*',
 					Allow: '/',
-					Sitemap: 'https://liubing.xyz/sitemap.xml'
+					// Sitemap: 'https://liubing.xyz/sitemap.xml'
+					Sitemap: 'http://127.0.0.1:3000/sitemap.xml'
 				}
 			]
 		}
