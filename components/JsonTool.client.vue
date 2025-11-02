@@ -249,16 +249,17 @@
         <el-dialog
             v-model="statisticsDialogVisible"
             title="统计结果"
-            width="700px"
+            width="600px"
             :close-on-click-modal="false"
             align-center
+            class="statistics-dialog"
         >
             <div class="statistics-result-dialog">
                 <!-- 统计卡片 -->
                 <el-card class="statistics-card" shadow="never">
                     <template #header>
                         <div class="statistics-header">
-                            <el-icon class="statistics-icon" :size="18">
+                            <el-icon class="statistics-icon" :size="16">
                                 <DataAnalysis />
                             </el-icon>
                             <span class="statistics-title">统计概览</span>
@@ -278,7 +279,7 @@
                             </div>
                         </div>
                         
-                        <el-divider />
+                        <el-divider class="statistics-divider" />
 
                         <!-- 类型信息 -->
                         <div class="statistics-item">
@@ -297,7 +298,7 @@
                             </div>
                         </div>
 
-                        <el-divider />
+                        <el-divider class="statistics-divider" />
 
                         <!-- 统计数量 -->
                         <div class="statistics-item count-item">
@@ -321,7 +322,7 @@
                 >
                     <template #header>
                         <div class="statistics-header">
-                            <el-icon class="statistics-icon" :size="18">
+                            <el-icon class="statistics-icon" :size="16">
                                 <List />
                             </el-icon>
                             <span class="statistics-title">Key 列表</span>
@@ -348,7 +349,7 @@
                         
                         <!-- Key 列表 -->
                         <div v-if="filteredKeys.length > 0" class="keys-list-wrapper">
-                            <el-scrollbar max-height="300px">
+                            <el-scrollbar class="keys-scrollbar">
                                 <div class="keys-grid">
                                     <el-tag 
                                         v-for="(key, index) in filteredKeys" 
@@ -721,7 +722,7 @@ const updateEditorLayout = () => {
 };
 
 // 获取编辑器配置
-const getEditorOptions = (size: number, isReadOnly: boolean = false, language: string = 'json') => ({
+const getEditorOptions = (size: number, isReadOnly: boolean = false, language: string = 'json', enableLargeFileFolding: boolean = false) => ({
     // 基础配置
     value: '',
     language,
@@ -753,6 +754,15 @@ const getEditorOptions = (size: number, isReadOnly: boolean = false, language: s
     smoothScrolling: true, // 启用平滑滚动
     fixedOverflowWidgets: true, // 使溢出窗口(如提示、自动完成)固定显示
     stickyScroll: { enabled: false }, // 禁用粘性滚动
+
+    // 折叠配置
+    folding: true, // 启用代码折叠功能（这是基础配置，必须开启）
+    ...(enableLargeFileFolding ? {
+        // 大文件折叠优化配置
+        // 注意：这些选项可能不在 TypeScript 类型定义中，但实际运行时有效
+        foldingMaximumRegions: 100000, // 增加折叠区域上限（默认约5000），支持超大JSON文件
+        largeFileOptimizations: false, // 禁用大文件优化，强制启用完整语法分析和折叠计算
+    } : {}),
 
     // 编辑器配置
     links: false, // 禁用链接检测功能
@@ -1140,7 +1150,9 @@ onMounted(async () => {
             try {
                 // 创建inputEditor编辑器
                 if (inputEditorContainer.value) {
-                    inputEditor = monaco.editor.create(inputEditorContainer.value, getEditorOptions(indentSize.value, false));
+                    // 对于输入编辑器，也启用大文件折叠优化（因为用户可能输入大量JSON）
+                    const inputOptions = getEditorOptions(indentSize.value, false, 'json', true);
+                    inputEditor = monaco.editor.create(inputEditorContainer.value, inputOptions);
                     nextTick(() => {
                         const textarea = inputEditorContainer.value?.querySelector('textarea');
                         if (textarea) {
@@ -1151,7 +1163,9 @@ onMounted(async () => {
                 }
                 // 创建outputEditor编辑器
                 if (outputEditorContainer.value) {
-                    outputEditor = monaco.editor.create(outputEditorContainer.value, getEditorOptions(indentSize.value, true));
+                    // 默认启用大文件折叠优化（因为是输出编辑器，通常会处理较大的JSON）
+                    const options = getEditorOptions(indentSize.value, true, 'json', true);
+                    outputEditor = monaco.editor.create(outputEditorContainer.value, options);
                     nextTick(() => {
                         const textarea = outputEditorContainer.value?.querySelector('textarea');
                         if (textarea) {
@@ -1701,7 +1715,7 @@ const preprocessJSON = (jsonString: string): { data: any, originalString: string
     }
 };
 
-// 层级收缩-使用缩进级别进行折叠的方法（优化版本，支持大数据量）
+// 层级收缩-使用缩进级别进行折叠的方法
 const foldByIndentation = () => {
     if (!outputEditor) return;
 
@@ -1713,11 +1727,6 @@ const foldByIndentation = () => {
 
     try {
         const lineCount = model.getLineCount();
-        
-        // 对于超大文件（超过5万行），使用优化的批量处理
-        if (lineCount > 50000) {
-            showInfo('正在处理大文件，请稍候...');
-        }
 
         // 特殊处理第1层：折叠整个JSON对象
             if (selectedLevel.value === 1) {
@@ -1736,6 +1745,16 @@ const foldByIndentation = () => {
                 if (lastLine > 1) {
                     // 先展开所有
                     outputEditor.trigger('unfold', 'editor.unfoldAll', null);
+                    
+                    // 根据文件大小动态调整延迟时间，确保10万行文件也能正常处理
+                    let delay: number;
+                    if (lineCount > 80000) {
+                        delay = 800;
+                    } else if (lineCount > 50000) {
+                        delay = 400;
+                    } else {
+                        delay = 100;
+                    }
                     
                     // 延迟执行折叠，确保展开完成
                     setTimeout(() => {
@@ -2145,7 +2164,9 @@ const formatJSON = () => {
             }
 
             // 更新其他配置
-            outputEditor.updateOptions(getEditorOptions(indentSize.value, true, 'json'));
+            // 对于JSON输出，总是启用大文件折叠优化
+            const lineCount = outputEditor?.getModel()?.getLineCount() || 0;
+            outputEditor.updateOptions(getEditorOptions(indentSize.value, true, 'json', true));
 
             updateLineNumberWidth(outputEditor);
             updateEditorHeight(outputEditor);
@@ -2190,7 +2211,8 @@ const compressJSON = () => {
             }
 
             // 更新其他配置
-            outputEditor.updateOptions(getEditorOptions(indentSize.value, true, 'json'));
+            // 对于JSON输出，总是启用大文件折叠优化
+            outputEditor.updateOptions(getEditorOptions(indentSize.value, true, 'json', true));
             updateLineNumberWidth(outputEditor);
             updateEditorHeight(outputEditor);
         }
@@ -2310,7 +2332,8 @@ const escapeJSON = () => {
             }
 
             // 更新其他配置
-            outputEditor.updateOptions(getEditorOptions(indentSize.value, true, 'json'));
+            // 对于JSON输出，总是启用大文件折叠优化
+            outputEditor.updateOptions(getEditorOptions(indentSize.value, true, 'json', true));
             updateLineNumberWidth(outputEditor);
             updateEditorHeight(outputEditor);
         }
@@ -2622,7 +2645,8 @@ const unescapeJSON = () => {
                     }
 
                     // 更新其他配置
-                    outputEditor.updateOptions(getEditorOptions(indentSize.value, true, 'json'));
+                    // 对于JSON输出，总是启用大文件折叠优化
+                    outputEditor.updateOptions(getEditorOptions(indentSize.value, true, 'json', true));
                     updateLineNumberWidth(outputEditor);
                     updateEditorHeight(outputEditor);
                 }
@@ -2668,7 +2692,8 @@ const unescapeJSON = () => {
                                     }
 
                                     // 更新其他配置
-                                    outputEditor.updateOptions(getEditorOptions(indentSize.value, true, 'json'));
+                                    // 对于JSON输出，总是启用大文件折叠优化
+                                    outputEditor.updateOptions(getEditorOptions(indentSize.value, true, 'json', true));
                                     updateLineNumberWidth(outputEditor);
                                     updateEditorHeight(outputEditor);
                                 }
@@ -2689,7 +2714,8 @@ const unescapeJSON = () => {
                                 }
 
                                 // 更新其他配置
-                                outputEditor.updateOptions(getEditorOptions(indentSize.value, true, 'json'));
+                                // 对于JSON输出，总是启用大文件折叠优化
+                                outputEditor.updateOptions(getEditorOptions(indentSize.value, true, 'json', true));
                                 updateLineNumberWidth(outputEditor);
                                 updateEditorHeight(outputEditor);
                             }
@@ -2741,7 +2767,8 @@ const unescapeJSON = () => {
                     }
 
                     // 更新其他配置
-                    outputEditor.updateOptions(getEditorOptions(indentSize.value, true, 'json'));
+                    // 对于JSON输出，总是启用大文件折叠优化
+                    outputEditor.updateOptions(getEditorOptions(indentSize.value, true, 'json', true));
                     updateLineNumberWidth(outputEditor);
                     updateEditorHeight(outputEditor);
                 }
@@ -2760,7 +2787,8 @@ const unescapeJSON = () => {
                     }
 
                     // 更新其他配置
-                    outputEditor.updateOptions(getEditorOptions(indentSize.value, true, 'json'));
+                    // 对于JSON输出，总是启用大文件折叠优化
+                    outputEditor.updateOptions(getEditorOptions(indentSize.value, true, 'json', true));
                     updateLineNumberWidth(outputEditor);
                     updateEditorHeight(outputEditor);
                 }
@@ -2778,9 +2806,10 @@ const unescapeJSON = () => {
                     monaco.editor.setModelLanguage(model, 'json');
                 }
 
-                // 更新其他配置
-                outputEditor.updateOptions(getEditorOptions(indentSize.value, true, 'json'));
-                updateLineNumberWidth(outputEditor);
+                    // 更新其他配置
+                    // 对于JSON输出，总是启用大文件折叠优化
+                    outputEditor.updateOptions(getEditorOptions(indentSize.value, true, 'json', true));
+                    updateLineNumberWidth(outputEditor);
                 updateEditorHeight(outputEditor);
             }
 
@@ -2831,7 +2860,8 @@ const compressAndEscapeJSON = () => {
             }
 
             // 更新其他配置
-            outputEditor.updateOptions(getEditorOptions(indentSize.value, true, 'json'));
+            // 对于JSON输出，总是启用大文件折叠优化
+            outputEditor.updateOptions(getEditorOptions(indentSize.value, true, 'json', true));
             updateLineNumberWidth(outputEditor);
             updateEditorHeight(outputEditor);
         }
@@ -3052,6 +3082,10 @@ const queryPathSuggestions = (queryString: string, cb: (suggestions: any[]) => v
             suggestionsHint.value = `根对象包含 ${keys.length} 个键`;
             keys.forEach(key => {
                 const val = data[key];
+                // 只推荐对象和数组类型，过滤基础数据类型
+                if (isPrimitiveType(val)) {
+                    return; // 跳过基础类型
+                }
                 let type = '';
                 if (Array.isArray(val)) {
                     type = `数组(${val.length})`;
@@ -3116,6 +3150,10 @@ const queryPathSuggestions = (queryString: string, cb: (suggestions: any[]) => v
             const prefix = path + '.';
             keys.forEach(key => {
                 const val = currentValue[key];
+                // 只推荐对象和数组类型，过滤基础数据类型
+                if (isPrimitiveType(val)) {
+                    return; // 跳过基础类型
+                }
                 let type = '';
                 if (Array.isArray(val)) {
                     type = `数组(${val.length})`;
@@ -3174,6 +3212,10 @@ const queryPathSuggestions = (queryString: string, cb: (suggestions: any[]) => v
                     suggestionsHint.value = `当前位置是对象，包含 ${keys.length} 个键`;
                     keys.forEach(key => {
                         const val = currentValue[key];
+                        // 只推荐对象和数组类型，过滤基础数据类型
+                        if (isPrimitiveType(val)) {
+                            return; // 跳过基础类型
+                        }
                         let type = '';
                         if (Array.isArray(val)) {
                             type = `数组(${val.length})`;
@@ -3228,6 +3270,10 @@ const queryPathSuggestions = (queryString: string, cb: (suggestions: any[]) => v
                     
                     keys.filter(key => key.toLowerCase().includes(query)).forEach(key => {
                         const val = parentValue[key];
+                        // 只推荐对象和数组类型，过滤基础数据类型
+                        if (isPrimitiveType(val)) {
+                            return; // 跳过基础类型
+                        }
                         let type = '';
                         if (Array.isArray(val)) {
                             type = `数组(${val.length})`;
@@ -3436,23 +3482,41 @@ const handleLevelAction = () => {
             }
 
             // 更新其他配置
-            outputEditor.updateOptions(getEditorOptions(indentSize.value, true, 'json'));
+            // 对于10万行以内的JSON文件，总是启用大文件折叠优化
+            const updateOptions = getEditorOptions(indentSize.value, true, 'json', true);
+            outputEditor.updateOptions(updateOptions);
             updateLineNumberWidth(outputEditor);
             updateEditorHeight(outputEditor);
         }
 
         // 等待编辑器渲染完成后执行折叠操作
         // 对于大数据量，需要更长的等待时间确保编辑器完全渲染
-        const lineCount = outputEditor?.getModel()?.getLineCount() || 0;
-        const delayTime = lineCount > 50000 ? 500 : 200;
+        // 使用渐进式延迟：根据行数动态调整延迟时间，确保10万行文件也能正常处理
+        const currentLineCount = outputEditor?.getModel()?.getLineCount() || 0;
+        let delayTime: number;
+        let unfoldDelay: number;
+        
+        if (currentLineCount > 80000) {
+            // 8万行以上：使用较长的延迟（支持10万行）
+            delayTime = 1000;
+            unfoldDelay = 600;
+        } else if (currentLineCount > 50000) {
+            // 5-8万行：使用中等延迟
+            delayTime = 600;
+            unfoldDelay = 400;
+        } else {
+            // 5万行以下：使用较短延迟
+            delayTime = 200;
+            unfoldDelay = 100;
+        }
         
         setTimeout(() => {
             if (!outputEditor) return;
             outputEditor.trigger('unfold', 'editor.unfoldAll', null);
-            // 对于超大文件，再等待一段时间确保展开完成
+            // 等待展开完成后再执行折叠
             setTimeout(() => {
-            foldByIndentation();
-            }, lineCount > 50000 ? 300 : 100);
+                foldByIndentation();
+            }, unfoldDelay);
         }, delayTime);
     } catch (error: any) {
         showError('操作失败: ' + error.message);
@@ -5009,12 +5073,77 @@ const transferToInput = (e: MouseEvent) => {
 }
 
 /* 统计结果对话框样式 */
+.statistics-dialog {
+    max-height: 90vh;
+}
+
+.statistics-dialog :deep(.el-dialog) {
+    max-height: 90vh;
+    display: flex;
+    flex-direction: column;
+    margin-top: 5vh !important;
+    margin-bottom: 5vh !important;
+}
+
+.statistics-dialog :deep(.el-dialog__body) {
+    flex: 1;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    padding: 16px;
+    min-height: 0;
+}
+
+/* 在小屏幕上进一步优化 */
+@media (max-height: 800px) {
+    .statistics-dialog :deep(.el-dialog) {
+        max-height: 85vh;
+        margin-top: 7.5vh !important;
+        margin-bottom: 7.5vh !important;
+    }
+    
+    .statistics-dialog :deep(.el-dialog__body) {
+        padding: 16px;
+    }
+    
+    .keys-scrollbar {
+        max-height: 200px;
+    }
+}
+
+@media (max-height: 600px) {
+    .statistics-dialog :deep(.el-dialog) {
+        max-height: 80vh;
+        margin-top: 10vh !important;
+        margin-bottom: 10vh !important;
+    }
+    
+    .statistics-dialog :deep(.el-dialog__body) {
+        padding: 12px;
+    }
+    
+    .keys-scrollbar {
+        max-height: 150px;
+    }
+    
+    .statistics-item {
+        padding: 10px 0;
+    }
+    
+    .count-item {
+        padding: 12px !important;
+    }
+}
+
 .statistics-result-dialog {
     padding: 0;
+    flex: 1;
+    overflow-y: auto;
+    min-height: 0;
 }
 
 .statistics-card {
-    margin-bottom: 16px;
+    margin-bottom: 12px;
     border-radius: 4px;
     border: 1px solid #e4e7ed;
 }
@@ -5023,12 +5152,23 @@ const transferToInput = (e: MouseEvent) => {
     margin-bottom: 0;
 }
 
+.statistics-card :deep(.el-card__body) {
+    padding: 12px 16px;
+}
+
 .statistics-header {
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: 6px;
     font-weight: 500;
     color: #303133;
+}
+
+.statistics-header .el-tag {
+    font-size: 11px;
+    padding: 2px 6px;
+    height: 20px;
+    line-height: 16px;
 }
 
 .statistics-icon {
@@ -5037,7 +5177,7 @@ const transferToInput = (e: MouseEvent) => {
 
 .statistics-title {
     flex: 1;
-    font-size: 14px;
+    font-size: 13px;
 }
 
 .statistics-content {
@@ -5048,16 +5188,16 @@ const transferToInput = (e: MouseEvent) => {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 14px 0;
-    min-height: 40px;
+    padding: 8px 0;
+    min-height: 32px;
 }
 
 .statistics-item.count-item {
-    padding: 16px;
+    padding: 10px 12px;
     background-color: #f5f7fa;
-    margin: 0 -20px;
-    padding-left: 20px;
-    padding-right: 20px;
+    margin: 0 -16px;
+    padding-left: 16px;
+    padding-right: 16px;
     border-radius: 4px;
     border-top: 1px solid #e4e7ed;
     border-bottom: 1px solid #e4e7ed;
@@ -5066,8 +5206,8 @@ const transferToInput = (e: MouseEvent) => {
 .item-label {
     display: flex;
     align-items: center;
-    gap: 8px;
-    font-size: 14px;
+    gap: 6px;
+    font-size: 12px;
     color: #606266;
     font-weight: 400;
 }
@@ -5077,7 +5217,7 @@ const transferToInput = (e: MouseEvent) => {
 }
 
 .item-label .el-icon {
-    font-size: 16px;
+    font-size: 14px;
     color: #909399;
 }
 
@@ -5090,21 +5230,28 @@ const transferToInput = (e: MouseEvent) => {
     align-items: center;
 }
 
+.statistics-item :deep(.el-tag) {
+    font-size: 12px;
+    padding: 2px 8px;
+    height: 22px;
+    line-height: 18px;
+}
+
 .count-value {
     display: flex;
     align-items: baseline;
-    gap: 6px;
+    gap: 4px;
 }
 
 .count-number {
-    font-size: 32px;
+    font-size: 24px;
     font-weight: 600;
     color: #303133;
     line-height: 1;
 }
 
 .count-unit {
-    font-size: 14px;
+    font-size: 12px;
     color: #909399;
     font-weight: 400;
 }
@@ -5112,15 +5259,40 @@ const transferToInput = (e: MouseEvent) => {
 .keys-card {
     border-radius: 4px;
     border: 1px solid #e4e7ed;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+.keys-card :deep(.el-card__body) {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    padding: 12px 16px;
 }
 
 .keys-content {
-    padding: 8px 0;
+    padding: 4px 0;
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    min-height: 0;
 }
 
 .key-search-wrapper {
-    margin-bottom: 12px;
-    padding: 0 4px;
+    margin-bottom: 10px;
+    padding: 0 2px;
+}
+
+.key-search-input :deep(.el-input__inner) {
+    font-size: 12px;
+    height: 32px;
+}
+
+.key-search-input :deep(.el-input__prefix) {
+    font-size: 14px;
 }
 
 .key-search-input {
@@ -5129,13 +5301,39 @@ const transferToInput = (e: MouseEvent) => {
 
 .keys-list-wrapper {
     min-height: 40px;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+.keys-list-wrapper:has(.empty-search-result) {
+    flex: 0 0 auto;
+}
+
+.keys-scrollbar {
+    flex: 1;
+    max-height: 250px;
+    min-height: 40px;
+}
+
+.keys-list-wrapper:has(.empty-search-result) .keys-scrollbar {
+    flex: 0 0 auto;
+    max-height: none;
+}
+
+.keys-scrollbar :deep(.el-scrollbar__wrap) {
+    overflow-x: hidden;
 }
 
 .keys-grid {
     display: flex;
     flex-wrap: wrap;
-    gap: 8px;
-    padding: 4px 0;
+    gap: 6px;
+    padding: 2px 0;
+}
+
+.statistics-divider {
+    margin: 6px 0;
 }
 
 .empty-search-result {
@@ -5143,35 +5341,38 @@ const transferToInput = (e: MouseEvent) => {
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    padding: 40px 20px;
+    padding: 20px;
     color: #909399;
     font-size: 14px;
-    gap: 12px;
+    gap: 8px;
+    min-height: 80px;
 }
 
 .empty-search-result .el-icon {
-    font-size: 32px;
+    font-size: 24px;
     color: #c0c4cc;
 }
 
 .key-tag {
     display: inline-flex;
     align-items: center;
-    gap: 6px;
-    padding: 6px 12px;
-    font-size: 13px;
+    gap: 5px;
+    padding: 4px 10px;
+    font-size: 12px;
     cursor: default;
+    height: 26px;
+    line-height: 18px;
 }
 
 .key-index {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    width: 18px;
-    height: 18px;
+    width: 16px;
+    height: 16px;
     background-color: #f5f7fa;
     border-radius: 50%;
-    font-size: 11px;
+    font-size: 10px;
     font-weight: 500;
     color: #909399;
     flex-shrink: 0;
