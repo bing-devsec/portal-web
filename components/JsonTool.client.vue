@@ -204,7 +204,7 @@
             </div>
         </div>
 
-        <!-- 路径输入对话框（带智能提示） -->
+        <!-- 路径输入对话框 -->
         <el-dialog
             v-model="pathDialogVisible"
             title="统计元素个数"
@@ -245,7 +245,7 @@
             </template>
         </el-dialog>
 
-        <!-- 统计结果对话框（高级版） -->
+        <!-- 统计结果对话框-->
         <el-dialog
             v-model="statisticsDialogVisible"
             title="统计结果"
@@ -313,65 +313,6 @@
                         </div>
                     </div>
                 </el-card>
-
-                <!-- Key 列表（仅对象类型显示） -->
-                <el-card 
-                    v-if="statisticsData.type === '对象' && statisticsData.keys && statisticsData.keys.length > 0"
-                    class="keys-card" 
-                    shadow="never"
-                >
-                    <template #header>
-                        <div class="statistics-header">
-                            <el-icon class="statistics-icon" :size="16">
-                                <List />
-                            </el-icon>
-                            <span class="statistics-title">Key 列表</span>
-                            <el-tag v-if="statisticsData.totalKeys" type="info" size="small">
-                                {{ keySearchQuery.trim() ? `找到 ${filteredKeys.length}` : '' }}{{ keySearchQuery.trim() && filteredKeys.length !== statisticsData.totalKeys ? ` / ` : '' }}{{ statisticsData.totalKeys }} 个
-                            </el-tag>
-                        </div>
-                    </template>
-                    <div class="keys-content">
-                        <!-- 搜索框 -->
-                        <div class="key-search-wrapper">
-                            <el-input
-                                v-model="keySearchQuery"
-                                placeholder="搜索 Key..."
-                                clearable
-                                size="default"
-                                class="key-search-input"
-                            >
-                                <template #prefix>
-                                    <el-icon><Search /></el-icon>
-                                </template>
-                            </el-input>
-                        </div>
-                        
-                        <!-- Key 列表 -->
-                        <div v-if="filteredKeys.length > 0" class="keys-list-wrapper">
-                            <el-scrollbar class="keys-scrollbar">
-                                <div class="keys-grid">
-                                    <el-tag 
-                                        v-for="(key, index) in filteredKeys" 
-                                        :key="key"
-                                        class="key-tag"
-                                        :type="getKeyTagType(statisticsData.keys!.indexOf(key))"
-                                        effect="plain"
-                                        size="default"
-                                    >
-                                        <span class="key-index">{{ statisticsData.keys!.indexOf(key) + 1 }}</span>
-                                        <span class="key-name">{{ key }}</span>
-                                    </el-tag>
-                                </div>
-                            </el-scrollbar>
-                        </div>
-                        <!-- 无搜索结果提示 -->
-                        <div v-else class="empty-search-result">
-                            <el-icon><Search /></el-icon>
-                            <span>未找到匹配的 Key</span>
-                        </div>
-                    </div>
-                </el-card>
             </div>
             <template #footer>
                 <div class="dialog-footer">
@@ -389,7 +330,7 @@ import type { UploadFile } from 'element-plus';
 import * as monaco from 'monaco-editor';
 import editorWorker from 'monaco-editor/esm/vs/editor/editor.worker?worker';
 import jsonWorker from 'monaco-editor/esm/vs/language/json/json.worker?worker';
-import { Loading, ArrowLeft, CopyDocument, Download, Upload, Delete, Setting, WarningFilled, DataAnalysis, Location, Collection, Document, List, Search } from '@element-plus/icons-vue';
+import { Loading, ArrowLeft, CopyDocument, Download, Upload, Delete, Setting, WarningFilled, DataAnalysis, Location, Collection, Document } from '@element-plus/icons-vue';
 
 const MESSAGE_OFFSET = 18; // 配置消息提示显示在离顶部更远的位置
 const MAX_FILE_SIZE = 5 * 1024 * 1024; // 文件大小限制：5MB
@@ -422,14 +363,11 @@ const statisticsData = ref<{
     path: string;
     type: string;
     count: number;
-    keys?: string[];
-    totalKeys?: number;
 }>({
     path: '',
     type: '',
     count: 0
 });
-const keySearchQuery = ref(''); // Key 搜索关键词
 
 const editorsInitialized = ref(false); // 在script setup部分添加
 const inputEditorContainer = ref<HTMLElement | null>(null); // 输入编辑器容器
@@ -474,7 +412,6 @@ const updateStableWidth = () => {
 const BUTTON_MIN_WIDTH = 260;
 
 // 计算属性：判断输入区域是否显示按钮
-// 关键优化：拖动时使用实时宽度值，确保按钮立即隐藏，避免标题换行
 // 非拖动时使用稳定宽度值，避免频繁计算
 const showInputActions = computed(() => {
     if (editorContainerWidth.value === 0) return true; // 初始化时显示
@@ -489,7 +426,6 @@ const showInputActions = computed(() => {
 });
 
 // 计算属性：判断预览区域是否显示按钮
-// 关键优化：拖动时使用实时宽度值，确保按钮立即隐藏，避免标题换行
 // 非拖动时使用稳定宽度值，避免频繁计算
 const showOutputActions = computed(() => {
     if (editorContainerWidth.value === 0) return true; // 初始化时显示
@@ -513,6 +449,44 @@ const placeholderJSON = {
         "🖥️ 屏幕适配: 为获得良好的响应式体验，需要屏幕宽度大于900px才能正常使用，小屏设备将自动隐藏工具界面并显示提示信息",
         "🐞 问题反馈: 如遇异常问题或功能建议，请通过 liubing.xyz@qq.com 邮箱联系开发团队，并附上【JSON工具】邮件标题"
     ],
+    "helpers": [
+        {
+            "name": "分隔线拖拽",
+            "detail": "可拖动中间的分隔线调整输入区域和预览区域的宽度比例"
+        },
+        {
+            "name": "双击复制",
+            "detail": "双击预览区域的字符串会将整个字符串自动复制到剪切板，方便快速复制内容"
+        },
+        {
+            "name": "内容转移",
+            "detail": "通过分隔线顶部的左箭头按钮，可将预览区域中的处理结果快速转移到输入区域"
+        },
+        {
+            "name": "文件操作",
+            "detail": "支持上传本地JSON文件和下载数据处理结果，上传的文件必须是.json后缀且是UTF-8编码"
+        },
+        {
+            "name": "全屏模式",
+            "detail": "支持全屏模式，获得更大的编辑空间和更好的阅读体验"
+        },
+        {
+            "name": "查找/替换",
+            "detail": "Windows: Ctrl+F查找，Ctrl+H替换; Mac: Command+F查找，Command+Option+F替换"
+        },
+        {
+            "name": "撤销/重做",
+            "detail": "Windows: Ctrl+Z撤销，Ctrl+Y重做; Mac: Command+Z撤销，Command+Shift+Z重做"
+        },
+        {
+            "name": "多光标编辑",
+            "detail": "Windows: Alt+点击添加光标，Ctrl+Alt+上/下添加光标; Mac: Option+点击添加光标，Command+Option+上/下添加光标"
+        },
+        {
+            "name": "跳转定位",
+            "detail": "Windows: Ctrl+G跳转到行，Ctrl+Home/End跳转文档首尾; Mac: Ctrl+G跳转到行，Command+↑/↓跳转文档首尾"
+        }
+    ],
     "settings": [
         {
             "name": "缩进空格",
@@ -533,7 +507,7 @@ const placeholderJSON = {
             "name": "缩进指南",
             "values": ["隐藏", "显示"],
             "detail": "缩进指南会同时影响输入区域和预览区域的缩进辅助线显示效果"
-        },
+        }
     ],
     "supportedFunctions": [
         {
@@ -563,6 +537,10 @@ const placeholderJSON = {
                 {
                     "name": "层级收缩",
                     "detail": "可以按照JSON的嵌套层级进行折叠，方便查看大型JSON结构"
+                },
+                {
+                    "name": "统计",
+                    "detail": "统计指定路径下对象或数组的一级元素个数，显示路径、数据类型和元素总数"
                 }
             ]
         },
@@ -585,54 +563,6 @@ const placeholderJSON = {
                 {
                     "name": "Cookie 转 JSON",
                     "detail": "将浏览器Cookie字符串解析为JSON对象，支持分号或换行分隔的多Cookie解析"
-                }
-            ]
-        },
-        {
-            "category": "编辑器功能",
-            "description": "多种辅助功能提升用户使用体验",
-            "functions": [
-                {
-                    "name": "分隔线拖拽",
-                    "detail": "可拖动中间的分隔线调整输入区域和预览区域的宽度比例"
-                },
-                {
-                    "name": "内容转移",
-                    "detail": "通过分隔线顶部的箭头按钮，可将预览区域中的处理结果快速转移到输入区域，方便进行多步操作"
-                },
-                {
-                    "name": "文件操作",
-                    "detail": "支持上传本地JSON文件和下载数据处理结果，上传的文件必须有.json后缀且是UTF-8编码"
-                },
-                {
-                    "name": "全屏模式",
-                    "detail": "支持全屏模式，获得更大的编辑空间和更好的阅读体验"
-                }
-            ]
-        },
-        {
-            "category": "编辑器快捷键",
-            "description": "支持各种快捷键操作，提升用户办公效率",
-            "functions": [
-                {
-                    "name": "查找/替换",
-                    "detail": "Windows/Linux: Ctrl+F查找，Ctrl+H替换; Mac: Command+F查找，Command+Option+F替换"
-                },
-                {
-                    "name": "撤销/重做",
-                    "detail": "Windows/Linux: Ctrl+Z撤销，Ctrl+Y重做; Mac: Command+Z撤销，Command+Shift+Z重做"
-                },
-                {
-                    "name": "多光标编辑",
-                    "detail": "Windows/Linux: Alt+点击添加光标，Ctrl+Alt+上/下添加光标; Mac: Option+点击添加光标，Command+Option+上/下添加光标"
-                },
-                {
-                    "name": "跳转定位",
-                    "detail": "Windows/Linux: Ctrl+G跳转到行，Ctrl+Home/End跳转文档首尾; Mac: Ctrl+G跳转到行，Command+↑/↓跳转文档首尾"
-                },
-                {
-                    "name": "代码折叠",
-                    "detail": "Windows/Linux: Ctrl+Shift+[折叠，Ctrl+Shift+]展开; Mac: Command+Option+[折叠，Command+Option+]展开"
                 }
             ]
         }
@@ -1197,6 +1127,29 @@ onMounted(async () => {
                                 showError(checkResult.error || '内容不符合要求');
                                 maxLevel.value = 0;
                                 selectedLevel.value = 1;
+                                // 如果深度超过99层，自动清空输入区域内容
+                                if (checkResult.error && checkResult.error.includes('深度超过99层')) {
+                                    // 延迟清空，避免在内容变化监听中直接修改编辑器内容导致的问题
+                                    setTimeout(() => {
+                                        if (inputEditor) {
+                                            const model = inputEditor.getModel();
+                                            if (model) {
+                                                const fullRange = model.getFullModelRange();
+                                                if (!fullRange.isEmpty()) {
+                                                    inputEditor.executeEdits('clear-input-depth-limit', [{
+                                                        range: fullRange,
+                                                        text: ''
+                                                    }]);
+                                                }
+                                            }
+                                        }
+                                        if (outputEditor) {
+                                            outputEditor.setValue('');
+                                            updateEditorHeight(outputEditor);
+                                            updateLineNumberWidth(outputEditor);
+                                        }
+                                    }, 100);
+                                }
                                 return;
                             }
 
@@ -1341,7 +1294,7 @@ const checkLinesAndDepth = (content: string): { isValid: boolean; error?: string
         if (depth > 99) {
             return {
                 isValid: false,
-                error: 'JSON深度超过99层, 不允许上传'
+                error: 'JSON深度超过99层, 拒绝处理此JSON数据'
             };
         }
     } catch (e) {
@@ -2806,10 +2759,10 @@ const unescapeJSON = () => {
                     monaco.editor.setModelLanguage(model, 'json');
                 }
 
-                    // 更新其他配置
+                // 更新其他配置
                     // 对于JSON输出，总是启用大文件折叠优化
                     outputEditor.updateOptions(getEditorOptions(indentSize.value, true, 'json', true));
-                    updateLineNumberWidth(outputEditor);
+                updateLineNumberWidth(outputEditor);
                 updateEditorHeight(outputEditor);
             }
 
@@ -3383,7 +3336,6 @@ const countKeys = async () => {
         // 统计元素个数
         let count = 0;
         let type = '';
-        let keys: string[] = [];
 
         if (Array.isArray(targetValue)) {
             count = targetValue.length;
@@ -3391,7 +3343,6 @@ const countKeys = async () => {
         } else if (targetValue && typeof targetValue === 'object') {
             count = Object.keys(targetValue).length;
             type = '对象';
-            keys = Object.keys(targetValue); // 保存所有keys，用于搜索
         } else {
             ElMessageBox.alert(
                 `路径 "${path || '根'}" 指向的值不是对象或数组，无法统计元素个数`,
@@ -3404,9 +3355,7 @@ const countKeys = async () => {
         statisticsData.value = {
             path: path || '根对象',
             type: type,
-            count: count,
-            keys: type === '对象' ? keys : undefined,
-            totalKeys: type === '对象' ? count : undefined
+            count: count
         };
 
         // 显示统计结果弹窗
@@ -3417,29 +3366,6 @@ const countKeys = async () => {
             showError('统计失败: ' + error.message);
         }
     }
-};
-
-// 过滤后的 keys（用于搜索）
-const filteredKeys = computed(() => {
-    if (!statisticsData.value.keys) return [];
-    if (!keySearchQuery.value.trim()) return statisticsData.value.keys;
-    const query = keySearchQuery.value.trim().toLowerCase();
-    return statisticsData.value.keys.filter(key => 
-        key.toLowerCase().includes(query)
-    );
-});
-
-// 监听对话框打开，重置搜索
-watch(statisticsDialogVisible, (visible) => {
-    if (visible) {
-        keySearchQuery.value = '';
-    }
-});
-
-// 获取 Key 标签的类型（用于颜色轮换）
-const getKeyTagType = (index: number): 'success' | 'warning' | 'danger' | 'info' | undefined => {
-    const types: ('success' | 'warning' | 'danger' | 'info' | undefined)[] = [undefined, 'success', 'warning', 'danger', 'info'];
-    return types[index % types.length];
 };
 
 // 处理层级收缩
@@ -3515,7 +3441,7 @@ const handleLevelAction = () => {
             outputEditor.trigger('unfold', 'editor.unfoldAll', null);
             // 等待展开完成后再执行折叠
             setTimeout(() => {
-                foldByIndentation();
+            foldByIndentation();
             }, unfoldDelay);
         }, delayTime);
     } catch (error: any) {
@@ -5256,132 +5182,6 @@ const transferToInput = (e: MouseEvent) => {
     font-weight: 400;
 }
 
-.keys-card {
-    border-radius: 4px;
-    border: 1px solid #e4e7ed;
-    display: flex;
-    flex-direction: column;
-    overflow: hidden;
-}
-
-.keys-card :deep(.el-card__body) {
-    flex: 1;
-    display: flex;
-    flex-direction: column;
-    overflow: hidden;
-    padding: 12px 16px;
-}
-
-.keys-content {
-    padding: 4px 0;
-    flex: 1;
-    display: flex;
-    flex-direction: column;
-    overflow: hidden;
-    min-height: 0;
-}
-
-.key-search-wrapper {
-    margin-bottom: 10px;
-    padding: 0 2px;
-}
-
-.key-search-input :deep(.el-input__inner) {
-    font-size: 12px;
-    height: 32px;
-}
-
-.key-search-input :deep(.el-input__prefix) {
-    font-size: 14px;
-}
-
-.key-search-input {
-    width: 100%;
-}
-
-.keys-list-wrapper {
-    min-height: 40px;
-    display: flex;
-    flex-direction: column;
-    overflow: hidden;
-}
-
-.keys-list-wrapper:has(.empty-search-result) {
-    flex: 0 0 auto;
-}
-
-.keys-scrollbar {
-    flex: 1;
-    max-height: 250px;
-    min-height: 40px;
-}
-
-.keys-list-wrapper:has(.empty-search-result) .keys-scrollbar {
-    flex: 0 0 auto;
-    max-height: none;
-}
-
-.keys-scrollbar :deep(.el-scrollbar__wrap) {
-    overflow-x: hidden;
-}
-
-.keys-grid {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 6px;
-    padding: 2px 0;
-}
-
-.statistics-divider {
-    margin: 6px 0;
-}
-
-.empty-search-result {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    padding: 20px;
-    color: #909399;
-    font-size: 14px;
-    gap: 8px;
-    min-height: 80px;
-}
-
-.empty-search-result .el-icon {
-    font-size: 24px;
-    color: #c0c4cc;
-}
-
-.key-tag {
-    display: inline-flex;
-    align-items: center;
-    gap: 5px;
-    padding: 4px 10px;
-    font-size: 12px;
-    cursor: default;
-    height: 26px;
-    line-height: 18px;
-}
-
-.key-index {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    width: 16px;
-    height: 16px;
-    background-color: #f5f7fa;
-    border-radius: 50%;
-    font-size: 10px;
-    font-weight: 500;
-    color: #909399;
-    flex-shrink: 0;
-}
-
-.key-name {
-    font-weight: 400;
-    color: #303133;
-}
 
 .dialog-footer {
     display: flex;
