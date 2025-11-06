@@ -46,6 +46,8 @@ export default defineNuxtConfig({
           href: "/rss.xml",
           title: "冰冰同学博客更新",
         },
+        // DNS 预解析
+        { rel: "dns-prefetch", href: "https://liubing.xyz" },
       ],
     },
   },
@@ -104,6 +106,10 @@ export default defineNuxtConfig({
   vite: {
     optimizeDeps: {
       include: ["copy-to-clipboard"],
+      // 预构建优化
+      esbuildOptions: {
+        target: "es2015",
+      },
     },
     resolve: {
       alias: {
@@ -114,11 +120,26 @@ export default defineNuxtConfig({
       cssCodeSplit: true,
       cssMinify: true,
       minify: "terser",
+      // 优化代码分割
+      rollupOptions: {
+        output: {
+          manualChunks: {
+            // 将 md-editor-v3 单独打包
+            'md-editor': ['md-editor-v3'],
+          },
+        },
+      },
       terserOptions: {
         format: {
           comments: false,
         },
+        compress: {
+          drop_console: true,
+          drop_debugger: true,
+        },
       },
+      // 提高 chunk 大小限制
+      chunkSizeWarningLimit: 1000,
     },
   },
 

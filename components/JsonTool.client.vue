@@ -604,7 +604,8 @@ const updateLineNumberWidth = (editor: monaco.editor.IStandaloneCodeEditor | nul
     if (!editor) return;
 
     const lineCount = editor.getModel()?.getLineCount() || 0;
-    const digitCount = Math.max(String(lineCount).length, 1);
+    // 当行数小于999时，固定为3位数宽度；否则按实际行数计算
+    const digitCount = lineCount < 999 ? 3 : String(lineCount).length;
     const minChars = digitCount + 1;
 
     editor.updateOptions({
@@ -4066,22 +4067,26 @@ const toggleFullscreen = () => {
 // 布局更新函数（精确版，传递实际计算的容器尺寸，确保滚动条实时紧贴）
 // updateOutputEditor: 是否更新预览区域布局
 // 拖动时也要更新预览区域布局，让滚动条紧贴右边界，但需要恢复滚动内容位置
-const updateEditorLayouts = (updateOutputEditor: boolean = true) => {
+const updateEditorLayouts = (updateOutputEditor: boolean = true, forceWidth?: { inputWidth?: number; outputWidth?: number }) => {
     if (inputEditor) {
         const container = inputEditor.getContainerDomNode();
+        // 如果提供了强制宽度，使用强制宽度；否则使用容器实际宽度
         // 传递精确的容器尺寸，确保布局计算准确
         // 输入区域的滚动条需要实时紧贴分割线，所以拖动时也要更新
+        const width = forceWidth?.inputWidth ?? container.clientWidth;
         inputEditor.layout({
-            width: container.clientWidth,
+            width: width,
             height: container.clientHeight
         });
     }
     if (outputEditor && updateOutputEditor) {
         const container = outputEditor.getContainerDomNode();
+        // 如果提供了强制宽度，使用强制宽度；否则使用容器实际宽度
         // 传递精确的容器尺寸，确保布局计算准确
         // 预览区域的滚动条应该始终紧贴右边，拖动时也要更新让滚动条紧贴右边界
+        const width = forceWidth?.outputWidth ?? container.clientWidth;
         outputEditor.layout({
-            width: container.clientWidth,
+            width: width,
             height: container.clientHeight
         });
     }
@@ -4133,54 +4138,23 @@ const getClientX = (e: MouseEvent | TouchEvent | PointerEvent): number | null =>
     updateStableWidth();
 
     // 立即同步更新布局，确保滚动条实时紧贴边界（即使极快来回拖动也能响应）
-    // 使用精确的 layout 更新，传递实际容器尺寸
+    // 关键：直接根据百分比和容器宽度计算实际宽度，而不是依赖可能未更新的 DOM
+    // 这样可以确保 Monaco Editor 接收到准确的宽度，从而正确计算滚动条位置
+    const containerWidth = resizeState.rect.width;
+    const resizerWidth = 24; // 分割线宽度（固定值）
+    const availableWidth = containerWidth - resizerWidth;
+    
+    // 计算面板的实际宽度（考虑分割线）
+    // 由于 Monaco Editor 容器使用 flex: 1，它的宽度应该等于面板宽度
+    // 直接使用计算值，确保 Monaco Editor 接收到准确的宽度
+    const inputWidth = Math.round((newWidth / 100) * availableWidth);
+    const outputWidth = Math.round(((100 - newWidth) / 100) * availableWidth);
+    
+    // 使用计算出的宽度强制更新布局，确保滚动条实时紧贴边界
     // 输入区域：滚动条紧贴分割线（Monaco 自动处理）
-    // 预览区域：滚动条紧贴右边界（需要实时更新布局，然后恢复滚动内容位置）
-    updateEditorLayouts(true);
-
-    // 同步强制 Monaco 完成所有布局计算（包括滚动条的重新计算）
-    // 多次更新布局和强制重排，确保 Monaco 完全完成所有内部计算
-    if (outputEditor && resizeState) {
-        const outputContainer = outputEditor.getContainerDomNode();
-        const scrollableElement = outputContainer.querySelector('.monaco-scrollable-element') as HTMLElement;
-
-        if (scrollableElement) {
-            // 多次强制布局更新和重排，确保 Monaco 完成滚动条计算
-            // 使用循环多次触发，确保即使在快速拖动时也能完成计算
-            for (let i = 0; i < 3; i++) {
-                // 再次调用 layout 确保 Monaco 内部完成所有计算
-                outputEditor.layout({
-                    width: outputContainer.clientWidth,
-                    height: outputContainer.clientHeight
-                });
-
-                // 强制浏览器同步重新计算布局（通过读取 DOM 属性触发重排）
-                if (resizeState.container) {
-                    resizeState.container.offsetWidth; // 强制重排
-                    outputContainer.offsetWidth; // 强制输出容器重排
-                    scrollableElement.offsetWidth; // 强制滚动元素重排
-                    // 读取滚动条相关属性，强制浏览器计算滚动条尺寸和位置
-                    const _ = scrollableElement.scrollWidth;
-                    const __ = scrollableElement.clientWidth;
-                    const ___ = scrollableElement.offsetWidth;
-                }
-            }
-
-            // 在 Monaco 完成所有计算后，同步恢复滚动内容位置
-            // 这样滚动条会紧贴右边界，但用户正在查看的内容位置保持不变
-            scrollableElement.scrollLeft = resizeState.outputScrollLeft;
-            scrollableElement.scrollTop = resizeState.outputScrollTop;
-
-            // 再次强制一次布局更新，确保恢复滚动位置后的最终状态正确
-            outputEditor.layout({
-                width: outputContainer.clientWidth,
-                height: outputContainer.clientHeight
-            });
-        }
-    } else if (resizeState.container) {
-        // 如果没有输出编辑器，至少强制容器重排
-        resizeState.container.offsetWidth;
-    }
+    // 预览区域：滚动条紧贴右边界（Monaco 自动处理，与输入区域一致）
+    // 注意：拖动过程中不恢复滚动位置，让滚动条自然紧贴右边界，只在拖动结束后恢复
+    updateEditorLayouts(true, { inputWidth, outputWidth });
 };
 
 // 停止拖动（提升到外层作用域）
