@@ -15,101 +15,31 @@
         <div class="json-tool-container" :class="{ 'fullscreen': isFullscreen }">
             <!-- 工具栏 -->
             <div class="tool-bar">
-                <!-- 格式化配置下拉菜单 -->
-                <el-dropdown :visible="true">
-                    <el-button type="info">
-                        <el-icon class="setting-icon">
-                            <Setting />
-                        </el-icon>
-                    </el-button>
-                    <template #dropdown>
-                        <el-dropdown-menu>
-                            <el-dropdown-item class="config-item">
-                                <div class="config-row">
-                                    <span class="config-label">缩进空格：</span>
-                                    <div class="vertical-radio-group indent-radio-group">
-                                        <el-radio-group v-model="indentSize" size="small">
-                                            <div class="vertical-radio-item">
-                                                <el-radio :value="2"></el-radio>
-                                                <div class="radio-text">2</div>
-                                            </div>
-                                            <div class="vertical-radio-item">
-                                                <el-radio :value="4"></el-radio>
-                                                <div class="radio-text">4</div>
-                                            </div>
-                                            <div class="vertical-radio-item">
-                                                <el-radio :value="8"></el-radio>
-                                                <div class="radio-text">8</div>
-                                            </div>
-                                        </el-radio-group>
-                                    </div>
-                                </div>
-                            </el-dropdown-item>
-                            <el-dropdown-item class="config-item">
-                                <div class="config-row">
-                                    <span class="config-label">编码模式：</span>
-                                    <div class="vertical-radio-group encoding-radio-group">
-                                        <el-radio-group v-model="encodingMode" size="small">
-                                            <div class="vertical-radio-item">
-                                                <el-radio :value="0"></el-radio>
-                                                <div class="radio-text">保持原样</div>
-                                            </div>
-                                            <div class="vertical-radio-item">
-                                                <el-radio :value="1"></el-radio>
-                                                <div class="radio-text">转中文</div>
-                                            </div>
-                                            <div class="vertical-radio-item">
-                                                <el-radio :value="2"></el-radio>
-                                                <div class="radio-text">转Unicode</div>
-                                            </div>
-                                        </el-radio-group>
-                                    </div>
-                                </div>
-                            </el-dropdown-item>
-                            <el-dropdown-item class="config-item">
-                                <div class="config-row">
-                                    <span class="config-label">数组样式：</span>
-                                    <el-switch v-model="arrayNewLine" active-text="换行" inactive-text="紧凑" size="small"
-                                        class="config-control" />
-                                </div>
-                            </el-dropdown-item>
-                            <el-dropdown-item class="config-item">
-                                <div class="config-row">
-                                    <span class="config-label">缩进指南：</span>
-                                    <el-switch v-model="showIndentGuide" active-text="显示" inactive-text="隐藏"
-                                        size="small" class="config-control" @change="updateIndentGuides" />
-                                </div>
-                            </el-dropdown-item>
-                        </el-dropdown-menu>
-                    </template>
-                </el-dropdown>
+                <!-- 设置按钮 -->
+                <el-button type="info" @click="openSettingsDialog" circle>
+                    <el-icon><Setting /></el-icon>
+                </el-button>
 
-                <!-- 主要功能按钮组 -->
                 <el-button-group>
+                    <el-button type="primary" class="hide-below-1400" @click="openFetchJsonDialog">获取JSON</el-button>
                     <el-button type="primary" @click="formatJSON">格式化</el-button>
                     <el-button type="primary" @click="compressJSON">压缩</el-button>
-                    <el-button type="primary" @click="escapeJSON">转义</el-button>
-                    <el-button type="primary" @click="unescapeJSON">去除转义</el-button>
-                    <el-button type="primary" @click="compressAndEscapeJSON">压缩并转义</el-button>
-                    <el-button type="primary" @click="countKeys">统计</el-button>
+                    <el-button type="primary" @click="handleEscapeCommand('escape')">转义</el-button>
+                    <el-button type="primary" @click="handleEscapeCommand('unescape')">去除转义</el-button>
+                    <el-button type="primary" @click="handleEscapeCommand('compress-escape')">压缩并转义</el-button>
+                    <el-button type="primary" class="hide-below-1200" @click="openDataMaskingDialog">脱敏</el-button>
+                    <el-button type="primary" class="hide-below-1200" @click="handleAdvancedCommand('sort')">排序</el-button>
+                    <el-button type="primary" class="hide-below-1200" @click="handleAdvancedCommand('count')">统计</el-button>
+                    <el-button type="primary" class="hide-below-1400" @click="openShareDialog">分享</el-button>
                 </el-button-group>
-
-                <!-- 新增层级控制 -->
-                <div class="collapse-control">
-                    <el-select v-model="selectedLevel" placeholder="选择层级" class="level-select"
-                        :disabled="maxLevel === 0">
-                        <el-option v-for="n in (maxLevel || 1)" :key="n" :label="`第 ${n} 层`" :value="n"
-                            :disabled="maxLevel === 0" />
-                    </el-select>
-                    <el-button type="primary" @click="handleLevelAction" :disabled="maxLevel === 0">
-                        收缩
-                    </el-button>
-                </div>
-
-                <!-- 转换功能下拉菜单 -->
-                <el-dropdown @command="handleConvert">
-                    <el-button type="success">
-                        格式转换<i class="el-icon-arrow-down el-icon--right"></i>
+                
+                <!-- 数据转换下拉按钮（紧挨着功能按钮组） -->
+                <el-dropdown trigger="click" @command="handleConvert">
+                    <el-button type="primary">
+                        数据转换
+                        <el-icon class="el-icon--right">
+                            <ArrowDown />
+                        </el-icon>
                     </el-button>
                     <template #dropdown>
                         <el-dropdown-menu>
@@ -120,9 +50,18 @@
                         </el-dropdown-menu>
                     </template>
                 </el-dropdown>
-
-                <el-button type="warning" @click="toggleFullscreen">
-                    {{ isFullscreen ? '退出全屏' : '全屏' }}
+                
+                <!-- 层级控制 -->
+                <div class="collapse-control">
+                    <el-select v-model="selectedLevel" placeholder="层级" class="level-select" :disabled="maxLevel === 0">
+                        <el-option v-for="n in maxLevel" :key="n" :label="`第${n}层`" :value="n" />
+                    </el-select>
+                    <el-button type="success" @click="handleLevelAction" :disabled="maxLevel === 0">收缩</el-button>
+                </div>
+                
+                <!-- 界面控制：全屏 -->
+                <el-button type="warning" class="fullscreen-btn" @click="toggleFullscreen">
+                    {{ isFullscreen ? '退出' : '全屏' }}
                 </el-button>
             </div>
 
@@ -151,14 +90,20 @@
                             </el-upload>
                         </div>
                     </div>
-                    <div class="monaco-editor-container">
-                        <div v-if="!editorsInitialized" class="editor-loading">
-                            <el-icon class="loading-icon">
-                                <Loading />
-                            </el-icon>
-                            <span>加载编辑器中...</span>
+                    <div class="editor-wrapper">
+                        <div class="monaco-editor-container">
+                            <div v-if="!editorsInitialized" class="editor-loading">
+                                <el-icon class="loading-icon">
+                                    <Loading />
+                                </el-icon>
+                                <span>加载编辑器中...</span>
+                            </div>
+                            <div ref="inputEditorContainer" class="monaco-editor-instance"></div>
                         </div>
-                        <div ref="inputEditorContainer" class="monaco-editor-instance"></div>
+                        <!-- 输入区域状态栏 -->
+                        <div class="editor-status-bar" v-if="inputEditorStatus">
+                            <span class="status-text">{{ inputEditorStatus }}</span>
+                        </div>
                     </div>
                 </div>
 
@@ -191,14 +136,20 @@
                             </el-button>
                         </div>
                     </div>
-                    <div class="monaco-editor-container">
-                        <div v-if="!editorsInitialized" class="editor-loading">
-                            <el-icon class="loading-icon">
-                                <Loading />
-                            </el-icon>
-                            <span>加载编辑器中...</span>
+                    <div class="editor-wrapper">
+                        <div class="monaco-editor-container">
+                            <div v-if="!editorsInitialized" class="editor-loading">
+                                <el-icon class="loading-icon">
+                                    <Loading />
+                                </el-icon>
+                                <span>加载编辑器中...</span>
+                            </div>
+                            <div ref="outputEditorContainer" class="monaco-editor-instance"></div>
                         </div>
-                        <div ref="outputEditorContainer" class="monaco-editor-instance"></div>
+                        <!-- 预览区域状态栏 -->
+                        <div class="editor-status-bar" v-if="outputEditorStatus">
+                            <span class="status-text">{{ outputEditorStatus }}</span>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -210,6 +161,10 @@
             title="统计元素个数"
             width="600px"
             :close-on-click-modal="false"
+            :show-close="true"
+            :align-center="false"
+            top="12vh"
+            class="path-dialog-wrapper"
             @close="handlePathDialogClose"
         >
             <div class="path-input-dialog">
@@ -218,13 +173,16 @@
                     <p class="tip-text">支持数组索引语法，如: settings[0].values</p>
                 </div>
                 <el-autocomplete
+                    ref="pathAutocompleteRef"
                     v-model="pathInputValue"
                     :fetch-suggestions="queryPathSuggestions"
-                    placeholder="例如: settings 或 settings[0].values"
+                    placeholder="例如: settings 或 settings[0].values 等路径"
                     class="path-autocomplete"
                     clearable
+                    autocomplete="new-password"
                     @select="handlePathSelect"
                     @input="handlePathInput"
+                    @focus="handlePathInputFocus"
                 >
                     <template #default="{ item }">
                         <div class="suggestion-item">
@@ -233,90 +191,189 @@
                         </div>
                     </template>
                 </el-autocomplete>
-                <div v-if="suggestionsHint" class="suggestions-hint">
-                    {{ suggestionsHint }}
+                
+                <!-- 实时统计结果卡片 -->
+                <div v-if="realtimeStatistics && realtimeStatistics.isValid" class="realtime-statistics-card">
+                    <div class="statistics-card-header">
+                        <el-icon class="statistics-icon" :size="16">
+                            <DataAnalysis />
+                        </el-icon>
+                        <span class="statistics-title">统计结果</span>
+                    </div>
+                    <div class="statistics-card-content">
+                        <div class="statistics-row">
+                            <span class="statistics-label">
+                                <el-icon><Location /></el-icon>
+                                路径：
+                            </span>
+                            <el-tag type="info" effect="plain" size="small">
+                                {{ realtimeStatistics.path || '根对象' }}
+                            </el-tag>
+                        </div>
+                        <div class="statistics-row">
+                            <span class="statistics-label">
+                                <el-icon><Collection /></el-icon>
+                                类型：
+                            </span>
+                            <el-tag 
+                                :type="realtimeStatistics.type === '数组' ? 'success' : 'primary'" 
+                                effect="plain" 
+                                size="small"
+                            >
+                                {{ realtimeStatistics.type }}
+                            </el-tag>
+                        </div>
+                        <div class="statistics-row count-row">
+                            <span class="statistics-label">
+                                <el-icon><Document /></el-icon>
+                                元素总数：
+                            </span>
+                            <span class="count-display">
+                                <span class="count-number">{{ realtimeStatistics.count }}</span>
+                                <span class="count-unit">个</span>
+                            </span>
+                        </div>
+                    </div>
+                </div>
+                <div v-else-if="realtimeStatistics && !realtimeStatistics.isValid" class="realtime-statistics-error">
+                    <el-icon><WarningFilled /></el-icon>
+                    <span>当前路径指向的值不是对象或数组，无法统计元素个数</span>
                 </div>
             </div>
             <template #footer>
                 <span class="dialog-footer">
                     <el-button @click="handlePathDialogCancel">取消</el-button>
-                    <el-button type="primary" @click="handlePathDialogConfirm">统计</el-button>
+                    <el-button type="primary" @click="handlePathDialogConfirm">确定</el-button>
                 </span>
             </template>
         </el-dialog>
 
-        <!-- 统计结果对话框-->
+        <!-- 获取JSON数据对话框 -->
+        <FetchJsonDialog
+            v-model="fetchJsonDialogVisible"
+            :indent-size="indentSize"
+            :input-editor="inputEditor"
+        />
+
+        <!-- 分享对话框 -->
+        <ShareDialog
+            v-model="shareDialogVisible"
+            :json-data="getInputEditorValue()"
+        />
+
+        <!-- 数据脱敏对话框 -->
+        <DataMaskingDialog
+            v-model="dataMaskingDialogVisible"
+            :json-data="getInputEditorValue()"
+            @apply="handleDataMaskingApply"
+        />
+
+        <!-- 设置弹窗 -->
         <el-dialog
-            v-model="statisticsDialogVisible"
-            title="统计结果"
-            width="600px"
+            v-model="settingsDialogVisible"
+            class="settings-dialog-wrapper"
             :close-on-click-modal="false"
-            align-center
-            class="statistics-dialog"
+            :align-center="false"
+            top="12vh"
+            width="850px"
         >
-            <div class="statistics-result-dialog">
-                <!-- 统计卡片 -->
-                <el-card class="statistics-card" shadow="never">
-                    <template #header>
-                        <div class="statistics-header">
-                            <el-icon class="statistics-icon" :size="16">
-                                <DataAnalysis />
-                            </el-icon>
-                            <span class="statistics-title">统计概览</span>
-                        </div>
-                    </template>
-                    <div class="statistics-content">
-                        <!-- 路径信息 -->
-                        <div class="statistics-item">
-                            <div class="item-label">
-                                <el-icon><Location /></el-icon>
-                                <span>路径</span>
-                            </div>
-                            <div class="item-value">
-                                <el-tag type="info" effect="plain" size="default">
-                                    {{ statisticsData.path || '根对象' }}
-                                </el-tag>
-                            </div>
+            <div class="settings-dialog-content">
+                <div class="settings-columns">
+                    <!-- 左侧：格式化设置 -->
+                    <div class="settings-column settings-column-left">
+                        <div class="settings-column-title">
+                            <el-icon class="column-title-icon"><Document /></el-icon>
+                            <span>格式化设置</span>
                         </div>
                         
-                        <el-divider class="statistics-divider" />
-
-                        <!-- 类型信息 -->
-                        <div class="statistics-item">
-                            <div class="item-label">
-                                <el-icon><Collection /></el-icon>
-                                <span>数据类型</span>
+                        <div class="settings-item">
+                            <div class="settings-item-header">
+                                <span class="settings-label">缩进空格：</span>
                             </div>
-                            <div class="item-value">
-                                <el-tag 
-                                    :type="statisticsData.type === '数组' ? 'success' : 'primary'" 
-                                    effect="plain" 
-                                    size="default"
-                                >
-                                    {{ statisticsData.type }}
-                                </el-tag>
-                            </div>
+                            <el-radio-group v-model="indentSize" class="settings-radio-group">
+                                <el-radio :value="2" border>2</el-radio>
+                                <el-radio :value="4" border>4</el-radio>
+                                <el-radio :value="8" border>8</el-radio>
+                            </el-radio-group>
                         </div>
 
-                        <el-divider class="statistics-divider" />
+                        <el-divider />
 
-                        <!-- 统计数量 -->
-                        <div class="statistics-item count-item">
-                            <div class="item-label">
-                                <el-icon><Document /></el-icon>
-                                <span>元素总数</span>
+                        <div class="settings-item">
+                            <div class="settings-item-header">
+                                <span class="settings-label">编码模式：</span>
                             </div>
-                            <div class="count-value">
-                                <span class="count-number">{{ statisticsData.count }}</span>
-                                <span class="count-unit">个元素</span>
+                            <el-radio-group v-model="encodingMode" class="settings-radio-group">
+                                <el-radio :value="0" border>保持原样</el-radio>
+                                <el-radio :value="1" border>转中文</el-radio>
+                                <el-radio :value="2" border>转Unicode</el-radio>
+                            </el-radio-group>
+                        </div>
+
+                        <el-divider />
+
+                        <div class="settings-item">
+                            <div class="settings-item-header">
+                                <span class="settings-label">数组样式：</span>
                             </div>
+                            <el-switch 
+                                v-model="arrayNewLine" 
+                                active-text="换行" 
+                                inactive-text="紧凑" 
+                                size="default"
+                            />
+                        </div>
+
+                        <el-divider />
+
+                        <div class="settings-item">
+                            <div class="settings-item-header">
+                                <span class="settings-label">缩进指南：</span>
+                            </div>
+                            <el-switch 
+                                v-model="showIndentGuide" 
+                                active-text="显示" 
+                                inactive-text="隐藏"
+                                size="default"
+                                @change="updateIndentGuides"
+                            />
                         </div>
                     </div>
-                </el-card>
+
+                    <!-- 右侧：排序设置 -->
+                    <div class="settings-column settings-column-right">
+                        <div class="settings-column-title">
+                            <el-icon class="column-title-icon"><Sort /></el-icon>
+                            <span>排序设置</span>
+                        </div>
+                        
+                        <div class="settings-item">
+                            <div class="settings-item-header">
+                                <span class="settings-label">排序方式：</span>
+                            </div>
+                            <el-radio-group v-model="sortMethod" class="settings-radio-group">
+                                <el-radio value="dictionary" border>字典序</el-radio>
+                                <el-radio value="length" border>按Key长度</el-radio>
+                            </el-radio-group>
+                        </div>
+
+                        <el-divider />
+
+                        <div class="settings-item">
+                            <div class="settings-item-header">
+                                <span class="settings-label">排序方向：</span>
+                            </div>
+                            <el-radio-group v-model="sortOrder" class="settings-radio-group">
+                                <el-radio value="asc" border>正序（升序）</el-radio>
+                                <el-radio value="desc" border>倒序（降序）</el-radio>
+                            </el-radio-group>
+                        </div>
+                    </div>
+                </div>
             </div>
             <template #footer>
                 <div class="dialog-footer">
-                    <el-button @click="statisticsDialogVisible = false">确定</el-button>
+                    <el-button @click="settingsDialogVisible = false">关闭</el-button>
                 </div>
             </template>
         </el-dialog>
@@ -330,9 +387,14 @@ import type { UploadFile } from 'element-plus';
 import * as monaco from 'monaco-editor';
 import editorWorker from 'monaco-editor/esm/vs/editor/editor.worker?worker';
 import jsonWorker from 'monaco-editor/esm/vs/language/json/json.worker?worker';
-import { Loading, ArrowLeft, CopyDocument, Download, Upload, Delete, Setting, WarningFilled, DataAnalysis, Location, Collection, Document } from '@element-plus/icons-vue';
+import { Loading, ArrowLeft, ArrowDown, CopyDocument, Download, Upload, Delete, Setting, WarningFilled, DataAnalysis, Location, Collection, Document, Sort, InfoFilled, Refresh, Connection, Share, Lock, FullScreen, Operation } from '@element-plus/icons-vue';
+import FetchJsonDialog from './FetchJsonDialog.vue';
+import ShareDialog from './ShareDialog.vue';
+import DataMaskingDialog from './DataMaskingDialog.vue';
 
-const MESSAGE_OFFSET = 18; // 配置消息提示显示在离顶部更远的位置
+const getMessageOffset = () => {
+    return isFullscreen.value ? 10 : 56.5;
+};
 const MAX_FILE_SIZE = 5 * 1024 * 1024; // 文件大小限制：5MB
 const MAX_LINES = 100000; // 最大行数限制
 
@@ -354,20 +416,32 @@ const pathDialogVisible = ref(false);
 const pathInputValue = ref('');
 const pathSuggestionsData = ref<any>(null); // 存储解析后的JSON数据
 const suggestionsHint = ref('');
-let pathDialogResolve: ((value: string) => void) | null = null;
-let pathDialogReject: ((reason?: any) => void) | null = null;
-
-// 统计结果对话框相关状态
-const statisticsDialogVisible = ref(false);
-const statisticsData = ref<{
+const pathAutocompleteRef = ref<any>(null); // autocomplete 组件引用
+// 实时统计结果
+const realtimeStatistics = ref<{
     path: string;
     type: string;
     count: number;
-}>({
-    path: '',
-    type: '',
-    count: 0
-});
+    isValid: boolean;
+} | null>(null);
+let pathDialogResolve: ((value: string) => void) | null = null;
+let pathDialogReject: ((reason?: any) => void) | null = null;
+
+// 获取JSON数据对话框相关状态
+const fetchJsonDialogVisible = ref(false);
+
+// 分享对话框相关状态
+const shareDialogVisible = ref(false);
+
+// 数据脱敏对话框相关状态
+const dataMaskingDialogVisible = ref(false);
+
+// 排序相关状态
+const sortMethod = ref<'dictionary' | 'length'>('dictionary');
+const sortOrder = ref<'asc' | 'desc'>('asc');
+
+// 设置对话框相关状态
+const settingsDialogVisible = ref(false);
 
 const editorsInitialized = ref(false); // 在script setup部分添加
 const inputEditorContainer = ref<HTMLElement | null>(null); // 输入编辑器容器
@@ -375,7 +449,13 @@ const outputEditorContainer = ref<HTMLElement | null>(null); // 输出编辑器�
 const editorContainerWidth = ref(0); // 编辑器容器宽度，用于计算按钮显示状态
 let inputEditor: monaco.editor.IStandaloneCodeEditor | null = null; // 输入编辑器实例
 let outputEditor: monaco.editor.IStandaloneCodeEditor | null = null; // 输出编辑器实例
+let inputEditorResizeObserver: ResizeObserver | null = null; // 输入编辑器容器大小监听器
+let outputEditorResizeObserver: ResizeObserver | null = null; // 输出编辑器容器大小监听器
 let stableWidthUpdateTimer: ReturnType<typeof setTimeout> | null = null; // 稳定宽度更新定时器
+
+// 编辑器状态栏信息
+const inputEditorStatus = ref('');
+const outputEditorStatus = ref('');
 
 // 拖动相关状态（提升到外层作用域，避免每次拖动创建新变量）
 let resizeState: {
@@ -452,7 +532,7 @@ const placeholderJSON = {
     "helpers": [
         {
             "name": "分隔线拖拽",
-            "detail": "可拖动中间的分隔线调整输入区域和预览区域的宽度比例"
+            "detail": "拖动中间分隔线调整输入区域和预览区域的宽度比例"
         },
         {
             "name": "双击复制",
@@ -460,11 +540,11 @@ const placeholderJSON = {
         },
         {
             "name": "内容转移",
-            "detail": "通过分隔线顶部的左箭头按钮，可将预览区域中的处理结果快速转移到输入区域"
+            "detail": "点击分隔线顶部的左箭头按钮，将预览区域结果快速转移到输入区域"
         },
         {
             "name": "文件操作",
-            "detail": "支持上传本地JSON文件和下载数据处理结果，上传的文件必须是.json后缀且是UTF-8编码"
+            "detail": "支持上传本地JSON文件和下载数据处理结果，文件必须是.json后缀且是UTF-8编码"
         },
         {
             "name": "全屏模式",
@@ -491,12 +571,12 @@ const placeholderJSON = {
         {
             "name": "缩进空格",
             "values": ["2", "4", "8"],
-            "detail": "仅对格式化功能生效，并且只影响预览区域的缩进效果，不会改变输入区域的缩进效果"
+            "detail": "仅对格式化功能生效，只影响预览区域的缩进效果"
         },
         {
             "name": "编码模式",
             "values": ["保持原样", "转Unicode", "转中文"],
-            "detail": "仅对格式化功能生效，可以实现中文字符和Unicode字符之间的双向转换，保持原样将保持编码不变"
+            "detail": "仅对格式化功能生效，实现中文字符和Unicode字符之间的双向转换"
         },
         {
             "name": "数组样式",
@@ -506,7 +586,7 @@ const placeholderJSON = {
         {
             "name": "缩进指南",
             "values": ["隐藏", "显示"],
-            "detail": "缩进指南会同时影响输入区域和预览区域的缩进辅助线显示效果"
+            "detail": "同时影响输入区域和预览区域的缩进辅助线显示效果"
         }
     ],
     "supportedFunctions": [
@@ -536,11 +616,27 @@ const placeholderJSON = {
                 },
                 {
                     "name": "层级收缩",
-                    "detail": "可以按照JSON的嵌套层级进行折叠，方便查看大型JSON结构"
+                    "detail": "按照JSON的嵌套层级进行折叠，方便查看大型JSON结构"
                 },
                 {
                     "name": "统计",
                     "detail": "统计指定路径下对象或数组的一级元素个数，显示路径、数据类型和元素总数"
+                },
+                {
+                    "name": "排序",
+                    "detail": "对JSON对象的Key进行排序，支持字典序和按Key长度排序，支持正序和倒序"
+                },
+                {
+                    "name": "获取JSON",
+                    "detail": "从URL或curl命令获取JSON数据，支持多种HTTP方法和自定义请求头、证书"
+                },
+                {
+                    "name": "分享",
+                    "detail": "生成分享链接，支持密码保护和过期时间设置，最长保存3天"
+                },
+                {
+                    "name": "数据脱敏",
+                    "detail": "对JSON数据中的敏感字段进行脱敏处理，支持多种匹配方式和脱敏策略"
                 }
             ]
         },
@@ -558,7 +654,7 @@ const placeholderJSON = {
                 },
                 {
                     "name": "JSON 转 Go 结构体",
-                    "detail": "生成与JSON结构匹配的Go语言结构体定义，包含当前的json标签，但是递归JSON转换结果不准确"
+                    "detail": "生成与JSON结构匹配的Go语言结构体定义，包含json标签"
                 },
                 {
                     "name": "Cookie 转 JSON",
@@ -621,35 +717,28 @@ const updateLineNumberWidth = (editor: monaco.editor.IStandaloneCodeEditor | nul
 const updateEditorHeight = (editor: monaco.editor.IStandaloneCodeEditor | null) => {
     if (!editor) return;
 
-    // 获取容器高度
-    const container = editor.getContainerDomNode();
-    const containerHeight = container.clientHeight;
+    // 获取 Monaco 编辑器实例的容器（.monaco-editor-instance）
+    const editorInstance = editor.getContainerDomNode();
+    
+    // 获取父容器（.monaco-editor-container），这是实际控制高度的容器
+    const editorContainer = editorInstance.parentElement;
+    if (!editorContainer) return;
 
-    // 直接使用容器高度
+    // 使用父容器的高度，确保编辑器不会超出容器范围
+    const containerHeight = editorContainer.clientHeight;
+    const containerWidth = editorContainer.clientWidth;
+
+    // 使用容器高度和宽度
     editor.layout({
-        width: container.clientWidth,
+        width: containerWidth,
         height: containerHeight
     });
 };
 
 // 更新编辑器布局
 const updateEditorLayout = () => {
-    if (inputEditor) {
-        // 强制重新计算编辑器尺寸
-        const container = inputEditor.getContainerDomNode();
-        inputEditor.layout({
-            width: container.clientWidth,
-            height: container.clientHeight
-        });
-    }
-    if (outputEditor) {
-        // 强制重新计算编辑器尺寸
-        const container = outputEditor.getContainerDomNode();
-        outputEditor.layout({
-            width: container.clientWidth,
-            height: container.clientHeight
-        });
-    }
+    updateEditorHeight(inputEditor);
+    updateEditorHeight(outputEditor);
 };
 
 // 获取编辑器配置
@@ -888,28 +977,146 @@ const findStringRange = (model: monaco.editor.ITextModel, position: monaco.Posit
 // 复制文本到剪贴板
 const copyToClipboard = async (text: string) => {
     try {
+        // 优先使用现代 Clipboard API
         if (navigator.clipboard && navigator.clipboard.writeText) {
             await navigator.clipboard.writeText(text);
-            } else {
-            // 降级方案：使用传统方法
+        } else {
+            // 降级方案：使用传统方法（execCommand 已废弃，但作为兼容性降级方案）
             const textArea = document.createElement('textarea');
             textArea.value = text;
+            textArea.readOnly = true; // 防止用户看到选中内容
             textArea.style.position = 'fixed';
             textArea.style.left = '-999999px';
             textArea.style.top = '-999999px';
+            textArea.style.opacity = '0';
             document.body.appendChild(textArea);
             textArea.focus();
             textArea.select();
             try {
-                document.execCommand('copy');
+                // document.execCommand 已废弃，但作为降级方案仍可使用
+                const success = document.execCommand('copy');
+                if (!success) {
+                    throw new Error('execCommand failed');
+                }
             } catch (err) {
                 // 忽略错误
+            } finally {
+                document.body.removeChild(textArea);
             }
-            document.body.removeChild(textArea);
         }
     } catch (err) {
         // 如果复制失败，不显示错误，静默处理
     }
+};
+
+// 更新编辑器状态栏信息
+const updateEditorStatus = (editor: monaco.editor.IStandaloneCodeEditor | null, statusRef: { value: string }, isInputEditor: boolean = false) => {
+    if (!editor) {
+        statusRef.value = '';
+        return;
+    }
+
+    const selection = editor.getSelection();
+    if (!selection) {
+        statusRef.value = '';
+        return;
+    }
+
+    const model = editor.getModel();
+    if (!model) {
+        statusRef.value = '';
+        return;
+    }
+
+    const startLine = selection.startLineNumber;
+    const endLine = selection.endLineNumber;
+    const startColumn = selection.startColumn;
+    const endColumn = selection.endColumn;
+
+    // 检查是否有选中内容（不是光标位置）
+    const hasSelection = !selection.isEmpty();
+
+    if (hasSelection) {
+        // 计算选中的行数
+        const selectedLines = endLine - startLine + 1;
+        
+        // 使用 Monaco Editor 的 API 获取选中文本，然后计算字符数
+        const selectedText = model.getValueInRange(selection);
+        const selectedChars = selectedText.length;
+
+        // 如果是输入编辑器且有选中内容，搜索匹配项
+        if (isInputEditor && selectedText.trim()) {
+            try {
+                // 转义特殊字符用于正则表达式搜索（完全匹配）
+                const escapedText = selectedText.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+                
+                // 在整个文档中查找所有完全匹配的位置
+                // findMatches(searchString, searchOnlyEditableRange, isRegex, matchCase, wordSeparators, captureMatches, limitResultCount?)
+                const matches = model.findMatches(
+                    escapedText,
+                    false, // 搜索整个文档（不只是可编辑范围）
+                    false, // 不是正则表达式（已转义为字面量）
+                    true,  // 区分大小写（完全匹配）
+                    null,  // 不使用单词分隔符
+                    false, // 不捕获组
+                    undefined // 不限制结果数量
+                );
+
+                const matchCount = matches.length;
+
+                // 格式化显示：行数 字符数 匹配数
+                if (selectedLines === 1) {
+                    if (matchCount > 1) {
+                        statusRef.value = `已选中 ${selectedChars} 个字符 | 共 ${matchCount} 处匹配`;
+                    } else {
+                        statusRef.value = `已选中 ${selectedChars} 个字符`;
+                    }
+                } else {
+                    if (matchCount > 1) {
+                        statusRef.value = `已选中 ${selectedLines} 行，${selectedChars} 个字符 | 共 ${matchCount} 处匹配`;
+                    } else {
+                        statusRef.value = `已选中 ${selectedLines} 行，${selectedChars} 个字符`;
+                    }
+                }
+            } catch (error) {
+                // 如果搜索失败，回退到基本显示
+                if (selectedLines === 1) {
+                    statusRef.value = `已选中 ${selectedChars} 个字符`;
+                } else {
+                    statusRef.value = `已选中 ${selectedLines} 行，${selectedChars} 个字符`;
+                }
+            }
+        } else {
+            // 预览区域或没有匹配功能，只显示基本信息
+            if (selectedLines === 1) {
+                statusRef.value = `已选中 ${selectedChars} 个字符`;
+            } else {
+                statusRef.value = `已选中 ${selectedLines} 行，${selectedChars} 个字符`;
+            }
+        }
+    } else {
+        // 没有选中，只显示光标位置
+        const totalLines = model.getLineCount();
+        statusRef.value = `第 ${startLine} 行，第 ${startColumn} 列 | 共 ${totalLines} 行`;
+    }
+};
+
+// 设置编辑器选择变化监听
+const setupSelectionListener = (editor: monaco.editor.IStandaloneCodeEditor | null, statusRef: { value: string }, isInputEditor: boolean = false) => {
+    if (!editor) return;
+
+    // 监听选择变化
+    editor.onDidChangeCursorSelection((e) => {
+        updateEditorStatus(editor, statusRef, isInputEditor);
+    });
+
+    // 监听内容变化（更新总行数等信息）
+    editor.onDidChangeModelContent(() => {
+        updateEditorStatus(editor, statusRef, isInputEditor);
+    });
+
+    // 初始化状态
+    updateEditorStatus(editor, statusRef, isInputEditor);
 };
 
 // 设置双击选中整个字符串并复制功能
@@ -1004,6 +1211,8 @@ const debouncedUpdateLineNumberWidth = debounce(updateLineNumberWidth, 150);
 
 // 监听全屏状态变化
 watch(isFullscreen, () => {
+    // 更新消息提示位置
+    updateMessageOffset();
     // 等待 DOM 更新
     nextTick(() => {
         setTimeout(() => {
@@ -1042,27 +1251,44 @@ watch([indentSize, arrayNewLine, showIndentGuide], () => {
     }
 });
 
-// 在组件挂载时添加监听器
-onMounted(async () => {
-    // 确保在客户端环境下运行
-    if (typeof window === 'undefined') return;
+// 监听路径输入值的变化，确保清空时也能正确更新统计结果
+watch(pathInputValue, () => {
+    if (pathDialogVisible.value) {
+        updateRealtimeStatistics();
+    }
+});
 
-    // 添加消息提示位置的自定义样式
-    const styleElement = document.createElement('style');
-    styleElement.textContent = `
+// 保存消息提示样式元素的引用，以便动态更新
+let messageStyleElement: HTMLStyleElement | null = null;
+
+// 更新消息提示位置的函数
+const updateMessageOffset = () => {
+    if (typeof window === 'undefined' || !messageStyleElement) return;
+    const offset = getMessageOffset();
+    messageStyleElement.textContent = `
         .el-message {
-            top: ${MESSAGE_OFFSET}px !important;
+            top: ${offset}px !important;
             z-index: 9999 !important;
             left: auto !important;
             right: 25px !important;
             transform: translateX(0) !important;
         }
     `;
-    document.head.appendChild(styleElement);
+};
+
+// 在组件挂载时添加监听器
+onMounted(async () => {
+    // 确保在客户端环境下运行
+    if (typeof window === 'undefined') return;
+
+    // 添加消息提示位置的自定义样式
+    messageStyleElement = document.createElement('style');
+    updateMessageOffset(); // 使用函数初始化样式
+    document.head.appendChild(messageStyleElement);
 
     // 重新配置Monaco环境，确保Worker正确加载
     window.MonacoEnvironment = {
-        getWorker(_, label) {
+        getWorker(_, label): Worker {
             if (label === 'json') {
                 return new jsonWorker();
             }
@@ -1112,6 +1338,9 @@ onMounted(async () => {
                     const formattedExample = customStringify(placeholderJSON, null, indentSize.value);
                     inputEditor.setValue(formattedExample);
                     maxLevel.value = calculateMaxLevel(placeholderJSON);
+
+                    // 设置选择变化监听（输入编辑器启用匹配计数功能）
+                    setupSelectionListener(inputEditor, inputEditorStatus, true);
 
                     // 监听输入变化
                     inputEditor.onDidChangeModelContent(() => {
@@ -1174,6 +1403,8 @@ onMounted(async () => {
                     outputEditor.getModel()?.updateOptions({ tabSize: indentSize.value, insertSpaces: true });
                     // 设置双击选中整个字符串并复制功能
                     setupDoubleClickSelectString(outputEditor);
+                    // 设置选择变化监听
+                    setupSelectionListener(outputEditor, outputEditorStatus);
                 }
             } catch (error: any) {
                 showError('Monaco编辑器初始化失败: ' + error.message);
@@ -1186,6 +1417,9 @@ onMounted(async () => {
 
             // 设置初始化成功标志
             editorsInitialized.value = true;
+
+            // 检查URL参数，加载分享数据
+            await loadSharedDataFromUrl();
         } catch (error: any) {
             showError('Monaco编辑器初始化失败: ' + error.message);
         }
@@ -1201,12 +1435,62 @@ onMounted(async () => {
             editorContainerWidth.value = container.getBoundingClientRect().width;
         }
     }, 300);
+
+    // 使用 ResizeObserver 监听编辑器容器大小变化，确保布局正确
+    const setupResizeObserver = () => {
+        if (typeof ResizeObserver === 'undefined') return;
+
+        // 监听输入编辑器容器
+        if (inputEditorContainer.value) {
+            const inputContainer = inputEditorContainer.value.parentElement; // .monaco-editor-container
+            if (inputContainer && !inputEditorResizeObserver) {
+                inputEditorResizeObserver = new ResizeObserver(() => {
+                    // 使用防抖更新编辑器布局
+                    debouncedResize();
+                });
+                inputEditorResizeObserver.observe(inputContainer);
+            }
+        }
+
+        // 监听输出编辑器容器
+        if (outputEditorContainer.value) {
+            const outputContainer = outputEditorContainer.value.parentElement; // .monaco-editor-container
+            if (outputContainer && !outputEditorResizeObserver) {
+                outputEditorResizeObserver = new ResizeObserver(() => {
+                    // 使用防抖更新编辑器布局
+                    debouncedResize();
+                });
+                outputEditorResizeObserver.observe(outputContainer);
+            }
+        }
+    };
+
+    // 延迟设置 ResizeObserver，确保编辑器已初始化
+    setTimeout(() => {
+        setupResizeObserver();
+    }, 500);
 });
 
 // 清理编辑器实例
 onBeforeUnmount(() => {
     // 移除resize事件监听器
     window.removeEventListener('resize', debouncedResize);
+
+    // 清理消息提示样式元素
+    if (messageStyleElement && messageStyleElement.parentNode) {
+        messageStyleElement.parentNode.removeChild(messageStyleElement);
+        messageStyleElement = null;
+    }
+
+    // 清理 ResizeObserver
+    if (inputEditorResizeObserver) {
+        inputEditorResizeObserver.disconnect();
+        inputEditorResizeObserver = null;
+    }
+    if (outputEditorResizeObserver) {
+        outputEditorResizeObserver.disconnect();
+        outputEditorResizeObserver = null;
+    }
 
     // 销毁编辑器实例
     if (inputEditor) {
@@ -1306,8 +1590,19 @@ const checkLinesAndDepth = (content: string): { isValid: boolean; error?: string
 };
 
 // 自定义 JSON 字符串化函数
-const customStringify = (obj: any, replacer: null, space: number, originalString?: string): string => {
+function customStringify(
+    obj: any,
+    replacer: null,
+    space: number,
+    originalString?: string,
+    encodingModeOverride?: number,
+    arrayNewLineOverride?: boolean
+): string {
     const indent = ' '.repeat(space);
+    // 如果提供了编码模式覆盖值，使用它；否则使用全局设置
+    const currentEncodingMode = encodingModeOverride !== undefined ? encodingModeOverride : encodingMode.value;
+    // 如果提供了数组样式覆盖值，使用它；否则使用全局设置
+    const currentArrayNewLine = arrayNewLineOverride !== undefined ? arrayNewLineOverride : arrayNewLine.value;
 
     const isPrimitiveArray = (arr: any[]): boolean => {
         return arr.every(item =>
@@ -1432,7 +1727,7 @@ const customStringify = (obj: any, replacer: null, space: number, originalString
 
     // 处理中文到Unicode的转换
     const handleChineseToUnicode = (str: string): string => {
-        if (encodingMode.value !== 2) return str; // 如果不是转Unicode模式，直接返回
+        if (currentEncodingMode !== 2) return str; // 如果不是转Unicode模式，直接返回
 
         return str.replace(/[\u0080-\uFFFF]/g, char => {
             const codePoint = char.charCodeAt(0);
@@ -1453,7 +1748,7 @@ const customStringify = (obj: any, replacer: null, space: number, originalString
 
     // 处理Unicode到中文的转换
     const handleUnicodeToChiness = (str: string): string => {
-        if (encodingMode.value !== 1) return str; // 如果不是转中文模式，直接返回
+        if (currentEncodingMode !== 1) return str; // 如果不是转中文模式，直接返回
 
         return str.replace(/\\u([0-9a-fA-F]{4})/g, (match, hex) => {
             const codePoint = parseInt(hex, 16);
@@ -1474,9 +1769,9 @@ const customStringify = (obj: any, replacer: null, space: number, originalString
         let processed = escapeString(str);
 
         // 根据编码处理模式进行转换
-        if (encodingMode.value === 2) {
+        if (currentEncodingMode === 2) {
             processed = handleChineseToUnicode(processed);
-        } else if (encodingMode.value === 1) {
+        } else if (currentEncodingMode === 1) {
             processed = handleUnicodeToChiness(processed);
         }
 
@@ -1489,7 +1784,7 @@ const customStringify = (obj: any, replacer: null, space: number, originalString
         if (Array.isArray(obj)) {
             if (obj.length === 0) return '[]';
 
-            if (!arrayNewLine.value && isPrimitiveArray(obj)) {
+            if (!currentArrayNewLine && isPrimitiveArray(obj)) {
                 const items = obj.map(item => {
                     if (typeof item === 'string') return `"${processString(item)}"`;
                     return String(item);
@@ -1517,7 +1812,7 @@ const customStringify = (obj: any, replacer: null, space: number, originalString
     };
 
     return format(obj);
-};
+}
 
 
 // JSON预处理函数 - 处理结构层面的问题（注释、尾逗号）和无效转义序列
@@ -2932,6 +3227,16 @@ const getValueByPath = (data: any, path: string): { value: any; error?: string }
         
         // 如果有key，先访问属性
         if (part.key) {
+            // 如果key是纯数字且当前值是数组，要求使用 [0] 语法
+            const isNumericKey = /^\d+$/.test(part.key);
+            if (isNumericKey && Array.isArray(targetValue)) {
+                const correctPath = path.replace(/\.(\d+)/g, '[$1]');
+                return { 
+                    value: null, 
+                    error: `路径语法错误：数组索引必须使用方括号语法。请使用 "${correctPath}" 而不是 "${path}"。例如：supportedFunctions[0].functions`
+                };
+            }
+            
             if (typeof targetValue === 'object' && part.key in targetValue) {
                 targetValue = targetValue[part.key];
             } else {
@@ -3013,9 +3318,8 @@ const queryPathSuggestions = (queryString: string, cb: (suggestions: any[]) => v
         if (Array.isArray(data)) {
             // 如果数组元素是基础类型，不显示索引建议
             if (isArrayOfPrimitives(data)) {
-                suggestionsHint.value = `根对象是基础类型数组（字符串/数字/布尔值），包含 ${data.length} 个元素，无法继续访问`;
+                // 不显示提示信息
             } else {
-                suggestionsHint.value = `根对象是数组，包含 ${data.length} 个元素，可使用 [0] 到 [${data.length - 1}]`;
                 // 提供前几个索引作为建议
                 const maxSuggestions = Math.min(10, data.length);
                 for (let i = 0; i < maxSuggestions; i++) {
@@ -3033,7 +3337,6 @@ const queryPathSuggestions = (queryString: string, cb: (suggestions: any[]) => v
             }
         } else if (data && typeof data === 'object') {
             const keys = Object.keys(data);
-            suggestionsHint.value = `根对象包含 ${keys.length} 个键`;
             keys.forEach(key => {
                 const val = data[key];
                 // 只推荐对象和数组类型，过滤基础数据类型
@@ -3062,7 +3365,7 @@ const queryPathSuggestions = (queryString: string, cb: (suggestions: any[]) => v
     const result = getValueByPath(pathSuggestionsData.value, path);
     
     if (result.error) {
-        suggestionsHint.value = result.error;
+        // 不显示错误提示，由统计结果卡片显示
         cb([]);
         return;
     }
@@ -3080,9 +3383,8 @@ const queryPathSuggestions = (queryString: string, cb: (suggestions: any[]) => v
         if (Array.isArray(currentValue)) {
             // 如果数组元素是基础类型，不显示索引建议
             if (isArrayOfPrimitives(currentValue)) {
-                suggestionsHint.value = `当前位置是基础类型数组（字符串/数字/布尔值），包含 ${currentValue.length} 个元素，无法继续访问`;
+                // 不显示提示信息
             } else {
-                suggestionsHint.value = `当前位置是数组，包含 ${currentValue.length} 个元素`;
                 const maxSuggestions = Math.min(10, currentValue.length);
                 const prefix = path + '[';
                 for (let i = 0; i < maxSuggestions; i++) {
@@ -3100,7 +3402,6 @@ const queryPathSuggestions = (queryString: string, cb: (suggestions: any[]) => v
             }
         } else if (currentValue && typeof currentValue === 'object') {
             const keys = Object.keys(currentValue);
-            suggestionsHint.value = `当前位置是对象，包含 ${keys.length} 个键`;
             const prefix = path + '.';
             keys.forEach(key => {
                 const val = currentValue[key];
@@ -3122,7 +3423,7 @@ const queryPathSuggestions = (queryString: string, cb: (suggestions: any[]) => v
                 });
             });
         } else {
-            suggestionsHint.value = `当前位置是 ${typeof currentValue}，无法继续访问`;
+            // 不显示提示信息
         }
     } else if (endsWithDot || isInBrackets) {
         // 路径以 . 或 [ 结尾，提供下一步建议
@@ -3130,7 +3431,7 @@ const queryPathSuggestions = (queryString: string, cb: (suggestions: any[]) => v
             if (Array.isArray(currentValue) && isInBrackets) {
                 // 如果数组元素是基础类型，不显示索引建议
                 if (isArrayOfPrimitives(currentValue)) {
-                    suggestionsHint.value = `当前位置是基础类型数组（字符串/数字/布尔值），包含 ${currentValue.length} 个元素，无法继续访问`;
+                    // 不显示提示信息
                 } else {
                     const maxSuggestions = Math.min(10, currentValue.length);
                     const bracketContent = path.match(/\[([^\]]*)$/)?.[1] || '';
@@ -3151,19 +3452,17 @@ const queryPathSuggestions = (queryString: string, cb: (suggestions: any[]) => v
                             });
                         }
                     }
-                    suggestionsHint.value = `当前位置是数组，包含 ${currentValue.length} 个元素`;
                 }
             } else if (currentValue && typeof currentValue === 'object' && endsWithDot) {
                 // 如果是基础类型数组，不能使用 . 访问
                 if (Array.isArray(currentValue) && isArrayOfPrimitives(currentValue)) {
-                    suggestionsHint.value = `当前位置是基础类型数组（字符串/数字/布尔值），包含 ${currentValue.length} 个元素，无法继续访问`;
+                    // 不显示提示信息
                 } else if (Array.isArray(currentValue)) {
                     // 数组应该使用 [索引] 语法，而不是 . 语法
-                    suggestionsHint.value = `当前位置是数组，包含 ${currentValue.length} 个元素，应使用 [索引] 语法访问`;
+                    // 不显示提示信息
                 } else {
                     const keys = Object.keys(currentValue);
                     const prefix = path;
-                    suggestionsHint.value = `当前位置是对象，包含 ${keys.length} 个键`;
                     keys.forEach(key => {
                         const val = currentValue[key];
                         // 只推荐对象和数组类型，过滤基础数据类型
@@ -3208,7 +3507,7 @@ const queryPathSuggestions = (queryString: string, cb: (suggestions: any[]) => v
             if (parentValue && typeof parentValue === 'object') {
                 // 如果是基础类型数组，不显示索引建议
                 if (Array.isArray(parentValue) && isArrayOfPrimitives(parentValue)) {
-                    suggestionsHint.value = '基础类型数组（字符串/数字/布尔值），无法继续访问';
+                    // 不显示提示信息
                 } else {
                     const keys = Object.keys(parentValue);
                     // 计算前缀：找到最后一个分隔符的位置
@@ -3252,17 +3551,101 @@ const queryPathSuggestions = (queryString: string, cb: (suggestions: any[]) => v
 // 处理路径输入变化
 const handlePathInput = () => {
     suggestionsHint.value = '';
+    // 实时计算统计结果
+    updateRealtimeStatistics();
 };
 
 // 处理路径选择
 const handlePathSelect = (item: Record<string, any>) => {
     if (item && item.value) {
         pathInputValue.value = item.value;
+        // 选择后立即更新统计结果
+        nextTick(() => {
+            updateRealtimeStatistics();
+        });
+    }
+};
+
+// 处理路径输入框聚焦事件，移除 readonly 属性以阻止密码自动填充
+const handlePathInputFocus = () => {
+    nextTick(() => {
+        if (pathAutocompleteRef.value) {
+            // 获取 autocomplete 组件内部的 input 元素
+            const inputEl = pathAutocompleteRef.value.$el?.querySelector('input');
+            if (inputEl) {
+                // 移除 readonly 属性（如果存在）
+                inputEl.removeAttribute('readonly');
+                // 确保 autocomplete 属性设置正确
+                inputEl.setAttribute('autocomplete', 'new-password');
+            }
+        }
+    });
+};
+
+// 实时更新统计结果
+const updateRealtimeStatistics = () => {
+    if (!pathSuggestionsData.value) {
+        realtimeStatistics.value = null;
+        return;
+    }
+
+    const path = pathInputValue.value.trim();
+    
+    // 根据路径获取目标值
+    let targetValue: any = pathSuggestionsData.value;
+    if (path) {
+        const result = getValueByPath(pathSuggestionsData.value, path);
+        if (result.error) {
+            realtimeStatistics.value = {
+                path: path,
+                type: '',
+                count: 0,
+                isValid: false
+            };
+            return;
+        }
+        targetValue = result.value;
+    }
+
+    // 统计元素个数
+    let count = 0;
+    let type = '';
+
+    if (Array.isArray(targetValue)) {
+        count = targetValue.length;
+        type = '数组';
+        realtimeStatistics.value = {
+            path: path || '根对象',
+            type: type,
+            count: count,
+            isValid: true
+        };
+    } else if (targetValue && typeof targetValue === 'object') {
+        count = Object.keys(targetValue).length;
+        type = '对象';
+        realtimeStatistics.value = {
+            path: path || '根对象',
+            type: type,
+            count: count,
+            isValid: true
+        };
+    } else {
+        realtimeStatistics.value = {
+            path: path || '根对象',
+            type: '',
+            count: 0,
+            isValid: false
+        };
     }
 };
 
 // 对话框关闭处理
 const handlePathDialogClose = () => {
+    // 重置状态
+    realtimeStatistics.value = null;
+    pathInputValue.value = '';
+    suggestionsHint.value = '';
+    
     if (pathDialogReject) {
         pathDialogReject('cancel');
         pathDialogReject = null;
@@ -3272,6 +3655,11 @@ const handlePathDialogClose = () => {
 
 // 对话框取消
 const handlePathDialogCancel = () => {
+    // 重置状态
+    realtimeStatistics.value = null;
+    pathInputValue.value = '';
+    suggestionsHint.value = '';
+    
     pathDialogVisible.value = false;
     if (pathDialogReject) {
         pathDialogReject('cancel');
@@ -3283,6 +3671,26 @@ const handlePathDialogCancel = () => {
 // 对话框确认
 const handlePathDialogConfirm = () => {
     const path = pathInputValue.value.trim();
+    
+    // 验证统计结果是否有效
+    if (!realtimeStatistics.value || !realtimeStatistics.value.isValid) {
+        if (realtimeStatistics.value && !realtimeStatistics.value.isValid) {
+            ElMessageBox.alert(
+                `路径 "${path || '根'}" 指向的值不是对象或数组，无法统计元素个数`,
+                '类型错误'
+            );
+        }
+        return;
+    }
+    
+    // 显示成功提示
+    const stats = realtimeStatistics.value;
+    
+    // 重置状态
+    realtimeStatistics.value = null;
+    pathInputValue.value = '';
+    suggestionsHint.value = '';
+    
     pathDialogVisible.value = false;
     if (pathDialogResolve) {
         pathDialogResolve(path);
@@ -3314,53 +3722,30 @@ const countKeys = async () => {
         pathSuggestionsData.value = parsedData;
         pathInputValue.value = '';
         suggestionsHint.value = '';
+        realtimeStatistics.value = null;
 
         // 显示自定义对话框并等待用户输入
         pathDialogVisible.value = true;
+        
+        // 初始化时计算根对象的统计结果，并设置 readonly 以阻止密码自动填充
+        nextTick(() => {
+            updateRealtimeStatistics();
+            // 设置 input 为 readonly，聚焦时会自动移除
+            if (pathAutocompleteRef.value) {
+                const inputEl = pathAutocompleteRef.value.$el?.querySelector('input');
+                if (inputEl) {
+                    inputEl.setAttribute('readonly', 'readonly');
+                    inputEl.setAttribute('autocomplete', 'new-password');
+                }
+            }
+        });
         
         const path = await new Promise<string>((resolve, reject) => {
             pathDialogResolve = resolve;
             pathDialogReject = reject;
         });
-
-        // 根据路径获取目标值
-        let targetValue: any = parsedData;
-        if (path && path.trim()) {
-            const result = getValueByPath(parsedData, path);
-            if (result.error) {
-                ElMessageBox.alert(result.error, '路径错误');
-                return;
-            }
-            targetValue = result.value;
-        }
-
-        // 统计元素个数
-        let count = 0;
-        let type = '';
-
-        if (Array.isArray(targetValue)) {
-            count = targetValue.length;
-            type = '数组';
-        } else if (targetValue && typeof targetValue === 'object') {
-            count = Object.keys(targetValue).length;
-            type = '对象';
-        } else {
-            ElMessageBox.alert(
-                `路径 "${path || '根'}" 指向的值不是对象或数组，无法统计元素个数`,
-                '类型错误'
-            );
-            return;
-        }
-
-        // 更新统计数据
-        statisticsData.value = {
-            path: path || '根对象',
-            type: type,
-            count: count
-        };
-
-        // 显示统计结果弹窗
-        statisticsDialogVisible.value = true;
+        
+        // 用户确认后，统计结果已经在实时统计中显示了，这里不需要额外处理
     } catch (error: any) {
         // 用户取消输入时不显示错误
         if (error !== 'cancel') {
@@ -3449,6 +3834,390 @@ const handleLevelAction = () => {
         showError('操作失败: ' + error.message);
     }
 };
+
+// 打开获取JSON对话框
+const openFetchJsonDialog = () => {
+    fetchJsonDialogVisible.value = true;
+};
+
+// 打开分享对话框
+const openShareDialog = () => {
+    // 检查输入编辑器是否有内容
+    if (!inputEditor) {
+        showWarning('编辑器未初始化，请稍候再试');
+        return;
+    }
+    
+    const jsonData = inputEditor.getValue();
+    if (!jsonData || !jsonData.trim()) {
+        showWarning('请先输入JSON数据');
+        return;
+    }
+    
+    shareDialogVisible.value = true;
+};
+
+// 打开数据脱敏对话框
+const openDataMaskingDialog = () => {
+    // 检查输入编辑器是否有内容
+    if (!inputEditor) {
+        showWarning('编辑器未初始化，请稍候再试');
+        return;
+    }
+    
+    const jsonData = inputEditor.getValue();
+    if (!jsonData || !jsonData.trim()) {
+        showWarning('请先输入JSON数据');
+        return;
+    }
+    
+    // 验证JSON格式
+    try {
+        JSON.parse(jsonData);
+    } catch (error) {
+        showError('JSON格式不正确，请先格式化JSON数据');
+        return;
+    }
+    
+    dataMaskingDialogVisible.value = true;
+};
+
+// 处理数据脱敏应用
+const handleDataMaskingApply = (maskedJson: string) => {
+    try {
+        // 将脱敏后的JSON应用到输入区域
+        if (inputEditor) {
+            inputEditor.setValue(maskedJson);
+            
+            // 更新编辑器配置
+            const model = inputEditor.getModel();
+            if (model) {
+                monaco.editor.setModelLanguage(model, 'json');
+            }
+            
+            // 更新行号和高度
+            updateLineNumberWidth(inputEditor);
+            updateEditorHeight(inputEditor);
+            
+            // 更新层级信息
+            try {
+                const parsed = JSON.parse(maskedJson);
+                maxLevel.value = calculateMaxLevel(parsed);
+            } catch {
+                maxLevel.value = 0;
+            }
+        }
+        
+        // 清空预览区域
+        if (outputEditor) {
+            outputEditor.setValue('');
+            updateLineNumberWidth(outputEditor);
+            updateEditorHeight(outputEditor);
+        }
+        
+        outputType.value = 'json';
+    } catch (error: any) {
+        showError('应用脱敏结果失败: ' + (error.message || '未知错误'));
+    }
+};
+
+// 获取输入编辑器内容
+const getInputEditorValue = (): string => {
+    if (!inputEditor) return '';
+    return inputEditor.getValue();
+};
+
+// 从URL参数加载分享数据
+const loadSharedDataFromUrl = async () => {
+    if (typeof window === 'undefined') return;
+    
+    try {
+        const urlParams = new URLSearchParams(window.location.search);
+        const shareId = urlParams.get('share');
+        
+        if (!shareId) return;
+
+        // 检查是否需要密码
+        const password = urlParams.get('password');
+        
+        // 获取分享数据
+        const queryParams: Record<string, string> = { id: shareId };
+        if (password) {
+            queryParams.password = password;
+        }
+
+        const response = await $fetch<{
+            success: boolean;
+            data?: {
+                id: string;
+                jsonData: string;
+                description?: string;
+            };
+            error?: string;
+            hasPassword?: boolean;
+        }>('/api/share-json', {
+            method: 'GET',
+            query: queryParams,
+        });
+
+        if (response.success && response.data) {
+            // 成功加载数据，加载JSON数据到编辑器
+            if (inputEditor && response.data.jsonData) {
+                try {
+                    // 验证JSON格式
+                    const jsonData = JSON.parse(response.data.jsonData);
+                    const formattedJson = customStringify(jsonData, null, indentSize.value);
+                    inputEditor.setValue(formattedJson);
+                    
+                    // 更新层级信息
+                    maxLevel.value = calculateMaxLevel(jsonData);
+                    
+                    // 显示成功消息
+                    if (response.data.description) {
+                        showSuccess(`已加载分享数据：${response.data.description}`);
+                    } else {
+                        showSuccess('已加载分享数据');
+                    }
+                    
+                    // 清除URL参数（可选，保持URL干净）
+                    const cleanUrl = new URL(window.location.href);
+                    cleanUrl.searchParams.delete('share');
+                    cleanUrl.searchParams.delete('password');
+                    window.history.replaceState({}, '', cleanUrl.toString());
+                } catch (error) {
+                    showError('分享数据格式不正确');
+                }
+            }
+        } else {
+            // 处理错误情况
+            if (response.hasPassword) {
+                // 需要密码或密码错误，显示密码输入对话框
+                const promptMessage = password 
+                    ? '密码不正确，请重新输入' 
+                    : '此分享链接需要密码才能访问';
+                
+                ElMessageBox.prompt(promptMessage, '输入密码', {
+                    confirmButtonText: '确定',
+                    cancelButtonText: '取消',
+                    inputType: 'password',
+                    inputPlaceholder: '请输入访问密码',
+                }).then(async ({ value }) => {
+                    if (value) {
+                        // 重新加载，带上密码
+                        const newUrl = new URL(window.location.href);
+                        newUrl.searchParams.set('password', value);
+                        window.history.replaceState({}, '', newUrl.toString());
+                        await loadSharedDataFromUrl();
+                    }
+                }).catch(() => {
+                    // 用户取消
+                });
+            } else {
+                showError(response.error || '加载分享数据失败');
+            }
+        }
+    } catch (error: any) {
+        showError('加载分享数据失败: ' + (error.message || '未知错误'));
+    }
+};
+
+
+// 处理转义相关命令
+const handleEscapeCommand = (command: string) => {
+    switch (command) {
+        case 'escape':
+            escapeJSON();
+            break;
+        case 'unescape':
+            unescapeJSON();
+            break;
+        case 'compress-escape':
+            compressAndEscapeJSON();
+            break;
+    }
+};
+
+// 处理高级功能命令
+const handleAdvancedCommand = (command: string) => {
+    switch (command) {
+        case 'count':
+            countKeys();
+            break;
+        case 'sort':
+            applySort();
+            break;
+        case 'collapse':
+            if (maxLevel.value > 0) {
+                handleLevelAction();
+            }
+            break;
+    }
+};
+
+// 打开设置对话框
+const openSettingsDialog = () => {
+    settingsDialogVisible.value = true;
+};
+
+// 检查Key是否为纯数字
+const isNumericKey = (key: string): boolean => {
+    // 检查是否为纯数字（包括负数、小数）
+    return /^-?\d+(\.\d+)?$/.test(key);
+};
+
+// 获取Key的类型（数字或字符串）
+const getKeyType = (key: string): 'number' | 'string' => {
+    return isNumericKey(key) ? 'number' : 'string';
+};
+
+// 比较函数：字典序
+const compareDictionary = (a: string, b: string): number => {
+    return a.localeCompare(b, undefined, { numeric: false, sensitivity: 'base' });
+};
+
+// 比较函数：按Key长度
+const compareLength = (a: string, b: string): number => {
+    if (a.length !== b.length) {
+        return a.length - b.length;
+    }
+    return compareDictionary(a, b);
+};
+
+// 比较函数：按Key数值
+const compareNumeric = (a: string, b: string): number => {
+    const aIsNumeric = isNumericKey(a);
+    const bIsNumeric = isNumericKey(b);
+    
+    if (aIsNumeric && bIsNumeric) {
+        // 都是数字，按数值比较
+        const aNum = parseFloat(a);
+        const bNum = parseFloat(b);
+        return aNum - bNum;
+    } else if (aIsNumeric && !bIsNumeric) {
+        // a是数字，b不是，数字在前
+        return -1;
+    } else if (!aIsNumeric && bIsNumeric) {
+        // a不是数字，b是，数字在前
+        return 1;
+    } else {
+        // 都不是数字，按字典序
+        return compareDictionary(a, b);
+    }
+};
+
+// 比较函数：按Key类型分组
+const compareType = (a: string, b: string): number => {
+    const aType = getKeyType(a);
+    const bType = getKeyType(b);
+    
+    if (aType !== bType) {
+        // 类型不同，数字在前
+        return aType === 'number' ? -1 : 1;
+    } else {
+        // 类型相同，按字典序
+        return compareDictionary(a, b);
+    }
+};
+
+// 获取比较函数
+const getCompareFunction = (method: 'dictionary' | 'length'): (a: string, b: string) => number => {
+    switch (method) {
+        case 'dictionary':
+            return compareDictionary;
+        case 'length':
+            return compareLength;
+        default:
+            return compareDictionary;
+    }
+};
+
+// 递归排序JSON对象
+const sortJsonObject = (obj: any, method: 'dictionary' | 'length', order: 'asc' | 'desc'): any => {
+    if (obj === null || typeof obj !== 'object') {
+        return obj;
+    }
+    
+    if (Array.isArray(obj)) {
+        // 数组：递归处理每个元素
+        return obj.map(item => sortJsonObject(item, method, order));
+    }
+    
+    // 对象：对Key进行排序
+    const compareFn = getCompareFunction(method);
+    const sortedKeys = Object.keys(obj).sort((a, b) => {
+        const result = compareFn(a, b);
+        return order === 'asc' ? result : -result;
+    });
+    
+    const sortedObj: any = {};
+    for (const key of sortedKeys) {
+        // 递归处理值
+        sortedObj[key] = sortJsonObject(obj[key], method, order);
+    }
+    
+    return sortedObj;
+};
+
+// 应用排序
+const applySort = () => {
+    try {
+        outputType.value = 'json';
+        const value = inputEditor?.getValue() || '';
+        
+        if (!value.trim()) {
+            showError('请先输入 JSON 数据');
+            return;
+        }
+        
+        // 预处理 JSON 字符串
+        let parsed;
+        let originalString = value;
+        try {
+            const result = preprocessJSON(value);
+            parsed = result.data;
+            originalString = result.originalString;
+        } catch (error) {
+            showError('请输入有效的 JSON 数据');
+            return;
+        }
+        
+        // 执行排序
+        const sorted = sortJsonObject(parsed, sortMethod.value, sortOrder.value);
+        
+        // 格式化输出（排序功能固定使用2个空格缩进，编码模式保持原样，数组样式固定为换行）
+        const formatted = customStringify(sorted, null, 2, originalString, 0, true);
+        const finalOutput = formatted.replace(/\\u([0-9a-fA-F]{4})/g, '\\u$1');
+        
+        outputEditor?.setValue(finalOutput);
+        
+        // 更新编辑器配置（排序功能固定使用2个空格缩进）
+        if (outputEditor) {
+            const model = outputEditor.getModel();
+            if (model) {
+                monaco.editor.setModelLanguage(model, 'json');
+            }
+            
+            const lineCount = outputEditor?.getModel()?.getLineCount() || 0;
+            outputEditor.updateOptions(getEditorOptions(2, true, 'json', true));
+            updateLineNumberWidth(outputEditor);
+            updateEditorHeight(outputEditor);
+        }
+        
+        // 显示成功提示
+        const methodNames: Record<string, string> = {
+            dictionary: '字典序',
+            length: '按Key长度'
+        };
+        const orderNames: Record<string, string> = {
+            asc: '正序',
+            desc: '倒序'
+        };
+        showSuccess(`排序成功`);
+    } catch (error: any) {
+        showError('排序失败: ' + error.message);
+    }
+};
+
 
 // JSON 转 YAML
 const convertToYAML = (obj: any, indent: number = 0): string => {
@@ -4335,7 +5104,6 @@ const transferToInput = (e: MouseEvent) => {
         }
 
         // 解析 JSON 数据并重新格式化为2个空格缩进
-        // 无论预览区域使用什么缩进，输入区域始终使用2个空格
         let formattedContent: string;
         try {
             // 先预处理 JSON（处理注释、尾逗号等）
@@ -4355,15 +5123,26 @@ const transferToInput = (e: MouseEvent) => {
 
         // 转移内容到输入区域
         if (inputEditor) {
-            inputEditor.setValue(formattedContent);
-            updateLineNumberWidth(inputEditor);
-            updateEditorHeight(inputEditor);
+            const inputModel = inputEditor.getModel();
+            if (inputModel) {
+                const fullRange = inputModel.getFullModelRange();
+                inputEditor.pushUndoStop();
+                inputEditor.executeEdits('transfer-to-input', [
+                    {
+                        range: fullRange,
+                        text: formattedContent
+                    }
+                ]);
+                inputEditor.pushUndoStop();
+                updateLineNumberWidth(inputEditor);
+                updateEditorHeight(inputEditor);
 
-            // 确保输入编辑器使用2空格缩进
-            inputEditor.getModel()?.updateOptions({
-                tabSize: 2,
-                indentSize: 2
-            });
+                // 确保输入编辑器使用2空格缩进
+                inputModel.updateOptions({
+                    tabSize: 2,
+                    indentSize: 2
+                });
+            }
         }
 
         // 清空预览区域
@@ -4382,7 +5161,7 @@ const transferToInput = (e: MouseEvent) => {
 
 <style scoped>
 .json-tool-container {
-    padding: 10px;
+    padding: 5px;
     display: flex;
     flex-direction: column;
     height: calc(100vh - 165px);
@@ -4436,8 +5215,8 @@ const transferToInput = (e: MouseEvent) => {
     top: 0;
     bottom: 0;
     z-index: 1500;
-    width: calc(100% - 20px);
-    height: calc(100% - 20px);
+    width: calc(100% - 10px);
+    height: calc(100% - 10px);
     background-color: #f0f2f5;
     box-shadow: 0 0 20px rgba(0, 0, 0, 0.1);
     animation: fullscreenEnter 0.4s cubic-bezier(0.4, 0, 0.2, 1);
@@ -4474,9 +5253,10 @@ const transferToInput = (e: MouseEvent) => {
 }
 
 .tool-bar {
-    padding: 10px 15px;
+    padding: 8px 16px 6px 16px;
     display: flex;
-    gap: 18px;
+    align-items: center;
+    gap: 0;
     flex-wrap: wrap;
     flex-shrink: 0;
     background-color: #ffffff;
@@ -4484,6 +5264,108 @@ const transferToInput = (e: MouseEvent) => {
     box-shadow: 0 2px 12px 0 rgba(0, 0, 0, 0.03);
     border: 1px solid #ebeef5;
     position: relative;
+    margin-bottom: 4px;
+}
+
+/* 按钮组之间紧挨着，但单个按钮和按钮组之间要有间距 */
+.tool-bar > .el-button,
+.tool-bar > .el-button-group,
+.tool-bar > .el-dropdown,
+.tool-bar > .collapse-control {
+    margin-left: 10px;
+}
+
+.tool-bar > .el-button:first-child,
+.tool-bar > .el-button-group:first-child,
+.tool-bar > .el-dropdown:first-child,
+.tool-bar > .collapse-control:first-child {
+    margin-left: 0;
+}
+
+
+/* 层级控制优化 */
+.collapse-control {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.collapse-control .level-select {
+    width: 90px;
+}
+
+/* 响应式：屏幕小于1400px时隐藏获取JSON和分享按钮 */
+@media screen and (max-width: 1399px) {
+    .hide-below-1400 {
+        display: none !important;
+    }
+    
+    /* 重置按钮组中所有可见按钮的圆角 */
+    .el-button-group > .el-button:not(.hide-below-1400):not(.hide-below-1200) {
+        border-top-left-radius: 0 !important;
+        border-bottom-left-radius: 0 !important;
+        border-top-right-radius: 0 !important;
+        border-bottom-right-radius: 0 !important;
+    }
+    
+    /* 第一个可见按钮：左侧圆角（如果第一个按钮被隐藏，则格式化按钮是第一个可见的） */
+    .el-button-group > .el-button.hide-below-1400:first-of-type + .el-button:not(.hide-below-1400):not(.hide-below-1200) {
+        border-top-left-radius: 4px !important;
+        border-bottom-left-radius: 4px !important;
+    }
+    
+    /* 最后一个可见按钮：右侧圆角 */
+    /* 在1200px-1400px之间，统计按钮（hide-below-1200）是最后一个可见的 */
+    /* 如果最后一个按钮被隐藏（hide-below-1400），则它前面的按钮是最后一个可见的 */
+    .el-button-group > .el-button.hide-below-1400:last-of-type + .el-button:not(.hide-below-1400),
+    .el-button-group > .el-button:not(.hide-below-1400):last-of-type {
+        border-top-right-radius: 4px !important;
+        border-bottom-right-radius: 4px !important;
+    }
+    
+    /* 如果最后一个按钮是hide-below-1400，则选择它前面的最后一个可见按钮 */
+    .el-button-group > .el-button:not(.hide-below-1400):nth-last-of-type(2) {
+        border-top-right-radius: 4px !important;
+        border-bottom-right-radius: 4px !important;
+    }
+}
+
+/* 响应式：屏幕小于1200px时隐藏脱敏、排序和统计按钮 */
+@media screen and (max-width: 1199px) {
+    .hide-below-1200 {
+        display: none !important;
+    }
+    
+    /* 重置按钮组中所有可见按钮的圆角 */
+    .el-button-group > .el-button:not(.hide-below-1400):not(.hide-below-1200) {
+        border-top-left-radius: 0 !important;
+        border-bottom-left-radius: 0 !important;
+        border-top-right-radius: 0 !important;
+        border-bottom-right-radius: 0 !important;
+    }
+    
+    /* 第一个可见按钮：左侧圆角（如果第一个按钮被隐藏，则格式化按钮是第一个可见的） */
+    .el-button-group > .el-button.hide-below-1400:first-of-type + .el-button:not(.hide-below-1400):not(.hide-below-1200),
+    .el-button-group > .el-button.hide-below-1200:first-of-type + .el-button:not(.hide-below-1400):not(.hide-below-1200) {
+        border-top-left-radius: 4px !important;
+        border-bottom-left-radius: 4px !important;
+    }
+    
+    /* 最后一个可见按钮：右侧圆角（压缩并转义按钮是最后一个可见的） */
+    .el-button-group > .el-button:not(.hide-below-1400):not(.hide-below-1200):nth-of-type(6) {
+        border-top-right-radius: 4px !important;
+        border-bottom-right-radius: 4px !important;
+    }
+}
+
+/* 响应式：小屏幕时调整布局 */
+@media screen and (max-width: 1200px) {
+    .tool-bar > .el-button,
+    .tool-bar > .el-button-group,
+    .tool-bar > .el-dropdown,
+    .tool-bar > .collapse-control {
+        margin-left: 8px;
+    }
 }
 
 .tolerance-mode-tip {
@@ -4506,13 +5388,30 @@ const transferToInput = (e: MouseEvent) => {
     font-size: 16px;
 }
 
+/* 全屏按钮自定义为黄色 */
+.fullscreen-btn {
+    background-color: #eab308 !important;
+    border-color: #eab308 !important;
+    color: #fff !important;
+}
+
+.fullscreen-btn:hover {
+    background-color: #ca8a04 !important;
+    border-color: #ca8a04 !important;
+}
+
+.fullscreen-btn:active {
+    background-color: #a16207 !important;
+    border-color: #a16207 !important;
+}
+
 .editor-container {
     display: flex;
     flex: 1;
     min-height: 0;
     overflow: hidden;
     position: relative;
-    padding: 10px 0;
+    padding: 0;
 }
 
 .editor-panel {
@@ -4541,21 +5440,27 @@ const transferToInput = (e: MouseEvent) => {
     border-bottom-right-radius: 6px;
 }
 
-/* 面板头部样式调整 */
+/* 左侧面板头部 - 只有左上角圆角（右边是分割线） */
+.editor-panel:first-child .panel-header {
+    border-top-left-radius: 6px;
+    border-top-right-radius: 0;
+}
+
+/* 右侧面板头部 - 只有右上角圆角 */
 .editor-panel:last-child .panel-header {
     border-top-left-radius: 0;
     border-top-right-radius: 6px;
 }
 
-/* 编辑器容器圆角调整 */
+/* 编辑器容器圆角调整 - 移除底部圆角，让状态栏处理底部圆角 */
 .editor-panel:first-child .monaco-editor-container {
-    border-bottom-left-radius: 6px;
+    border-bottom-left-radius: 0;
     border-bottom-right-radius: 0;
 }
 
 .editor-panel:last-child .monaco-editor-container {
     border-bottom-left-radius: 0;
-    border-bottom-right-radius: 6px;
+    border-bottom-right-radius: 0;
 }
 
 /* 添加分隔线样式 */
@@ -4643,16 +5548,65 @@ const transferToInput = (e: MouseEvent) => {
     margin-left: 0 !important;
 }
 
-.monaco-editor-container {
+.editor-wrapper {
     flex: 1;
     min-height: 400px;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+.monaco-editor-container {
+    flex: 1;
+    min-height: 0;
     background-color: white;
     border: 1px solid #e4e7ed;
     border-top: none;
-    border-bottom-left-radius: 6px;
-    border-bottom-right-radius: 6px;
+    border-bottom: none;
     overflow: hidden;
+    display: flex;
+    flex-direction: column;
+}
+
+.monaco-editor-instance {
+    flex: 1;
+    min-height: 0;
     position: relative;
+}
+
+/* 编辑器状态栏样式 */
+.editor-status-bar {
+    height: 22px;
+    background: linear-gradient(to bottom, #fafbfc, #f5f7fa);
+    border: 1px solid #e4e7ed;
+    border-top: none;
+    border-bottom-left-radius: 0;
+    border-bottom-right-radius: 0;
+    display: flex;
+    align-items: center;
+    padding: 0 10px;
+    flex-shrink: 0;
+    font-size: 12px;
+    color: #606266;
+    box-shadow: 0 -1px 2px rgba(0, 0, 0, 0.02);
+}
+
+/* 左侧面板状态栏 - 只有左下角圆角 */
+.editor-panel:first-child .editor-status-bar {
+    border-bottom-left-radius: 6px;
+    border-bottom-right-radius: 0;
+}
+
+/* 右侧面板状态栏 - 只有右下角圆角 */
+.editor-panel:last-child .editor-status-bar {
+    border-bottom-left-radius: 0;
+    border-bottom-right-radius: 6px;
+}
+
+.editor-status-bar .status-text {
+    user-select: none;
+    white-space: nowrap;
+    font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', 'Consolas', 'source-code-pro', monospace;
 }
 
 /* 确保Monaco编辑器内部元素也有正确的背景色 */
@@ -4742,12 +5696,16 @@ const transferToInput = (e: MouseEvent) => {
 }
 
 :deep(.level-select) {
-    min-width: 100px;
-    width: auto;
+    width: 65px;
 }
 
 :deep(.level-select .el-input__wrapper) {
-    width: auto;
+    height: 32px;
+}
+
+:deep(.level-select .el-input__inner) {
+    height: 32px;
+    line-height: 32px;
 }
 
 .editor-loading {
@@ -4835,7 +5793,8 @@ const transferToInput = (e: MouseEvent) => {
     padding: 0;
 }
 
-:deep(.el-radio__label) {
+/* 只在配置下拉菜单中隐藏 radio 标签，使用自定义的 radio-text */
+.vertical-radio-group :deep(.el-radio__label) {
     display: none;
 }
 
@@ -4901,22 +5860,21 @@ const transferToInput = (e: MouseEvent) => {
     }
 }
 
-/* 编辑器容器样式优化 */
-.monaco-editor-container {
-    flex: 1;
-    min-height: 400px;
-    background-color: white;
-    border: 1px solid #e4e7ed;
-    border-top: none;
-    border-bottom-left-radius: 6px;
-    border-bottom-right-radius: 6px;
-    overflow: hidden;
-    position: relative;
+/* 路径输入对话框样式 */
+/* 统计对话框样式 */
+.path-dialog-wrapper :deep(.el-dialog) {
+    max-height: calc(100vh - 12vh);
+    display: flex;
+    flex-direction: column;
+    margin-top: 0 !important;
+    margin-bottom: 0 !important;
 }
 
-/* 路径输入对话框样式 */
-.path-input-dialog {
-    padding: 10px 0;
+.path-dialog-wrapper :deep(.el-dialog__body) {
+    overflow-y: auto;
+    flex: 1;
+    min-height: 0;
+    padding-right: 20px;
 }
 
 .dialog-description {
@@ -4948,6 +5906,105 @@ const transferToInput = (e: MouseEvent) => {
     font-size: 13px;
     color: #606266;
     line-height: 1.5;
+}
+
+/* 实时统计结果卡片样式 */
+.realtime-statistics-card {
+    margin-top: 16px;
+    padding: 16px;
+    background: linear-gradient(135deg, #f5f7fa 0%, #ffffff 100%);
+    border: 1px solid #e4e7ed;
+    border-radius: 8px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+}
+
+.statistics-card-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 12px;
+    padding-bottom: 12px;
+    border-bottom: 1px solid #e4e7ed;
+}
+
+.statistics-card-header .statistics-icon {
+    color: #409eff;
+}
+
+.statistics-card-header .statistics-title {
+    font-size: 14px;
+    font-weight: 600;
+    color: #303133;
+}
+
+.statistics-card-content {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.statistics-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 13px;
+}
+
+.statistics-row.count-row {
+    padding-top: 8px;
+    border-top: 1px solid #e4e7ed;
+    margin-top: 4px;
+}
+
+.statistics-label {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    color: #606266;
+    font-weight: 500;
+    min-width: 80px;
+}
+
+.statistics-label .el-icon {
+    font-size: 14px;
+    color: #909399;
+}
+
+.count-display {
+    display: flex;
+    align-items: baseline;
+    gap: 4px;
+}
+
+.count-display .count-number {
+    font-size: 20px;
+    font-weight: 600;
+    color: #303133;
+    line-height: 1;
+}
+
+.count-display .count-unit {
+    font-size: 12px;
+    color: #909399;
+    font-weight: 400;
+}
+
+.realtime-statistics-error {
+    margin-top: 16px;
+    padding: 12px;
+    background-color: #fef0f0;
+    border: 1px solid #fde2e2;
+    border-radius: 6px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 13px;
+    color: #f56c6c;
+}
+
+.realtime-statistics-error .el-icon {
+    font-size: 16px;
+    flex-shrink: 0;
 }
 
 .suggestion-item {
@@ -5160,7 +6217,11 @@ const transferToInput = (e: MouseEvent) => {
 .dialog-footer {
     display: flex;
     justify-content: flex-end;
-    padding-top: 10px;
+    gap: 12px;
+}
+
+.dialog-footer .el-button:first-child {
+    margin-left: 20px;
 }
 
 :deep(.el-dialog__header) {
@@ -5208,4 +6269,139 @@ const transferToInput = (e: MouseEvent) => {
 :deep(.el-scrollbar__bar) {
     opacity: 0.6;
 }
+
+/* 设置对话框样式 */
+.settings-dialog-wrapper :deep(.el-dialog) {
+    max-height: calc(100vh - 12vh);
+    display: flex;
+    flex-direction: column;
+    margin-top: 0 !important;
+    margin-bottom: 0 !important;
+}
+
+.settings-dialog-wrapper :deep(.el-dialog__body) {
+    overflow-y: auto;
+    flex: 1;
+    min-height: 0;
+    padding-right: 20px;
+}
+
+.settings-dialog-content {
+    padding: 0;
+}
+
+.settings-columns {
+    display: flex;
+    gap: 24px;
+    align-items: flex-start;
+    position: relative;
+}
+
+.settings-columns::before {
+    content: '';
+    position: absolute;
+    left: 50%;
+    top: 0;
+    bottom: 0;
+    width: 1px;
+    background-color: #e4e7ed;
+    transform: translateX(-50%);
+}
+
+.settings-column {
+    flex: 1;
+    min-width: 0;
+    position: relative;
+}
+
+.settings-column-title {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 20px;
+    padding-bottom: 12px;
+    border-bottom: 2px solid #e4e7ed;
+    font-size: 16px;
+    font-weight: 600;
+    color: #303133;
+}
+
+.column-title-icon {
+    font-size: 18px;
+    color: #409eff;
+}
+
+.settings-item {
+    margin-bottom: 20px;
+}
+
+.settings-item:last-child {
+    margin-bottom: 0;
+}
+
+.settings-item-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 12px;
+}
+
+.settings-icon {
+    font-size: 16px;
+    color: #409eff;
+}
+
+.settings-label {
+    font-size: 14px;
+    font-weight: 500;
+    color: #303133;
+}
+
+.settings-radio-group {
+    display: flex;
+    gap: 12px;
+    flex-wrap: wrap;
+}
+
+.settings-radio-group :deep(.el-radio) {
+    margin-right: 0;
+    margin-bottom: 0;
+}
+
+.settings-radio-group :deep(.el-radio.is-bordered) {
+    padding: 8px 16px;
+    border-radius: 4px;
+}
+
+.settings-item :deep(.el-switch) {
+    margin-top: 4px;
+}
+
+/* 响应式设计 */
+@media (max-width: 768px) {
+    .settings-dialog-wrapper {
+        width: 95vw;
+        max-width: none;
+    }
+    
+    .settings-columns {
+        flex-direction: column;
+        gap: 20px;
+    }
+    
+    .settings-columns::before {
+        display: none;
+    }
+    
+    .settings-radio-group {
+        flex-direction: column;
+        gap: 8px;
+    }
+    
+    .settings-radio-group :deep(.el-radio) {
+        width: 100%;
+        margin-right: 0;
+    }
+}
+
 </style>

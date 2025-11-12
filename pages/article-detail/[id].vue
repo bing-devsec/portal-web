@@ -104,6 +104,14 @@ const loadingState = ref<string>('正在加载文章...');
 const fingerprintReady = ref(false);
 const fingerprintValue = ref('');
 
+// 从cookie中读取session_id的辅助函数
+function getSessionIdFromCookie(): string | null {
+    const sessionCookie = useCookie('session_id');
+    return sessionCookie.value && typeof sessionCookie.value === 'string' 
+        ? sessionCookie.value.trim() || null 
+        : null;
+}
+
 // 检测设备类型
 onMounted(() => {
     if (import.meta.client) {
@@ -140,18 +148,26 @@ function optimizeForMobile() {
     }
 }
 
-// 直接获取文章内容的方法 - 在指纹计算完成后调用
+// 直接获取文章内容的方法
 const fetchArticleContent = async () => {
-    if (!articleId.value || !fingerprintValue.value) return;
+    if (!articleId.value) return;
 
     try {
+        const sessionId = import.meta.client ? getSessionIdFromCookie() : null;
+        
+        // 构建请求头
+        const headers: Record<string, string> = {
+            'Content-Type': 'application/json'
+        };
+
+        if (!sessionId && fingerprintValue.value) {
+            headers['x-client-id'] = fingerprintValue.value;
+        }
+        
         // 使用fetch API直接请求
         const response = await fetch(`${useRuntimeConfig().public.baseURL}/user/article/detail?id=${articleId.value}`, {
             method: 'GET',
-            headers: {
-                'Content-Type': 'application/json',
-                'x-client-id': fingerprintValue.value
-            },
+            headers,
             credentials: 'include'
         });
         const result = await response.json();
@@ -166,16 +182,26 @@ const fetchArticleContent = async () => {
     }
 };
 
-// 计算指纹并获取文章内容
+// 初始化文章内容
 const initArticleContent = async () => {
     if (!articleId.value) return;
 
     try {
-        const { $recalculateFingerprint } = useNuxtApp();
-        if (typeof $recalculateFingerprint === 'function') {
-            fingerprintValue.value = await $recalculateFingerprint();
+        // 先检查是否有session_id
+        const sessionId = getSessionIdFromCookie();
+        
+        if (sessionId) {
+            // 如果有session_id，直接获取文章内容，不需要计算指纹
             fingerprintReady.value = true;
             await fetchArticleContent();
+        } else {
+            // 如果没有session_id，需要计算指纹
+            const { $recalculateFingerprint } = useNuxtApp();
+            if (typeof $recalculateFingerprint === 'function') {
+                fingerprintValue.value = await $recalculateFingerprint();
+                fingerprintReady.value = true;
+                await fetchArticleContent();
+            }
         }
     } catch (error) {
         throw error;

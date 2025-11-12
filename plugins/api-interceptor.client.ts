@@ -13,6 +13,14 @@ export default defineNuxtPlugin((nuxtApp) => {
         return '';
     };
     
+    // 从cookie中读取session_id的辅助函数
+    const getSessionIdFromCookie = (): string | null => {
+        const sessionCookie = useCookie('session_id');
+        return sessionCookie.value && typeof sessionCookie.value === 'string' 
+            ? sessionCookie.value.trim() || null 
+            : null;
+    };
+    
     // 拦截所有的fetch请求
     nuxtApp.hook('app:created', () => {
         const originalFetch = globalThis.fetch;
@@ -42,11 +50,21 @@ export default defineNuxtPlugin((nuxtApp) => {
             }
             
             // 判断是否需要添加指纹
-            if (url && (url.includes('/user/article/detail'))) {
-                const fingerprint = await getFingerprint();
+            if (url && url.includes('/user/article/detail')) {
+                // 先检查是否有session_id cookie
+                const sessionId = getSessionIdFromCookie();
                 
-                if (fingerprint) {
-                    headers['x-client-id'] = fingerprint;
+                if (!sessionId) {
+                    const fingerprint = await getFingerprint();
+                    
+                    if (fingerprint) {
+                        headers['x-client-id'] = fingerprint;
+                    }
+                } else {
+                    // 如果有session_id，确保不发送x-client-id（移除可能已存在的）
+                    if (headers['x-client-id']) {
+                        delete headers['x-client-id'];
+                    }
                 }
             }
             
