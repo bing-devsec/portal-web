@@ -17,24 +17,67 @@
             <div class="tool-bar">
                 <!-- 设置按钮 -->
                 <el-button type="info" @click="openSettingsDialog" circle>
-                    <el-icon><Setting /></el-icon>
+                    <el-icon>
+                        <Setting />
+                    </el-icon>
                 </el-button>
 
                 <el-button-group>
-                    <el-button type="primary" class="hide-below-1400" @click="openFetchJsonDialog">获取JSON</el-button>
-                    <el-button type="primary" @click="formatJSON">格式化</el-button>
-                    <el-button type="primary" @click="compressJSON">压缩</el-button>
-                    <el-button type="primary" @click="handleEscapeCommand('escape')">转义</el-button>
-                    <el-button type="primary" @click="handleEscapeCommand('unescape')">去除转义</el-button>
-                    <el-button type="primary" @click="handleEscapeCommand('compress-escape')">压缩并转义</el-button>
-                    <el-button type="primary" class="hide-below-1200" @click="openDataMaskingDialog">脱敏</el-button>
-                    <el-button type="primary" class="hide-below-1200" @click="handleAdvancedCommand('sort')">排序</el-button>
-                    <el-button type="primary" class="hide-below-1200" @click="handleAdvancedCommand('count')">统计</el-button>
-                    <el-button type="primary" class="hide-below-1400" @click="openShareDialog">分享</el-button>
+                    <el-button v-if="buttonVisibility.fetchJson" type="primary" :class="{
+                        'responsive-hide': buttonResponsiveHidden.fetchJson,
+                        'button-first-visible': buttonRoundedClasses.fetchJson?.['button-first-visible'],
+                        'button-last-visible': buttonRoundedClasses.fetchJson?.['button-last-visible']
+                    }" @click="openFetchJsonDialog">获取JSON</el-button>
+                    <el-button v-if="buttonVisibility.format" type="primary" :class="{
+                        'responsive-hide': buttonResponsiveHidden.format,
+                        'button-first-visible': buttonRoundedClasses.format?.['button-first-visible'],
+                        'button-last-visible': buttonRoundedClasses.format?.['button-last-visible']
+                    }" @click="formatJSON">格式化</el-button>
+                    <el-button v-if="buttonVisibility.compress" type="primary" :class="{
+                        'responsive-hide': buttonResponsiveHidden.compress,
+                        'button-first-visible': buttonRoundedClasses.compress?.['button-first-visible'],
+                        'button-last-visible': buttonRoundedClasses.compress?.['button-last-visible']
+                    }" @click="compressJSON">压缩</el-button>
+                    <el-button v-if="buttonVisibility.escape" type="primary" :class="{
+                        'responsive-hide': buttonResponsiveHidden.escape,
+                        'button-first-visible': buttonRoundedClasses.escape?.['button-first-visible'],
+                        'button-last-visible': buttonRoundedClasses.escape?.['button-last-visible']
+                    }" @click="handleEscapeCommand('escape')">转义</el-button>
+                    <el-button v-if="buttonVisibility.unescape" type="primary" :class="{
+                        'responsive-hide': buttonResponsiveHidden.unescape,
+                        'button-first-visible': buttonRoundedClasses.unescape?.['button-first-visible'],
+                        'button-last-visible': buttonRoundedClasses.unescape?.['button-last-visible']
+                    }" @click="handleEscapeCommand('unescape')">去除转义</el-button>
+                    <el-button v-if="buttonVisibility.compressEscape" type="primary" :class="{
+                        'responsive-hide': buttonResponsiveHidden.compressEscape,
+                        'button-first-visible': buttonRoundedClasses.compressEscape?.['button-first-visible'],
+                        'button-last-visible': buttonRoundedClasses.compressEscape?.['button-last-visible']
+                    }" @click="handleEscapeCommand('compress-escape')">压缩并转义</el-button>
+                    <el-button v-if="buttonVisibility.masking" type="primary" :class="{
+                        'responsive-hide': buttonResponsiveHidden.masking,
+                        'button-first-visible': buttonRoundedClasses.masking?.['button-first-visible'],
+                        'button-last-visible': buttonRoundedClasses.masking?.['button-last-visible']
+                    }" @click="openDataMaskingDialog">脱敏</el-button>
+                    <el-button v-if="buttonVisibility.sort" type="primary" :class="{
+                        'responsive-hide': buttonResponsiveHidden.sort,
+                        'button-first-visible': buttonRoundedClasses.sort?.['button-first-visible'],
+                        'button-last-visible': buttonRoundedClasses.sort?.['button-last-visible']
+                    }" @click="handleAdvancedCommand('sort')">排序</el-button>
+                    <el-button v-if="buttonVisibility.statistics" type="primary" :class="{
+                        'responsive-hide': buttonResponsiveHidden.statistics,
+                        'button-first-visible': buttonRoundedClasses.statistics?.['button-first-visible'],
+                        'button-last-visible': buttonRoundedClasses.statistics?.['button-last-visible']
+                    }" @click="handleAdvancedCommand('count')">统计</el-button>
+                    <el-button v-if="buttonVisibility.share" type="primary" :class="{
+                        'responsive-hide': buttonResponsiveHidden.share,
+                        'button-first-visible': buttonRoundedClasses.share?.['button-first-visible'],
+                        'button-last-visible': buttonRoundedClasses.share?.['button-last-visible']
+                    }" @click="openShareDialog">分享</el-button>
                 </el-button-group>
                 
                 <!-- 数据转换下拉按钮（紧挨着功能按钮组） -->
-                <el-dropdown trigger="click" @command="handleConvert">
+                <el-dropdown v-if="buttonVisibility.dataConvert && !buttonResponsiveHidden.dataConvert" trigger="click"
+                    @command="handleConvert">
                     <el-button type="primary">
                         数据转换
                         <el-icon class="el-icon--right">
@@ -52,7 +95,7 @@
                 </el-dropdown>
                 
                 <!-- 层级控制 -->
-                <div class="collapse-control">
+                <div v-if="buttonVisibility.collapse && !buttonResponsiveHidden.collapse" class="collapse-control">
                     <el-select v-model="selectedLevel" placeholder="层级" class="level-select" :disabled="maxLevel === 0">
                         <el-option v-for="n in maxLevel" :key="n" :label="`第${n}层`" :value="n" />
                     </el-select>
@@ -60,7 +103,8 @@
                 </div>
                 
                 <!-- 界面控制：全屏 -->
-                <el-button type="warning" class="fullscreen-btn" @click="toggleFullscreen">
+                <el-button v-if="buttonVisibility.fullscreen && !buttonResponsiveHidden.fullscreen" type="warning"
+                    class="fullscreen-btn" @click="toggleFullscreen">
                     {{ isFullscreen ? '退出' : '全屏' }}
                 </el-button>
             </div>
@@ -156,34 +200,18 @@
         </div>
 
         <!-- 路径输入对话框 -->
-        <el-dialog
-            v-model="pathDialogVisible"
-            title="统计元素个数"
-            width="600px"
-            :close-on-click-modal="false"
-            :show-close="true"
-            :align-center="false"
-            top="12vh"
-            class="path-dialog-wrapper"
-            @close="handlePathDialogClose"
-        >
+        <el-dialog v-model="pathDialogVisible" title="统计元素个数" width="600px" :close-on-click-modal="false"
+            :show-close="true" :align-center="false" top="12vh" class="path-dialog-wrapper"
+            @close="handlePathDialogClose">
             <div class="path-input-dialog">
                 <div class="dialog-description">
                     <p>请输入要统计的 key 路径（留空则统计根对象）</p>
                     <p class="tip-text">支持数组索引语法，如: settings[0].values</p>
                 </div>
-                <el-autocomplete
-                    ref="pathAutocompleteRef"
-                    v-model="pathInputValue"
-                    :fetch-suggestions="queryPathSuggestions"
-                    placeholder="例如: settings 或 settings[0].values 等路径"
-                    class="path-autocomplete"
-                    clearable
-                    autocomplete="new-password"
-                    @select="handlePathSelect"
-                    @input="handlePathInput"
-                    @focus="handlePathInputFocus"
-                >
+                <el-autocomplete ref="pathAutocompleteRef" v-model="pathInputValue"
+                    :fetch-suggestions="queryPathSuggestions" placeholder="例如: settings 或 settings[0].values 等路径"
+                    class="path-autocomplete" clearable autocomplete="new-password" @select="handlePathSelect"
+                    @input="handlePathInput" @focus="handlePathInputFocus">
                     <template #default="{ item }">
                         <div class="suggestion-item">
                             <span class="suggestion-value">{{ item.value }}</span>
@@ -203,7 +231,9 @@
                     <div class="statistics-card-content">
                         <div class="statistics-row">
                             <span class="statistics-label">
-                                <el-icon><Location /></el-icon>
+                                <el-icon>
+                                    <Location />
+                                </el-icon>
                                 路径：
                             </span>
                             <el-tag type="info" effect="plain" size="small">
@@ -212,20 +242,21 @@
                         </div>
                         <div class="statistics-row">
                             <span class="statistics-label">
-                                <el-icon><Collection /></el-icon>
+                                <el-icon>
+                                    <Collection />
+                                </el-icon>
                                 类型：
                             </span>
-                            <el-tag 
-                                :type="realtimeStatistics.type === '数组' ? 'success' : 'primary'" 
-                                effect="plain" 
-                                size="small"
-                            >
+                            <el-tag :type="realtimeStatistics.type === '数组' ? 'success' : 'primary'" effect="plain"
+                                size="small">
                                 {{ realtimeStatistics.type }}
                             </el-tag>
                         </div>
                         <div class="statistics-row count-row">
                             <span class="statistics-label">
-                                <el-icon><Document /></el-icon>
+                                <el-icon>
+                                    <Document />
+                                </el-icon>
                                 元素总数：
                             </span>
                             <span class="count-display">
@@ -236,7 +267,9 @@
                     </div>
                 </div>
                 <div v-else-if="realtimeStatistics && !realtimeStatistics.isValid" class="realtime-statistics-error">
-                    <el-icon><WarningFilled /></el-icon>
+                    <el-icon>
+                        <WarningFilled />
+                    </el-icon>
                     <span>当前路径指向的值不是对象或数组，无法统计元素个数</span>
                 </div>
             </div>
@@ -249,46 +282,104 @@
         </el-dialog>
 
         <!-- 获取JSON数据对话框 -->
-        <FetchJsonDialog
-            v-model="fetchJsonDialogVisible"
-            :indent-size="indentSize"
-            :input-editor="inputEditor"
-        />
+        <FetchJsonDialog v-model="fetchJsonDialogVisible" :indent-size="indentSize" :input-editor="inputEditor" />
 
         <!-- 分享对话框 -->
-        <ShareDialog
-            v-model="shareDialogVisible"
-            :json-data="getInputEditorValue()"
-        />
+        <ShareDialog v-model="shareDialogVisible" :json-data="getInputEditorValue()" @loadSharedJson="handleLoadSharedJson" />
 
         <!-- 数据脱敏对话框 -->
-        <DataMaskingDialog
-            v-model="dataMaskingDialogVisible"
-            :json-data="getInputEditorValue()"
-            @apply="handleDataMaskingApply"
-        />
+        <DataMaskingDialog v-model="dataMaskingDialogVisible" :json-data="getInputEditorValue()"
+            @apply="handleDataMaskingApply" />
 
         <!-- 设置弹窗 -->
-        <el-dialog
-            v-model="settingsDialogVisible"
-            class="settings-dialog-wrapper"
-            :close-on-click-modal="false"
-            :align-center="false"
-            top="12vh"
-            width="850px"
-        >
+        <el-dialog v-model="settingsDialogVisible" class="settings-dialog-wrapper" :close-on-click-modal="false"
+            :align-center="false" top="12vh" width="850px">
             <div class="settings-dialog-content">
-                <div class="settings-columns">
+                <!-- 第一行：设置（跨两列） -->
+                <div class="settings-row settings-row-full">
+                    <div class="settings-column-full">
+                        <div class="settings-column-title">
+                            <el-icon class="column-title-icon">
+                                <Setting />
+                            </el-icon>
+                            <span>设置</span>
+                        </div>
+
+                        <!-- 菜单栏设置 -->
+                        <div class="settings-subsection">
+                            <div class="settings-subsection-title">菜单栏设置</div>
+                            <div class="button-visibility-list">
+                                <!-- 第一列：核心功能 -->
+                                <div class="button-visibility-item" style="grid-column: 1; grid-row: 1;">
+                                    <el-checkbox v-model="buttonVisibility.format" disabled>格式化</el-checkbox>
+                                </div>
+                                <div class="button-visibility-item" style="grid-column: 1; grid-row: 2;">
+                                    <el-checkbox v-model="buttonVisibility.dataConvert" disabled>数据转换</el-checkbox>
+                                </div>
+                                <div class="button-visibility-item" style="grid-column: 1; grid-row: 3;">
+                                    <el-checkbox v-model="buttonVisibility.collapse" disabled>收缩</el-checkbox>
+                                </div>
+                                <div class="button-visibility-item" style="grid-column: 1; grid-row: 4;">
+                                    <el-checkbox v-model="buttonVisibility.fullscreen" disabled>全屏</el-checkbox>
+                                </div>
+                                <!-- 第二列：压缩、转义相关 -->
+                                <div class="button-visibility-item" style="grid-column: 2; grid-row: 1;">
+                                    <el-checkbox v-model="buttonVisibility.compress">压缩</el-checkbox>
+                                </div>
+                                <div class="button-visibility-item" style="grid-column: 2; grid-row: 2;">
+                                    <el-checkbox v-model="buttonVisibility.escape">转义</el-checkbox>
+                                </div>
+                                <div class="button-visibility-item" style="grid-column: 2; grid-row: 3;">
+                                    <el-checkbox v-model="buttonVisibility.unescape">去除转义</el-checkbox>
+                                </div>
+                                <div class="button-visibility-item" style="grid-column: 2; grid-row: 4;">
+                                    <el-checkbox v-model="buttonVisibility.compressEscape">压缩并转义</el-checkbox>
+                                </div>
+                                <!-- 第三列：其他功能 -->
+                                <div class="button-visibility-item" style="grid-column: 3; grid-row: 1;">
+                                    <el-checkbox v-model="buttonVisibility.masking">脱敏</el-checkbox>
+                                </div>
+                                <div class="button-visibility-item" style="grid-column: 3; grid-row: 2;">
+                                    <el-checkbox v-model="buttonVisibility.sort">排序</el-checkbox>
+                                </div>
+                                <div class="button-visibility-item" style="grid-column: 3; grid-row: 3;">
+                                    <el-checkbox v-model="buttonVisibility.statistics">统计</el-checkbox>
+                                </div>
+                                <div class="button-visibility-item" style="grid-column: 3; grid-row: 4;">
+                                    <el-checkbox v-model="buttonVisibility.fetchJson">获取JSON</el-checkbox>
+                                </div>
+                                <div class="button-visibility-item" style="grid-column: 3; grid-row: 5;">
+                                    <el-checkbox v-model="buttonVisibility.share">分享</el-checkbox>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- 缩进指南设置 -->
+                        <div class="settings-subsection">
+                            <div class="settings-subsection-title">缩进指南设置</div>
+                            <div class="settings-item">
+                                <el-switch v-model="showIndentGuide" active-text="显示" inactive-text="隐藏" size="default"
+                                    @change="updateIndentGuides" />
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 第二行：双列布局 -->
+                <el-divider class="settings-section-divider" />
+                <div class="settings-row">
                     <!-- 左侧：格式化设置 -->
                     <div class="settings-column settings-column-left">
                         <div class="settings-column-title">
-                            <el-icon class="column-title-icon"><Document /></el-icon>
+                            <el-icon class="column-title-icon">
+                                <Document />
+                            </el-icon>
                             <span>格式化设置</span>
                         </div>
                         
                         <div class="settings-item">
                             <div class="settings-item-header">
-                                <span class="settings-label">缩进空格：</span>
+                                <span class="settings-label">缩进空格</span>
                             </div>
                             <el-radio-group v-model="indentSize" class="settings-radio-group">
                                 <el-radio :value="2" border>2</el-radio>
@@ -301,7 +392,7 @@
 
                         <div class="settings-item">
                             <div class="settings-item-header">
-                                <span class="settings-label">编码模式：</span>
+                                <span class="settings-label">编码模式</span>
                             </div>
                             <el-radio-group v-model="encodingMode" class="settings-radio-group">
                                 <el-radio :value="0" border>保持原样</el-radio>
@@ -314,42 +405,24 @@
 
                         <div class="settings-item">
                             <div class="settings-item-header">
-                                <span class="settings-label">数组样式：</span>
+                                <span class="settings-label">数组样式</span>
                             </div>
-                            <el-switch 
-                                v-model="arrayNewLine" 
-                                active-text="换行" 
-                                inactive-text="紧凑" 
-                                size="default"
-                            />
-                        </div>
-
-                        <el-divider />
-
-                        <div class="settings-item">
-                            <div class="settings-item-header">
-                                <span class="settings-label">缩进指南：</span>
-                            </div>
-                            <el-switch 
-                                v-model="showIndentGuide" 
-                                active-text="显示" 
-                                inactive-text="隐藏"
-                                size="default"
-                                @change="updateIndentGuides"
-                            />
+                            <el-switch v-model="arrayNewLine" active-text="换行" inactive-text="紧凑" size="default" />
                         </div>
                     </div>
 
                     <!-- 右侧：排序设置 -->
                     <div class="settings-column settings-column-right">
                         <div class="settings-column-title">
-                            <el-icon class="column-title-icon"><Sort /></el-icon>
+                            <el-icon class="column-title-icon">
+                                <Sort />
+                            </el-icon>
                             <span>排序设置</span>
                         </div>
                         
                         <div class="settings-item">
                             <div class="settings-item-header">
-                                <span class="settings-label">排序方式：</span>
+                                <span class="settings-label">排序方式</span>
                             </div>
                             <el-radio-group v-model="sortMethod" class="settings-radio-group">
                                 <el-radio value="dictionary" border>字典序</el-radio>
@@ -361,7 +434,7 @@
 
                         <div class="settings-item">
                             <div class="settings-item-header">
-                                <span class="settings-label">排序方向：</span>
+                                <span class="settings-label">排序方向</span>
                             </div>
                             <el-radio-group v-model="sortOrder" class="settings-radio-group">
                                 <el-radio value="asc" border>正序（升序）</el-radio>
@@ -391,6 +464,83 @@ import { Loading, ArrowLeft, ArrowDown, CopyDocument, Download, Upload, Delete, 
 import FetchJsonDialog from './FetchJsonDialog.vue';
 import ShareDialog from './ShareDialog.vue';
 import DataMaskingDialog from './DataMaskingDialog.vue';
+import JSON5 from 'json5';
+
+// ==================== 设置持久化管理 ====================
+const SETTINGS_STORAGE_KEY = 'json-tool-settings';
+
+// 默认设置
+const defaultSettings = {
+    // 菜单栏设置
+    buttonVisibility: {
+        fetchJson: false,
+        format: true,
+        compress: true,
+        escape: true,
+        unescape: true,
+        compressEscape: true,
+        masking: true,
+        sort: true,
+        statistics: true,
+        share: false,
+        dataConvert: true,
+        collapse: true,
+        fullscreen: true
+    },
+    // 缩进指南设置
+    showIndentGuide: true,
+    // 格式化设置
+    indentSize: 2,
+    encodingMode: 0,
+    arrayNewLine: true,
+    // 排序设置
+    sortMethod: 'dictionary' as 'dictionary' | 'length',
+    sortOrder: 'asc' as 'asc' | 'desc'
+};
+
+// 加载设置
+const loadSettings = () => {
+    if (typeof window === 'undefined') return defaultSettings;
+    
+    try {
+        const saved = localStorage.getItem(SETTINGS_STORAGE_KEY);
+        if (saved) {
+            const parsed = JSON.parse(saved);
+            // 合并默认设置和保存的设置，确保新添加的设置项有默认值
+            return {
+                ...defaultSettings,
+                ...parsed,
+                buttonVisibility: {
+                    ...defaultSettings.buttonVisibility,
+                    ...(parsed.buttonVisibility || {})
+                }
+            };
+        }
+    } catch (error) {}
+    
+    return defaultSettings;
+};
+
+// 保存设置
+let isInitializing = true; // 标记是否正在初始化，避免初始化时触发保存
+const saveSettings = () => {
+    if (typeof window === 'undefined' || isInitializing) return;
+    
+    try {
+        const settingsToSave = {
+            buttonVisibility: buttonVisibility.value,
+            showIndentGuide: showIndentGuide.value,
+            indentSize: indentSize.value,
+            encodingMode: encodingMode.value,
+            arrayNewLine: arrayNewLine.value,
+            sortMethod: sortMethod.value,
+            sortOrder: sortOrder.value
+        };
+        localStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify(settingsToSave));
+    } catch (error) {}
+};
+
+// ==================== 设置持久化管理结束 ====================
 
 const getMessageOffset = () => {
     return isFullscreen.value ? 10 : 56.5;
@@ -398,17 +548,20 @@ const getMessageOffset = () => {
 const MAX_FILE_SIZE = 5 * 1024 * 1024; // 文件大小限制：5MB
 const MAX_LINES = 100000; // 最大行数限制
 
-const indentSize = ref(2); // 缩进大小
+// 从 localStorage 加载设置
+const savedSettings = loadSettings();
+
+const indentSize = ref(savedSettings.indentSize); // 缩进大小
 const maxLevel = ref(0); // 最大层级
 const selectedLevel = ref(1); // 当前选中的层级
 
-const showIndentGuide = ref(true); // 添加缩进指南状态
-const arrayNewLine = ref(true); // 添加数组换行控制开关
-const isFullscreen = ref(false); // 添加全屏状态控制
+const showIndentGuide = ref(savedSettings.showIndentGuide); // 添加缩进指南状态
+const arrayNewLine = ref(savedSettings.arrayNewLine); // 添加数组换行控制开关
+const isFullscreen = ref(false); // 添加全屏状态控制（不持久化，每次刷新恢复默认）
 const isResizing = ref(false); // 添加是否正在调整宽度控制
 const leftPanelWidth = ref(50); // 添加面板宽度控制（实时值，用于布局）
 const stableLeftPanelWidth = ref(50); // 稳定宽度值，用于计算按钮显示状态（防抖更新）
-const encodingMode = ref(0); // 添加编码处理模式：0-保持原样，1-转中文，2-转Unicode
+const encodingMode = ref(savedSettings.encodingMode); // 添加编码处理模式：0-保持原样，1-转中文，2-转Unicode
 const outputType = ref<'json' | 'yaml' | 'toml' | 'go'>('json'); // 添加当前输出类型的状态
 
 // 路径输入对话框相关状态
@@ -437,8 +590,42 @@ const shareDialogVisible = ref(false);
 const dataMaskingDialogVisible = ref(false);
 
 // 排序相关状态
-const sortMethod = ref<'dictionary' | 'length'>('dictionary');
-const sortOrder = ref<'asc' | 'desc'>('asc');
+const sortMethod = ref<'dictionary' | 'length'>(savedSettings.sortMethod);
+const sortOrder = ref<'asc' | 'desc'>(savedSettings.sortOrder);
+
+// 菜单栏按钮显示控制状态
+const buttonVisibility = ref(savedSettings.buttonVisibility);
+
+// 按钮响应式优先级配置（数字越小，越容易被隐藏）
+// 响应式隐藏规则：
+// - 屏幕宽度 < 1400px 时，隐藏优先级最低的2个按钮
+// - 屏幕宽度 < 1200px 时，隐藏优先级最低的3个按钮（总共）
+// - 屏幕宽度 < 1000px 时，隐藏优先级最低的5个按钮（总共）
+// - 无论屏幕宽度如何，至少保留 MIN_VISIBLE_BUTTONS 个按钮（核心功能）
+const buttonResponsivePriority: Record<string, number> = {
+    fetchJson: 1,           // 最低优先级，容易被隐藏
+    share: 2,               // 低优先级
+    masking: 3,             // 中等优先级
+    sort: 4,                // 中等优先级
+    statistics: 5,          // 中等优先级
+    compressEscape: 6,      // 中等优先级
+    unescape: 7,            // 中等优先级
+    escape: 8,              // 较高优先级
+    compress: 9,            // 较高优先级
+    format: 10,             // 高优先级（核心功能）
+    dataConvert: 11,        // 高优先级（下拉菜单）
+    collapse: 12,           // 高优先级（界面控制）
+    fullscreen: 13          // 最高优先级（界面控制）
+};
+
+// 屏幕宽度响应式状态
+const screenWidth = ref(typeof window !== 'undefined' ? window.innerWidth : 1400);
+
+// 响应式隐藏规则
+const RESPONSIVE_HIDE_COUNT_1400 = 2;  // 屏幕宽度 < 1400px 时隐藏的按钮数量
+const RESPONSIVE_HIDE_COUNT_1200 = 3;  // 屏幕宽度 < 1200px 时隐藏的按钮数量（总共，即再隐藏1个）
+const RESPONSIVE_HIDE_COUNT_1000 = 5;  // 屏幕宽度 < 1000px 时隐藏的按钮数量（总共）
+const MIN_VISIBLE_BUTTONS = 4;  // 至少保留的按钮数量（核心功能：格式化、压缩、转义等）
 
 // 设置对话框相关状态
 const settingsDialogVisible = ref(false);
@@ -456,6 +643,7 @@ let stableWidthUpdateTimer: ReturnType<typeof setTimeout> | null = null; // 稳�
 // 编辑器状态栏信息
 const inputEditorStatus = ref('');
 const outputEditorStatus = ref('');
+const isFolding = ref(false); // 是否正在执行折叠操作
 
 // 拖动相关状态（提升到外层作用域，避免每次拖动创建新变量）
 let resizeState: {
@@ -517,6 +705,99 @@ const showOutputActions = computed(() => {
 
     // 宽度小于临界值时立即隐藏按钮，确保标题不换行
     return rightPanelWidthPx >= BUTTON_MIN_WIDTH;
+});
+
+// 计算属性：根据屏幕宽度和用户选择，动态决定哪些按钮应该被响应式隐藏
+// 返回一个对象，键为按钮名称，值为是否应该隐藏
+const buttonResponsiveHidden = computed(() => {
+    const hidden: Record<string, boolean> = {};
+
+    // 获取所有用户已启用的按钮（buttonVisibility 为 true 的按钮）
+    const enabledButtons = Object.entries(buttonVisibility.value)
+        .filter(([_, visible]) => visible)
+        .map(([key, _]) => key);
+
+    // 如果没有启用的按钮，直接返回
+    if (enabledButtons.length === 0) {
+        return hidden;
+    }
+
+    // 根据屏幕宽度决定需要隐藏的按钮数量
+    let hideCount = 0;
+    if (screenWidth.value < 1000) {
+        hideCount = RESPONSIVE_HIDE_COUNT_1000;
+    } else if (screenWidth.value < 1200) {
+        hideCount = RESPONSIVE_HIDE_COUNT_1200;
+    } else if (screenWidth.value < 1400) {
+        hideCount = RESPONSIVE_HIDE_COUNT_1400;
+    }
+
+    // 如果不需要隐藏任何按钮，直接返回
+    if (hideCount === 0) {
+        return hidden;
+    }
+
+    // 按优先级排序已启用的按钮（优先级低的在前）
+    const sortedButtons = enabledButtons.sort((a, b) => {
+        const priorityA = buttonResponsivePriority[a] || 999;
+        const priorityB = buttonResponsivePriority[b] || 999;
+        return priorityA - priorityB;
+    });
+
+    // 确保至少保留 MIN_VISIBLE_BUTTONS 个按钮
+    // 计算实际可以隐藏的按钮数量
+    const maxHideCount = Math.max(0, sortedButtons.length - MIN_VISIBLE_BUTTONS);
+    const actualHideCount = Math.min(hideCount, maxHideCount);
+
+    // 隐藏优先级最低的 actualHideCount 个按钮
+    for (let i = 0; i < actualHideCount; i++) {
+        hidden[sortedButtons[i]] = true;
+    }
+
+    return hidden;
+});
+
+// 计算属性：标记第一个和最后一个可见的按钮（用于圆角样式）
+// 按钮的顺序按照模板中的顺序定义
+const buttonOrder = [
+    'fetchJson',
+    'format',
+    'compress',
+    'escape',
+    'unescape',
+    'compressEscape',
+    'masking',
+    'sort',
+    'statistics',
+    'share'
+];
+
+const buttonRoundedClasses = computed(() => {
+    const classes: Record<string, { 'button-first-visible': boolean; 'button-last-visible': boolean }> = {};
+
+    // 获取所有可见的按钮（既在buttonVisibility中启用，又没有被响应式隐藏）
+    const visibleButtons = buttonOrder.filter(key => {
+        const visibility = buttonVisibility.value[key as keyof typeof buttonVisibility.value];
+        const hidden = buttonResponsiveHidden.value[key];
+        return visibility && !hidden;
+    });
+
+    if (visibleButtons.length === 0) {
+        return classes;
+    }
+
+    // 标记第一个和最后一个可见的按钮
+    const firstVisible = visibleButtons[0];
+    const lastVisible = visibleButtons[visibleButtons.length - 1];
+
+    buttonOrder.forEach(key => {
+        classes[key] = {
+            'button-first-visible': key === firstVisible,
+            'button-last-visible': key === lastVisible
+        };
+    });
+
+    return classes;
 });
 
 // 添加示例数据
@@ -1031,7 +1312,6 @@ const updateEditorStatus = (editor: monaco.editor.IStandaloneCodeEditor | null, 
     const startLine = selection.startLineNumber;
     const endLine = selection.endLineNumber;
     const startColumn = selection.startColumn;
-    const endColumn = selection.endColumn;
 
     // 检查是否有选中内容（不是光标位置）
     const hasSelection = !selection.isEmpty();
@@ -1097,7 +1377,12 @@ const updateEditorStatus = (editor: monaco.editor.IStandaloneCodeEditor | null, 
     } else {
         // 没有选中，只显示光标位置
         const totalLines = model.getLineCount();
-        statusRef.value = `第 ${startLine} 行，第 ${startColumn} 列 | 共 ${totalLines} 行`;
+        // 如果是预览编辑器且正在折叠，不显示列数
+        if (!isInputEditor && isFolding.value) {
+            statusRef.value = `第 ${startLine} 行 | 共 ${totalLines} 行`;
+        } else {
+            statusRef.value = `第 ${startLine} 行，第 ${startColumn} 列 | 共 ${totalLines} 行`;
+        }
     }
 };
 
@@ -1181,6 +1466,8 @@ const setupDoubleClickSelectString = (editor: monaco.editor.IStandaloneCodeEdito
 
 // 添加窗口大小变化的处理函数
 const handleResize = () => {
+    // 更新屏幕宽度
+    screenWidth.value = window.innerWidth;
     // 更新容器宽度
     const container = document.querySelector('.editor-container');
     if (container) {
@@ -1251,6 +1538,50 @@ watch([indentSize, arrayNewLine, showIndentGuide], () => {
     }
 });
 
+// 确保某些按钮始终为true（格式化、数据转换、收缩、全屏）
+watch(() => buttonVisibility.value.format, (newVal) => {
+    if (!newVal) {
+        buttonVisibility.value.format = true;
+    }
+}, { immediate: true });
+
+watch(() => buttonVisibility.value.dataConvert, (newVal) => {
+    if (!newVal) {
+        buttonVisibility.value.dataConvert = true;
+    }
+}, { immediate: true });
+
+watch(() => buttonVisibility.value.collapse, (newVal) => {
+    if (!newVal) {
+        buttonVisibility.value.collapse = true;
+    }
+}, { immediate: true });
+
+watch(() => buttonVisibility.value.fullscreen, (newVal) => {
+    if (!newVal) {
+        buttonVisibility.value.fullscreen = true;
+    }
+}, { immediate: true });
+
+// ==================== 自动保存设置到 localStorage ====================
+// 监听所有设置的变化并自动保存
+watch(
+    () => [
+        buttonVisibility.value,
+        showIndentGuide.value,
+        indentSize.value,
+        encodingMode.value,
+        arrayNewLine.value,
+        sortMethod.value,
+        sortOrder.value
+    ],
+    () => {
+        saveSettings();
+    },
+    { deep: true }
+);
+// ==================== 自动保存设置结束 ====================
+
 // 监听路径输入值的变化，确保清空时也能正确更新统计结果
 watch(pathInputValue, () => {
     if (pathDialogVisible.value) {
@@ -1281,6 +1612,9 @@ onMounted(async () => {
     // 确保在客户端环境下运行
     if (typeof window === 'undefined') return;
 
+    // 初始化屏幕宽度
+    screenWidth.value = window.innerWidth;
+
     // 添加消息提示位置的自定义样式
     messageStyleElement = document.createElement('style');
     updateMessageOffset(); // 使用函数初始化样式
@@ -1308,7 +1642,8 @@ onMounted(async () => {
                 // 创建inputEditor编辑器
                 if (inputEditorContainer.value) {
                     // 对于输入编辑器，也启用大文件折叠优化（因为用户可能输入大量JSON）
-                    const inputOptions = getEditorOptions(indentSize.value, false, 'json', true);
+                    // 输入编辑器始终使用2个空格缩进，不受格式化设置影响
+                    const inputOptions = getEditorOptions(2, false, 'json', true);
                     inputEditor = monaco.editor.create(inputEditorContainer.value, inputOptions);
                     nextTick(() => {
                         const textarea = inputEditorContainer.value?.querySelector('textarea');
@@ -1334,8 +1669,9 @@ onMounted(async () => {
 
                 // inputEditor编辑器配置
                 if (inputEditor) {
-                    inputEditor.getModel()?.updateOptions({ tabSize: indentSize.value, insertSpaces: true });
-                    const formattedExample = customStringify(placeholderJSON, null, indentSize.value);
+                    // 输入编辑器始终使用2个空格缩进，不受格式化设置影响
+                    inputEditor.getModel()?.updateOptions({ tabSize: 2, insertSpaces: true });
+                    const formattedExample = customStringify(placeholderJSON, null, 2);
                     inputEditor.setValue(formattedExample);
                     maxLevel.value = calculateMaxLevel(placeholderJSON);
 
@@ -1469,6 +1805,9 @@ onMounted(async () => {
     setTimeout(() => {
         setupResizeObserver();
     }, 500);
+
+    // 初始化完成，允许自动保存设置
+    isInitializing = false;
 });
 
 // 清理编辑器实例
@@ -1689,9 +2028,22 @@ function customStringify(
                 }
             }
 
-            // 只保存第一次遇到的转义形式（避免覆盖）
+            // 优先保存包含 Unicode 转义序列的形式
+            // 如果映射已存在，检查当前原始转义形式是否包含 Unicode 转义序列
+            // 如果包含，则更新映射（优先使用 Unicode 转义形式）
             if (!map.has(parsedValue)) {
                 map.set(parsedValue, originalEscaped);
+            } else {
+                // 如果映射已存在，检查当前原始转义形式是否包含 Unicode 转义序列
+                const existingEscape = map.get(parsedValue)!;
+                const hasUnicodeEscape = /\\u[0-9a-fA-F]{4}/.test(originalEscaped);
+                const existingHasUnicodeEscape = /\\u[0-9a-fA-F]{4}/.test(existingEscape);
+                
+                // 如果当前形式包含 Unicode 转义，而现有形式不包含，则更新
+                if (hasUnicodeEscape && !existingHasUnicodeEscape) {
+                    map.set(parsedValue, originalEscaped);
+                }
+                // 如果两者都包含或都不包含 Unicode 转义，保持第一次遇到的（避免覆盖）
             }
         }
 
@@ -1712,6 +2064,8 @@ function customStringify(
         }
 
         // 没有原始形式或找不到匹配，使用标准转义
+        // 注意：标准转义不会将中文字符转换为 Unicode 转义（除非是控制字符）
+        // 所以当 encodingMode === 0 时，如果找不到映射，中文字符会保持为中文
         return str
             .replace(/\\/g, '\\\\')  // 必须首先处理反斜杠
             .replace(/"/g, '\\"')    // 处理双引号
@@ -1769,11 +2123,13 @@ function customStringify(
         let processed = escapeString(str);
 
         // 根据编码处理模式进行转换
+        // 当 encodingMode === 0 时，保持原样，不进行任何转换
         if (currentEncodingMode === 2) {
             processed = handleChineseToUnicode(processed);
         } else if (currentEncodingMode === 1) {
             processed = handleUnicodeToChiness(processed);
         }
+        // encodingMode === 0 时，直接返回 escapeString 的结果，不进行任何转换
 
         return processed;
     };
@@ -1815,16 +2171,101 @@ function customStringify(
 }
 
 
+const sanitizeForJson = (value: any, memo: WeakMap<object, any> = new WeakMap()): any => {
+    if (value === undefined) {
+        return null;
+    }
+
+    if (typeof value === 'number') {
+        return Number.isFinite(value) ? value : null;
+    }
+
+    if (typeof value === 'bigint') {
+        return value.toString();
+    }
+
+    if (typeof value === 'symbol' || typeof value === 'function') {
+        return null;
+    }
+
+    if (value instanceof Date) {
+        return value.toISOString();
+    }
+
+    if (value instanceof RegExp) {
+        return value.toString();
+    }
+
+    if (value instanceof Set) {
+        return Array.from(value).map(item => sanitizeForJson(item, memo));
+    }
+
+    if (value instanceof Map) {
+        const result: Record<string, any> = {};
+        value.forEach((mapValue, mapKey) => {
+            result[String(mapKey)] = sanitizeForJson(mapValue, memo);
+        });
+        return result;
+    }
+
+    if (Array.isArray(value)) {
+        if (memo.has(value)) {
+            return memo.get(value);
+        }
+        const result: any[] = [];
+        memo.set(value, result);
+        value.forEach(item => {
+            result.push(sanitizeForJson(item, memo));
+        });
+        return result;
+    }
+
+    if (value && typeof value === 'object') {
+        if (memo.has(value)) {
+            return memo.get(value);
+        }
+        const result: Record<string, any> = {};
+        memo.set(value, result);
+        Object.keys(value).forEach(key => {
+            result[key] = sanitizeForJson((value as Record<string, any>)[key], memo);
+        });
+        return result;
+    }
+
+    return value;
+};
+
+
 // JSON预处理函数 - 处理结构层面的问题（注释、尾逗号）和无效转义序列
 const preprocessJSON = (jsonString: string): { data: any, originalString: string } => {
     if (!jsonString || typeof jsonString !== 'string') {
         return { data: null, originalString: jsonString };
     }
+    let lastError: unknown = null;
+
     try {
-        // 尝试直接解析
         const data = JSON.parse(jsonString);
-        return { data, originalString: jsonString };
-    } catch (e) {
+        const sanitized = sanitizeForJson(data);
+        return { data: sanitized, originalString: jsonString };
+    } catch (error) {
+        lastError = error;
+    }
+
+    try {
+        const parsedJson5 = JSON5.parse(jsonString);
+        const sanitized = sanitizeForJson(parsedJson5);
+        let canonical = jsonString;
+        try {
+            canonical = JSON.stringify(sanitized);
+        } catch {
+            // 忽略序列化错误，保留原始字符串
+        }
+        return { data: sanitized, originalString: canonical };
+    } catch (error) {
+        lastError = error;
+    }
+
+    try {
         // 处理注释、尾逗号和无效转义序列
         let cleanedJSON = '';
         let inString = false;      // 是否在字符串内
@@ -1955,13 +2396,29 @@ const preprocessJSON = (jsonString: string): { data: any, originalString: string
 
         // 再次尝试解析
         try {
-            const data = JSON.parse(cleanedJSON);
-            return { data, originalString: jsonString };
+            let data: any;
+            try {
+                data = JSON.parse(cleanedJSON);
+            } catch {
+                data = JSON5.parse(cleanedJSON);
+            }
+            const sanitized = sanitizeForJson(data);
+            let canonical = jsonString;
+            try {
+                canonical = JSON.stringify(sanitized);
+            } catch {
+                canonical = cleanedJSON;
+            }
+            return { data: sanitized, originalString: canonical };
         } catch (finalError) {
             // 如果仍然失败，抛出原始错误
-            throw e;
+            throw (lastError || finalError);
         }
+    } catch (error) {
+        lastError = error;
     }
+
+    throw lastError ?? new Error('Unable to parse JSON input');
 };
 
 // 层级收缩-使用缩进级别进行折叠的方法
@@ -1995,20 +2452,13 @@ const foldByIndentation = () => {
                     // 先展开所有
                     outputEditor.trigger('unfold', 'editor.unfoldAll', null);
                     
-                    // 根据文件大小动态调整延迟时间，确保10万行文件也能正常处理
-                    let delay: number;
-                    if (lineCount > 80000) {
-                        delay = 800;
-                    } else if (lineCount > 50000) {
-                        delay = 400;
-                    } else {
-                        delay = 100;
-                    }
-                    
                     // 延迟执行折叠，确保展开完成
                     setTimeout(() => {
                         if (!outputEditor) return;
                         try {
+                            // 设置折叠状态标志
+                            isFolding.value = true;
+                            
                             outputEditor.setSelection({
                                 startLineNumber: 1,
                                 startColumn: 1,
@@ -2026,11 +2476,21 @@ const foldByIndentation = () => {
                                         endLineNumber: 1,
                                         endColumn: 1
                                     });
+                                    
+                                    // 清除折叠状态标志
+                                    isFolding.value = false;
+                                    // 更新状态显示（恢复列数显示）
+                                    updateEditorStatus(outputEditor, outputEditorStatus, false);
                                 }
                             }, 50);
                             
                             showSuccess(`收缩到第 ${selectedLevel.value} 层成功`);
                         } catch (e) {
+                            // 发生错误时也要清除折叠状态
+                            isFolding.value = false;
+                            if (outputEditor) {
+                                updateEditorStatus(outputEditor, outputEditorStatus, false);
+                            }
                             showWarning('折叠操作失败, 请尝试手动折叠');
                         }
                     }, 100);
@@ -2172,93 +2632,157 @@ const foldByIndentation = () => {
             // 先展开所有折叠，确保从干净的状态开始
             outputEditor.trigger('unfold', 'editor.unfoldAll', null);
 
-            // 使用批量折叠优化：分批处理，避免阻塞UI
-            const batchFold = async () => {
-                if (!outputEditor) return;
+            // 使用并发优化的批量折叠：使用 Promise.all 同时处理多个折叠操作
+            const concurrentBatchFold = async () => {
+                if (!outputEditor) {
+                    isFolding.value = false;
+                    return;
+                }
+                
+                // 设置折叠状态标志
+                isFolding.value = true;
 
                 const model = outputEditor.getModel();
-                if (!model) return;
+                if (!model) {
+                    isFolding.value = false;
+                    return;
+                }
 
-                const BATCH_SIZE = 100; // 每批处理100个折叠范围
-                const DELAY_BETWEEN_BATCHES = 10; // 批次之间的延迟（毫秒）
+                // 并发配置（可根据性能调整）
+                // 注意：由于 Monaco Editor 的状态操作（setPosition/setSelection）需要顺序执行，
+                // 我们使用"伪并发"：预处理数据并发，但折叠操作本身仍需要顺序执行以避免状态冲突
+                const CONCURRENT_PREPARE = true; // 是否并发预处理数据
+                const BATCH_SIZE = 100; // 每批处理的折叠范围数量
+                const DELAY_BETWEEN_BATCHES = 5; // 批次之间的延迟（毫秒）
+                const DELAY_BETWEEN_FOLDS = 1; // 每个折叠操作之间的最小延迟（毫秒）
 
-                // 从后向前折叠，避免折叠操作影响行号
-                for (let batchStart = foldingRanges.length - 1; batchStart >= 0; batchStart -= BATCH_SIZE) {
-                    const batchEnd = Math.max(0, batchStart - BATCH_SIZE + 1);
-
-                    // 处理当前批次
-                    for (let i = batchStart; i >= batchEnd; i--) {
-                    const range = foldingRanges[i];
-                    try {
-                        // 获取开始行和结束行的内容
-                        const startLineContent = model.getLineContent(range.start);
-                        const endLineContent = model.getLineContent(range.end);
-                        
-                        // 找到开始行的开始括号位置（{ 或 [）
-                        let startCol = startLineContent.search(/[\[\{]/);
-                        if (startCol === -1) startCol = 1;
-                        else startCol = startCol + 1; // Monaco 列号从1开始
-                        
-                        // 找到结束行的结束括号位置（} 或 ]）
-                        let endCol = endLineContent.search(/[\]\}]/);
-                        if (endCol === -1) {
-                            endCol = model.getLineMaxColumn(range.end);
-                        } else {
-                            endCol = endCol + 1; // Monaco 列号从1开始
-                        }
-                        
-                        // 方法1：尝试使用 Monaco 的 executeCommand 来精确折叠
-                        // 先尝试从开始行的开始括号位置选择到结束行的结束括号位置
+                // 预处理：计算所有折叠范围的列位置
+                interface PreparedRange {
+                    start: number;
+                    end: number;
+                    startCol: number;
+                    endCol: number;
+                }
+                
+                const preparedRanges: PreparedRange[] = [];
+                
+                if (CONCURRENT_PREPARE && foldingRanges.length > 100) {
+                    // 对于大量范围，使用并发预处理（只读取数据，不修改编辑器状态）
+                    const preparePromises = foldingRanges.map(async (range) => {
                         try {
-                            // 将光标定位到开始括号之后，然后选择到结束括号之前
+                            const startLineContent = model.getLineContent(range.start);
+                            const endLineContent = model.getLineContent(range.end);
+                            
+                            let startCol = startLineContent.search(/[\[\{]/);
+                            if (startCol === -1) startCol = 1;
+                            else startCol = startCol + 1;
+                            
+                            let endCol = endLineContent.search(/[\]\}]/);
+                            if (endCol === -1) {
+                                endCol = model.getLineMaxColumn(range.end);
+                            } else {
+                                endCol = endCol + 1;
+                            }
+                            
+                            return {
+                                start: range.start,
+                                end: range.end,
+                                startCol,
+                                endCol
+                            } as PreparedRange;
+                        } catch (err) {
+                            return null;
+                        }
+                    });
+                    
+                    const results = await Promise.all(preparePromises);
+                    preparedRanges.push(...results.filter(r => r !== null) as PreparedRange[]);
+                } else {
+                    // 顺序预处理（小数据量或禁用并发时）
+                    for (const range of foldingRanges) {
+                        try {
+                            const startLineContent = model.getLineContent(range.start);
+                            const endLineContent = model.getLineContent(range.end);
+                            
+                            let startCol = startLineContent.search(/[\[\{]/);
+                            if (startCol === -1) startCol = 1;
+                            else startCol = startCol + 1;
+                            
+                            let endCol = endLineContent.search(/[\]\}]/);
+                            if (endCol === -1) {
+                                endCol = model.getLineMaxColumn(range.end);
+                            } else {
+                                endCol = endCol + 1;
+                            }
+                            
+                            preparedRanges.push({
+                                start: range.start,
+                                end: range.end,
+                                startCol,
+                                endCol
+                            });
+                        } catch (err) {
+                            // 忽略预处理错误
+                        }
+                    }
+                }
+
+                let foldedCount = 0;
+                let failedCount = 0;
+
+                // 从后向前分批处理（避免行号变化影响）
+                // 注意：折叠操作必须顺序执行，因为 Monaco Editor 的状态操作不是线程安全的
+                for (let batchStart = preparedRanges.length - 1; batchStart >= 0; batchStart -= BATCH_SIZE) {
+                    const batchEnd = Math.max(0, batchStart - BATCH_SIZE + 1);
+                    const batchRanges = preparedRanges.slice(batchEnd, batchStart + 1).reverse(); // 反转以保持从后向前的顺序
+
+                    // 顺序执行折叠操作（避免状态冲突）
+                    for (const range of batchRanges) {
+                        try {
+                            // 关键修复：在折叠之前，确保目标位置是可见的
+                            // 由于我们已经在开始时执行了 editor.unfoldAll，理论上所有折叠都已展开
+                            // 但为了确保，我们在折叠前再次展开目标位置附近的折叠
+                            
+                            // 定位到目标层级的开始括号位置
                             outputEditor.setPosition({
                                 lineNumber: range.start,
-                                column: startCol + 1
+                                column: range.startCol
                             });
                             
-                            // 展开当前位置的折叠（确保不会折叠到外层）
+                            // 展开当前光标位置的折叠（如果存在，可能是之前折叠操作留下的）
+                            // 这确保目标位置是可见的，不会被外层折叠影响
                             outputEditor.trigger('unfold', 'editor.unfold', null);
                             
-                            // 小延迟
-                            await new Promise(resolve => setTimeout(resolve, 5));
+                            // 小延迟，确保展开完成
+                            await new Promise(resolve => setTimeout(resolve, DELAY_BETWEEN_FOLDS));
                             
-                            // 选择从开始括号之后到结束括号之前的范围
-                        outputEditor.setSelection({
-                            startLineNumber: range.start,
-                                startColumn: startCol + 1,
-                            endLineNumber: range.end,
-                                endColumn: endCol - 1 // 结束括号之前
-                        });
-
-                            // 尝试折叠选择的范围
-                            // 使用 'editor.fold' 命令
-                        outputEditor.trigger('fold', 'editor.fold', null);
-                        } catch (foldErr) {
-                            // 方法2：使用 executeEdits 配合折叠命令
-                            try {
-                                // 定位到开始行
-                                outputEditor.setPosition({
-                                    lineNumber: range.start,
-                                    column: startCol
-                                });
-                                
-                                // 使用折叠命令，但只折叠当前块（不折叠外层）
-                                const foldAction = outputEditor.getAction('editor.fold');
-                                if (foldAction && foldAction.isSupported()) {
-                                    await foldAction.run();
-                                } else {
-                                    throw new Error('fold action not supported');
-                                }
-                            } catch (foldErr2) {
-                                // 如果都失败，忽略错误继续处理下一个范围
+                            // 关键：Monaco Editor 的 fold 命令会折叠光标所在的最小代码块
+                            // 问题：如果光标位置在外层块内，会折叠外层块
+                            // 解决方案：我们需要确保光标位置精确在目标层级的开始括号处
+                            // 并且该位置不在任何外层块内（通过展开所有外层折叠来保证）
+                            
+                            // 使用 getAction 获取折叠操作
+                            const foldAction = outputEditor.getAction('editor.fold');
+                            if (foldAction && foldAction.isSupported()) {
+                                // 执行折叠操作
+                                // 注意：由于我们已经展开了所有折叠（在开始时执行了 unfoldAll），
+                                // 并且目标位置是目标层级的开始括号，这里应该只折叠目标层级
+                                await foldAction.run();
+                                foldedCount++;
+                            } else {
+                                // 备用方案：使用 trigger 命令
+                                outputEditor.trigger('fold', 'editor.fold', null);
+                                foldedCount++;
                             }
+                            
+                        } catch (err) {
+                            failedCount++;
+                            // 继续处理下一个范围
                         }
                         
-                        // 小延迟，确保折叠完成
-                        await new Promise(resolve => setTimeout(resolve, 5));
-                        
-                    } catch (err) {
-                            // 忽略单个折叠错误，继续处理其他范围
+                        // 每处理一定数量后，让浏览器有机会渲染
+                        if (foldedCount % 50 === 0) {
+                            await new Promise(resolve => setTimeout(resolve, 5));
                         }
                     }
 
@@ -2277,18 +2801,33 @@ const foldByIndentation = () => {
                         endColumn: 1
                     });
 
-                    showSuccess(`收缩到第 ${selectedLevel.value} 层成功`);
+                    const message = failedCount > 0 
+                        ? `收缩到第 ${selectedLevel.value} 层完成，成功 ${foldedCount} 个元素，失败 ${failedCount} 个元素`
+                        : `收缩到第 ${selectedLevel.value} 层成功，共折叠 ${foldedCount} 个元素`;
+                    showSuccess(message);
+                    
+                    // 清除折叠状态标志
+                    isFolding.value = false;
+                    // 更新状态显示（恢复列数显示）
+                    if (outputEditor) {
+                        updateEditorStatus(outputEditor, outputEditorStatus, false);
+                    }
                 }
             };
 
             // 等待展开完成后再开始折叠
             setTimeout(() => {
-                batchFold();
+                concurrentBatchFold();
             }, 150);
         } else {
             showInfo(`未找到可收缩的第 ${selectedLevel.value} 层内容`);
         }
     } catch (e: any) {
+        // 发生错误时清除折叠状态
+        isFolding.value = false;
+        if (outputEditor) {
+            updateEditorStatus(outputEditor, outputEditorStatus, false);
+        }
         showWarning('折叠操作失败: ' + (e.message || '未知错误'));
     }
 };
@@ -2392,7 +2931,9 @@ const formatJSON = () => {
         try {
             const result = preprocessJSON(preprocessedValue);
             parsed = result.data;
-            originalString = result.originalString;
+            // 如果是保持原样模式，使用原始输入字符串以保留Unicode转义等原始格式
+            // 否则使用预处理后的字符串
+            originalString = encodingMode.value === 0 ? value : result.originalString;
         } catch (error) {
             showError('请输入有效的 JSON 数据');
             return;
@@ -2400,9 +2941,10 @@ const formatJSON = () => {
 
         // 使用标准格式化，传递原始字符串
         const formatted = customStringify(parsed, null, indentSize.value, originalString);
-            const finalOutput = formatted.replace(/\\u([0-9a-fA-F]{4})/g, '\\u$1');
+        // 移除多余的正则替换（它实际上没有改变任何东西）
+        const finalOutput = formatted;
 
-            outputEditor?.setValue(finalOutput);
+        outputEditor?.setValue(finalOutput);
 
         // 更新编辑器配置
         if (outputEditor) {
@@ -3842,18 +4384,6 @@ const openFetchJsonDialog = () => {
 
 // 打开分享对话框
 const openShareDialog = () => {
-    // 检查输入编辑器是否有内容
-    if (!inputEditor) {
-        showWarning('编辑器未初始化，请稍候再试');
-        return;
-    }
-    
-    const jsonData = inputEditor.getValue();
-    if (!jsonData || !jsonData.trim()) {
-        showWarning('请先输入JSON数据');
-        return;
-    }
-    
     shareDialogVisible.value = true;
 };
 
@@ -3927,6 +4457,62 @@ const getInputEditorValue = (): string => {
     return inputEditor.getValue();
 };
 
+// 处理加载分享的JSON数据到输入区域
+const handleLoadSharedJson = (jsonData: string) => {
+    try {
+        if (!inputEditor) {
+            showError('编辑器未初始化，请稍候再试');
+            return;
+        }
+
+        if (!jsonData || !jsonData.trim()) {
+            showError('分享数据为空');
+            return;
+        }
+
+        // 验证并格式化JSON数据
+        try {
+            const parsed = JSON.parse(jsonData);
+            // 使用自定义格式化函数格式化JSON，输入编辑器始终使用2空格缩进
+            const formattedJson = customStringify(parsed, null, 2);
+            
+            // 将格式化后的JSON设置到输入编辑器
+            inputEditor.setValue(formattedJson);
+            
+            // 更新编辑器配置
+            const model = inputEditor.getModel();
+            if (model) {
+                monaco.editor.setModelLanguage(model, 'json');
+                // 确保使用2空格缩进
+                model.updateOptions({
+                    tabSize: 2,
+                    insertSpaces: true
+                });
+            }
+            
+            // 更新行号和高度
+            updateLineNumberWidth(inputEditor);
+            updateEditorHeight(inputEditor);
+            
+            // 更新层级信息
+            maxLevel.value = calculateMaxLevel(parsed);
+            
+            // 清空预览区域
+            if (outputEditor) {
+                outputEditor.setValue('');
+                updateLineNumberWidth(outputEditor);
+                updateEditorHeight(outputEditor);
+            }
+            
+            outputType.value = 'json';
+        } catch (error: any) {
+            showError('JSON格式不正确: ' + (error.message || '解析失败'));
+        }
+    } catch (error: any) {
+        showError('加载分享数据失败: ' + (error.message || '未知错误'));
+    }
+};
+
 // 从URL参数加载分享数据
 const loadSharedDataFromUrl = async () => {
     if (typeof window === 'undefined') return;
@@ -3966,8 +4552,23 @@ const loadSharedDataFromUrl = async () => {
                 try {
                     // 验证JSON格式
                     const jsonData = JSON.parse(response.data.jsonData);
-                    const formattedJson = customStringify(jsonData, null, indentSize.value);
+                    // 输入编辑器始终使用2个空格缩进，不受格式化设置影响
+                    const formattedJson = customStringify(jsonData, null, 2);
                     inputEditor.setValue(formattedJson);
+                    
+                    // 更新编辑器配置，确保使用2空格缩进
+                    const model = inputEditor.getModel();
+                    if (model) {
+                        monaco.editor.setModelLanguage(model, 'json');
+                        model.updateOptions({
+                            tabSize: 2,
+                            insertSpaces: true
+                        });
+                    }
+                    
+                    // 更新行号和高度
+                    updateLineNumberWidth(inputEditor);
+                    updateEditorHeight(inputEditor);
                     
                     // 更新层级信息
                     maxLevel.value = calculateMaxLevel(jsonData);
@@ -4652,43 +5253,59 @@ const handleFileUpload = async (uploadFile: UploadFile) => {
             return;
         }
 
-        // JSON格式检查和处理
+        // JSON格式检查和格式化处理
+        // 使用与 formatJSON 相同的格式化逻辑
+        let preprocessedValue = content;
+
+        // 预处理 JSON 字符串
+        let parsed;
+        let originalString = preprocessedValue;
         try {
-            // 解析JSON并检查深度
-            const { data: jsonData, originalString } = preprocessJSON(content);
-
-            // 检查深度
-            const depth = getObjectDepth(jsonData);
-            if (depth > 99) {
-                showError('JSON深度超过99层, 不允许上传');
-                return;
-            }
-
-            // 使用自定义格式化函数格式化JSON，保持原始转义字符
-            const formattedJson = customStringify(jsonData, null, indentSize.value, originalString);
-
-            // 更新编辑器
-            if (inputEditor) {
-                inputEditor.setValue(formattedJson);
-                updateLineNumberWidth(inputEditor);
-                updateEditorHeight(inputEditor);
-                // 确保使用2空格缩进
-                inputEditor.getModel()?.updateOptions({
-                    tabSize: 2,
-                    indentSize: 2
-                });
-            }
-            // 清空outputEditor的内容
-            outputEditor?.setValue('');
-            updateLineNumberWidth(outputEditor);
-            updateEditorHeight(outputEditor);
-
-            // 显示成功提示
-                showSuccess('文件上传成功');
+            const result = preprocessJSON(preprocessedValue);
+            parsed = result.data;
+            // 如果是保持原样模式，使用原始输入字符串以保留Unicode转义等原始格式
+            // 否则使用预处理后的字符串
+            originalString = encodingMode.value === 0 ? content : result.originalString;
         } catch (error: any) {
-            showError('无效的 JSON 格式: ' + error.message);
-            return;
+            showError('无效的 JSON 格式: ' + (error.message || 'JSON 解析失败'));
+            return; // 格式化失败，拒绝上传
         }
+
+        // 检查深度
+        const depth = getObjectDepth(parsed);
+        if (depth > 99) {
+            showError('JSON深度超过99层, 不允许上传');
+            return; // 格式化失败，拒绝上传
+        }
+
+        // 使用自定义格式化函数格式化JSON，保持原始转义字符
+        let formattedJson: string;
+        try {
+            formattedJson = customStringify(parsed, null, indentSize.value, originalString);
+        } catch (error: any) {
+            showError('格式化失败: ' + (error.message || '未知错误'));
+            return; // 格式化失败，拒绝上传
+        }
+
+        // 更新编辑器 - 将格式化结果展示到输入区域
+        if (inputEditor) {
+            inputEditor.setValue(formattedJson);
+            updateLineNumberWidth(inputEditor);
+            updateEditorHeight(inputEditor);
+            // 确保使用2空格缩进
+            inputEditor.getModel()?.updateOptions({
+                tabSize: 2,
+                indentSize: 2
+            });
+        }
+        
+        // 清空outputEditor的内容
+        outputEditor?.setValue('');
+        updateLineNumberWidth(outputEditor);
+        updateEditorHeight(outputEditor);
+
+        // 显示成功提示
+        showSuccess('文件上传成功，已格式化并加载到输入区域');
     } catch (error: any) {
         showError('文件处理失败: ' + error.message);
     }
@@ -4833,14 +5450,10 @@ const toggleFullscreen = () => {
     isFullscreen.value = !isFullscreen.value
 };
 
-// 布局更新函数（精确版，传递实际计算的容器尺寸，确保滚动条实时紧贴）
-// updateOutputEditor: 是否更新预览区域布局
 // 拖动时也要更新预览区域布局，让滚动条紧贴右边界，但需要恢复滚动内容位置
 const updateEditorLayouts = (updateOutputEditor: boolean = true, forceWidth?: { inputWidth?: number; outputWidth?: number }) => {
     if (inputEditor) {
         const container = inputEditor.getContainerDomNode();
-        // 如果提供了强制宽度，使用强制宽度；否则使用容器实际宽度
-        // 传递精确的容器尺寸，确保布局计算准确
         // 输入区域的滚动条需要实时紧贴分割线，所以拖动时也要更新
         const width = forceWidth?.inputWidth ?? container.clientWidth;
         inputEditor.layout({
@@ -4850,8 +5463,6 @@ const updateEditorLayouts = (updateOutputEditor: boolean = true, forceWidth?: { 
     }
     if (outputEditor && updateOutputEditor) {
         const container = outputEditor.getContainerDomNode();
-        // 如果提供了强制宽度，使用强制宽度；否则使用容器实际宽度
-        // 传递精确的容器尺寸，确保布局计算准确
         // 预览区域的滚动条应该始终紧贴右边，拖动时也要更新让滚动条紧贴右边界
         const width = forceWidth?.outputWidth ?? container.clientWidth;
         outputEditor.layout({
@@ -4906,23 +5517,16 @@ const getClientX = (e: MouseEvent | TouchEvent | PointerEvent): number | null =>
     // 触发防抖更新稳定宽度值
     updateStableWidth();
 
-    // 立即同步更新布局，确保滚动条实时紧贴边界（即使极快来回拖动也能响应）
-    // 关键：直接根据百分比和容器宽度计算实际宽度，而不是依赖可能未更新的 DOM
     // 这样可以确保 Monaco Editor 接收到准确的宽度，从而正确计算滚动条位置
     const containerWidth = resizeState.rect.width;
     const resizerWidth = 24; // 分割线宽度（固定值）
     const availableWidth = containerWidth - resizerWidth;
     
     // 计算面板的实际宽度（考虑分割线）
-    // 由于 Monaco Editor 容器使用 flex: 1，它的宽度应该等于面板宽度
-    // 直接使用计算值，确保 Monaco Editor 接收到准确的宽度
     const inputWidth = Math.round((newWidth / 100) * availableWidth);
     const outputWidth = Math.round(((100 - newWidth) / 100) * availableWidth);
     
     // 使用计算出的宽度强制更新布局，确保滚动条实时紧贴边界
-    // 输入区域：滚动条紧贴分割线（Monaco 自动处理）
-    // 预览区域：滚动条紧贴右边界（Monaco 自动处理，与输入区域一致）
-    // 注意：拖动过程中不恢复滚动位置，让滚动条自然紧贴右边界，只在拖动结束后恢复
     updateEditorLayouts(true, { inputWidth, outputWidth });
 };
 
@@ -4942,9 +5546,6 @@ const getClientX = (e: MouseEvent | TouchEvent | PointerEvent): number | null =>
         });
     }
 
-    // 拖动开始时不再锁定预览区域容器宽度，所以这里也不需要解除锁定
-    // 预览区域的宽度应该正常跟随面板宽度变化
-
     // 清除防抖定时器，立即同步稳定宽度值
     if (stableWidthUpdateTimer) {
         clearTimeout(stableWidthUpdateTimer);
@@ -4952,7 +5553,7 @@ const getClientX = (e: MouseEvent | TouchEvent | PointerEvent): number | null =>
     }
     stableLeftPanelWidth.value = leftPanelWidth.value;
 
-        // 释放指针捕获
+    // 释放指针捕获
     if (upEvent instanceof PointerEvent && upEvent.target instanceof HTMLElement) {
             try {
             upEvent.target.releasePointerCapture(upEvent.pointerId);
@@ -5050,17 +5651,11 @@ const startResize = (e: MouseEvent | TouchEvent | PointerEvent) => {
     let outputScrollTop = 0;
 
     if (outputPanel && outputEditor) {
-        // 保存拖动开始时的滚动位置（通过 Monaco Editor 的滚动容器 DOM 元素获取）
-        // Monaco Editor 的滚动位置存储在内部的 scrollable element 中
-        // 拖动过程中，预览区域的滚动条会紧贴右边界，但滚动内容位置需要保持不变
         const scrollableElement = outputEditor.getContainerDomNode().querySelector('.monaco-scrollable-element') as HTMLElement;
         if (scrollableElement) {
             outputScrollLeft = scrollableElement.scrollLeft;
             outputScrollTop = scrollableElement.scrollTop;
         }
-
-        // 不锁定预览区域容器宽度，让它正常跟随面板宽度变化
-        // 这样滚动条可以实时紧贴右边界
     }
 
     // 保存拖动状态
@@ -5268,17 +5863,17 @@ const transferToInput = (e: MouseEvent) => {
 }
 
 /* 按钮组之间紧挨着，但单个按钮和按钮组之间要有间距 */
-.tool-bar > .el-button,
-.tool-bar > .el-button-group,
-.tool-bar > .el-dropdown,
-.tool-bar > .collapse-control {
+.tool-bar>.el-button,
+.tool-bar>.el-button-group,
+.tool-bar>.el-dropdown,
+.tool-bar>.collapse-control {
     margin-left: 10px;
 }
 
-.tool-bar > .el-button:first-child,
-.tool-bar > .el-button-group:first-child,
-.tool-bar > .el-dropdown:first-child,
-.tool-bar > .collapse-control:first-child {
+.tool-bar>.el-button:first-child,
+.tool-bar>.el-button-group:first-child,
+.tool-bar>.el-dropdown:first-child,
+.tool-bar>.collapse-control:first-child {
     margin-left: 0;
 }
 
@@ -5294,76 +5889,39 @@ const transferToInput = (e: MouseEvent) => {
     width: 90px;
 }
 
-/* 响应式：屏幕小于1400px时隐藏获取JSON和分享按钮 */
-@media screen and (max-width: 1399px) {
-    .hide-below-1400 {
+/* 响应式隐藏按钮 */
+.responsive-hide {
         display: none !important;
     }
     
+/* 按钮组圆角处理：动态响应式方案 */
     /* 重置按钮组中所有可见按钮的圆角 */
-    .el-button-group > .el-button:not(.hide-below-1400):not(.hide-below-1200) {
+.el-button-group>.el-button:not(.responsive-hide) {
         border-top-left-radius: 0 !important;
         border-bottom-left-radius: 0 !important;
         border-top-right-radius: 0 !important;
         border-bottom-right-radius: 0 !important;
     }
     
-    /* 第一个可见按钮：左侧圆角（如果第一个按钮被隐藏，则格式化按钮是第一个可见的） */
-    .el-button-group > .el-button.hide-below-1400:first-of-type + .el-button:not(.hide-below-1400):not(.hide-below-1200) {
+/* 第一个可见按钮：左侧圆角 */
+.el-button-group>.el-button.button-first-visible {
         border-top-left-radius: 4px !important;
         border-bottom-left-radius: 4px !important;
     }
     
     /* 最后一个可见按钮：右侧圆角 */
-    /* 在1200px-1400px之间，统计按钮（hide-below-1200）是最后一个可见的 */
-    /* 如果最后一个按钮被隐藏（hide-below-1400），则它前面的按钮是最后一个可见的 */
-    .el-button-group > .el-button.hide-below-1400:last-of-type + .el-button:not(.hide-below-1400),
-    .el-button-group > .el-button:not(.hide-below-1400):last-of-type {
+.el-button-group>.el-button.button-last-visible {
         border-top-right-radius: 4px !important;
         border-bottom-right-radius: 4px !important;
-    }
-    
-    /* 如果最后一个按钮是hide-below-1400，则选择它前面的最后一个可见按钮 */
-    .el-button-group > .el-button:not(.hide-below-1400):nth-last-of-type(2) {
-        border-top-right-radius: 4px !important;
-        border-bottom-right-radius: 4px !important;
-    }
-}
-
-/* 响应式：屏幕小于1200px时隐藏脱敏、排序和统计按钮 */
-@media screen and (max-width: 1199px) {
-    .hide-below-1200 {
-        display: none !important;
-    }
-    
-    /* 重置按钮组中所有可见按钮的圆角 */
-    .el-button-group > .el-button:not(.hide-below-1400):not(.hide-below-1200) {
-        border-top-left-radius: 0 !important;
-        border-bottom-left-radius: 0 !important;
-        border-top-right-radius: 0 !important;
-        border-bottom-right-radius: 0 !important;
-    }
-    
-    /* 第一个可见按钮：左侧圆角（如果第一个按钮被隐藏，则格式化按钮是第一个可见的） */
-    .el-button-group > .el-button.hide-below-1400:first-of-type + .el-button:not(.hide-below-1400):not(.hide-below-1200),
-    .el-button-group > .el-button.hide-below-1200:first-of-type + .el-button:not(.hide-below-1400):not(.hide-below-1200) {
-        border-top-left-radius: 4px !important;
-        border-bottom-left-radius: 4px !important;
-    }
-    
-    /* 最后一个可见按钮：右侧圆角（压缩并转义按钮是最后一个可见的） */
-    .el-button-group > .el-button:not(.hide-below-1400):not(.hide-below-1200):nth-of-type(6) {
-        border-top-right-radius: 4px !important;
-        border-bottom-right-radius: 4px !important;
-    }
 }
 
 /* 响应式：小屏幕时调整布局 */
 @media screen and (max-width: 1200px) {
-    .tool-bar > .el-button,
-    .tool-bar > .el-button-group,
-    .tool-bar > .el-dropdown,
-    .tool-bar > .collapse-control {
+
+    .tool-bar>.el-button,
+    .tool-bar>.el-button-group,
+    .tool-bar>.el-dropdown,
+    .tool-bar>.collapse-control {
         margin-left: 8px;
     }
 }
@@ -6290,22 +6848,34 @@ const transferToInput = (e: MouseEvent) => {
     padding: 0;
 }
 
-.settings-columns {
+.settings-row {
     display: flex;
     gap: 24px;
     align-items: flex-start;
     position: relative;
 }
 
-.settings-columns::before {
+.settings-row::after {
     content: '';
     position: absolute;
-    left: 50%;
     top: 0;
     bottom: 0;
+    left: 50%;
+    transform: translateX(-50%);
     width: 1px;
     background-color: #e4e7ed;
-    transform: translateX(-50%);
+}
+
+.settings-row-full {
+    width: 100%;
+}
+
+.settings-row-full::after {
+    display: none;
+}
+
+.settings-column-full {
+    width: 100%;
 }
 
 .settings-column {
@@ -6373,8 +6943,69 @@ const transferToInput = (e: MouseEvent) => {
     border-radius: 4px;
 }
 
+/* 缩小设置弹窗中单选按钮的圆圈大小 */
+.settings-radio-group :deep(.el-radio__inner) {
+    width: 14px !important;
+    height: 14px !important;
+}
+
+.settings-radio-group :deep(.el-radio__inner::after) {
+    width: 6px !important;
+    height: 6px !important;
+}
+
 .settings-item :deep(.el-switch) {
     margin-top: 4px;
+}
+
+.settings-section-divider {
+    margin: 24px 0;
+}
+
+.settings-subsection {
+    margin-bottom: 24px;
+}
+
+.settings-subsection:last-child {
+    margin-bottom: 0;
+}
+
+.settings-subsection-title {
+    font-size: 14px;
+    font-weight: 600;
+    color: #606266;
+    margin-bottom: 16px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid #e4e7ed;
+}
+
+.button-visibility-list {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    grid-auto-rows: min-content;
+    gap: 12px 16px;
+    padding: 8px 0;
+    align-items: start;
+}
+
+@media (max-width: 900px) {
+    .button-visibility-list {
+        grid-template-columns: repeat(2, 1fr);
+    }
+}
+
+.button-visibility-item {
+    display: flex;
+    align-items: center;
+}
+
+.button-visibility-item :deep(.el-checkbox) {
+    width: 100%;
+}
+
+.button-visibility-item :deep(.el-checkbox__label) {
+    font-size: 14px;
+    color: #606266;
 }
 
 /* 响应式设计 */
@@ -6384,13 +7015,17 @@ const transferToInput = (e: MouseEvent) => {
         max-width: none;
     }
     
-    .settings-columns {
+    .settings-row {
         flex-direction: column;
         gap: 20px;
     }
     
-    .settings-columns::before {
+    .settings-row::after {
         display: none;
+    }
+
+    .button-visibility-list {
+        grid-template-columns: 1fr;
     }
     
     .settings-radio-group {
@@ -6403,5 +7038,4 @@ const transferToInput = (e: MouseEvent) => {
         margin-right: 0;
     }
 }
-
 </style>

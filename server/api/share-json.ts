@@ -91,7 +91,7 @@ interface ShareData {
   password?: string;
   expiresAt?: number;
   createdAt: number;
-  description?: string;
+  shareName: string;
   creatorFingerprint?: string;
   accessCount: number;
   lastAccessedAt?: number;
@@ -438,46 +438,26 @@ export default defineEventHandler(async (event: H3Event) => {
           .filter(s => s.creatorFingerprint === clientFingerprint)
           .sort((a, b) => b.createdAt - a.createdAt);
 
-        // 为每个分享构建元信息（必要时读取数据文件以拿到描述和生成一级key预览）
+        // 为每个分享构建元信息
         const result: Array<{
           id: string;
           createdAt: number;
           expiresAt?: number;
           size: number;
-          description?: string;
-          firstLevelPreview?: string;
+          shareName: string;
           shareUrl: string;
           hasPassword: boolean;
         }> = [];
 
         for (const entry of myShares) {
           const data = await readShareData(entry.id);
-          let preview: string | undefined = undefined;
-          try {
-            if (data?.jsonData) {
-              const parsed = JSON.parse(data.jsonData);
-              if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
-                const keys = Object.keys(parsed);
-                const joined = keys.join(', ');
-                // 限制到30字符，超出以…结尾
-                preview = joined.length > 30 ? (joined.slice(0, 30) + '…') : joined;
-              } else if (Array.isArray(parsed)) {
-                preview = `[array length: ${parsed.length}]`;
-              } else {
-                preview = String(parsed).slice(0, 30) + (String(parsed).length > 30 ? '…' : '');
-              }
-            }
-          } catch {
-            preview = undefined;
-          }
 
           result.push({
             id: entry.id,
             createdAt: entry.createdAt,
             expiresAt: entry.expiresAt,
             size: entry.size,
-            description: data?.description,
-            firstLevelPreview: preview,
+            shareName: data?.shareName || '',
             shareUrl: `${getRequestURL(event).origin}/tool/json?share=${entry.id}`,
             hasPassword: !!data?.password,
           });
@@ -546,7 +526,6 @@ export default defineEventHandler(async (event: H3Event) => {
           jsonData: shareData.jsonData,
           createdAt: shareData.createdAt,
           expiresAt: shareData.expiresAt,
-          description: shareData.description,
         },
       };
     }
@@ -554,26 +533,12 @@ export default defineEventHandler(async (event: H3Event) => {
     // POST请求：创建分享
     if (method === 'POST') {
       const body = await readBody(event);
-      const { jsonData, password, expiresIn, description, encryptedFingerprint } = body;
+      const { jsonData, password, expiresIn, shareName, encryptedFingerprint } = body;
 
-      // 校验分享说明与密码
-      const normalizedDescription: string | undefined = typeof description === 'string' ? String(description).trim() : undefined;
+      // 校验分享名称与密码
       const normalizedPassword: string | undefined = typeof password === 'string' ? String(password) : undefined;
-      // 限制说明长度为最多30个字符（按JS字符串长度计），且不包含危险字符
-      if (normalizedDescription) {
-        if (normalizedDescription.length > 30) {
-          return {
-            success: false,
-            error: '分享说明长度不能超过30个字符',
-          };
-        }
-        if (/[<>]/.test(normalizedDescription) || /[\x00-\x08\x0B\x0C\x0E-\x1F]/.test(normalizedDescription)) {
-          return {
-            success: false,
-            error: '分享说明包含不安全字符',
-          };
-        }
-      }
+      const normalizedShareName: string | undefined = typeof shareName === 'string' ? String(shareName).trim() : undefined;
+      
       // 密码最长30位，限制字符集为字母数字及常用符号（不含空格）
       if (normalizedPassword) {
         if (normalizedPassword.length > 30) {
@@ -598,6 +563,44 @@ export default defineEventHandler(async (event: H3Event) => {
           success: false,
           error: '无法验证客户端身份，请刷新页面后重试',
         };
+      }
+
+      // 1.5. 验证分享名称（必填）
+      if (!normalizedShareName || normalizedShareName.length === 0) {
+        return {
+          success: false,
+          error: '分享名称不能为空',
+        };
+      }
+      // 验证长度（最多10个字符）
+      if (normalizedShareName.length > 10) {
+        return {
+          success: false,
+          error: '分享名称长度不能超过10个字符',
+        };
+      }
+      // 验证字符：只允许中英文、数字和常见连字符（-、_、.）
+      // 中文字符范围：\u4e00-\u9fa5
+      // 英文字母和数字：A-Za-z0-9
+      // 常见连字符：-、_、.
+      const shareNamePattern = /^[\u4e00-\u9fa5A-Za-z0-9\-_.]+$/;
+      if (!shareNamePattern.test(normalizedShareName)) {
+        return {
+          success: false,
+          error: '分享名称只能包含中英文、数字和常见连字符（-、_、.）',
+        };
+      }
+      // 验证唯一性（对同一用户）
+      const indexForUniquenessCheck = await readIndex();
+      const userShares = indexForUniquenessCheck.shares.filter(s => s.creatorFingerprint === clientFingerprint);
+      for (const entry of userShares) {
+        const data = await readShareData(entry.id);
+        if (data?.shareName === normalizedShareName) {
+          return {
+            success: false,
+            error: '分享名称已存在，请使用其他名称',
+          };
+        }
       }
 
       // 2. 限流检查
@@ -696,7 +699,7 @@ export default defineEventHandler(async (event: H3Event) => {
         password: normalizedPassword || undefined,
         expiresAt,
         createdAt: Date.now(),
-        description: normalizedDescription || undefined,
+        shareName: normalizedShareName,
         creatorFingerprint: clientFingerprint,
         accessCount: 0,
       };

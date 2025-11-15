@@ -23,7 +23,7 @@
                     >
                         <template #title>
                             <span style="font-size: 12px;">
-                                <strong>免费服务限制：</strong>单次分享最大2MB数据，每个用户最多5次分享，单个用户最大10MB存储空间，每分钟最多分享3次，最长保存3天
+                                <strong>免费服务限制：</strong>分享输入区域的JSON数据，单次分享最大2MB数据，每个用户最多5次分享，每分钟最多分享3次。
                             </span>
                         </template>
                     </el-alert>
@@ -46,9 +46,10 @@
                                     :cell-style="{ textAlign: 'center' }"
                                     :fit="true"
                                 >
-                                    <el-table-column prop="createdAt" label="创建时间" width="200" align="center" header-align="center">
+                                    <el-table-column prop="shareName" label="分享名称" width="150" align="center" header-align="center">
                                         <template #default="{ row }">
-                                            <span>{{ new Date(row.createdAt).toLocaleString('zh-CN') }}</span>
+                                            <span v-if="row.shareName">{{ row.shareName }}</span>
+                                            <span v-else style="color: #909399;">—</span>
                                         </template>
                                     </el-table-column>
                                     <el-table-column prop="expiresAt" label="过期时间" width="200" align="center" header-align="center">
@@ -71,13 +72,13 @@
                                                 size="small"
                                                 @click="loadShareIntoEditor(row)"
                                             >
-                                                加载
+                                                使用
                                             </el-button>
                                             <el-button
                                                 size="small"
                                                 @click="copyText(row.shareUrl, '链接已复制')"
                                             >
-                                                复制
+                                                复制链接
                                             </el-button>
                                         </template>
                                     </el-table-column>
@@ -92,61 +93,69 @@
                         </el-collapse-transition>
                     </div>
 
-                    <div class="form-item">
-                        <label class="form-label">过期时间：</label>
-                        <div style="margin-top: 0;">
-                            <div class="custom-exp-row" style="display: flex; gap: 8px;">
-                                <el-input-number
-                                    v-model="customAmount"
-                                    :min="customMin"
-                                    :max="customMax"
-                                    :step="customStep"
-                                    :precision="customPrecision"
-                                    placeholder="请输入数值"
-                                    style="width: 60%"
-                                    @change="handleCustomExpiresInChange"
-                                />
-                                <el-select v-model="customUnit" style="width: 38%" @change="handleCustomUnitChange">
-                                    <el-option label="分钟" value="minutes" />
-                                    <el-option label="小时" value="hours" />
-                                    <el-option label="天" value="days" />
-                                </el-select>
-                            </div>
-                            <div class="form-hint" style="margin-top: 5px;">
-                                允许范围：3分钟 - 3天（当前：{{ formatCustomExpiresIn() }}）
+                    <form @submit.prevent="createShare">
+                        <div class="form-item">
+                            <label class="form-label" for="share-name">
+                                分享名称 <span style="color: #f56c6c;">*</span>
+                            </label>
+                            <el-input
+                                id="share-name"
+                                v-model="shareName"
+                                placeholder="请输入分享名称（10个字符以内，中英文、数字及常见连字符）"
+                                maxlength="10"
+                                show-word-limit
+                                clearable
+                                @input="handleShareNameInput"
+                            />
+                            <div class="form-hint">必填，最多10个字符，只能包含中英文、数字和常见连字符（-、_、.），对同一用户具有唯一性</div>
+                        </div>
+
+                        <div class="form-item">
+                            <label class="form-label" for="expires-amount">过期时间</label>
+                            <div style="margin-top: 0;">
+                                <div class="custom-exp-row" style="display: flex; gap: 8px;">
+                                    <el-input-number
+                                        id="expires-amount"
+                                        v-model="customAmount"
+                                        :min="customMin"
+                                        :max="customMax"
+                                        :step="customStep"
+                                        :precision="customPrecision"
+                                        placeholder="请输入数值"
+                                        style="width: 60%"
+                                        @change="handleCustomExpiresInChange"
+                                    />
+                                    <el-select id="expires-unit" v-model="customUnit" style="width: 38%" @change="handleCustomUnitChange">
+                                        <el-option label="分钟" value="minutes" />
+                                        <el-option label="小时" value="hours" />
+                                        <el-option label="天" value="days" />
+                                    </el-select>
+                                </div>
+                                <div class="form-hint" style="margin-top: 5px;">
+                                    允许范围：3分钟 - 3天（当前：{{ formatCustomExpiresIn() }}）
+                                </div>
                             </div>
                         </div>
-                    </div>
 
-                    <div class="form-item">
-                        <label class="form-label">访问密码（可选）：</label>
-                        <el-input
-                            ref="passwordInputRef"
-                            v-model="password"
-                            type="password"
-                            placeholder="设置密码以保护分享链接"
-                            clearable
-                            show-password
-                            autocomplete="new-password"
-                            maxlength="30"
-                            show-word-limit
-                            @input="handlePasswordInput"
-                            @focus="handlePasswordInputFocus"
-                        />
-                        <div class="form-hint">最多30位，允许英文、数字及常用符号（不含空格）</div>
-                    </div>
-
-                    <div class="form-item">
-                        <label class="form-label">分享说明（可选）：</label>
-                        <el-input
-                            v-model="description"
-                            placeholder="添加分享说明，帮助访问者了解JSON数据的用途"
-                            maxlength="30"
-                            show-word-limit
-                            clearable
-                            @input="handleDescriptionInput"
-                        />
-                    </div>
+                        <div class="form-item">
+                            <label class="form-label" for="share-password">访问密码（可选）</label>
+                            <el-input
+                                id="share-password"
+                                ref="passwordInputRef"
+                                v-model="password"
+                                type="password"
+                                placeholder="设置密码以保护分享链接"
+                                clearable
+                                show-password
+                                autocomplete="new-password"
+                                maxlength="30"
+                                show-word-limit
+                                @input="handlePasswordInput"
+                                @focus="handlePasswordInputFocus"
+                            />
+                            <div class="form-hint">最多30位，允许英文、数字及常用符号（不含空格）</div>
+                        </div>
+                    </form>
                 </div>
 
                 <!-- 分享结果 -->
@@ -298,7 +307,7 @@ const expiresIn = computed(() => {
     return ms;
 });
 const password = ref('');
-const description = ref('');
+const shareName = ref('');
 
 // 分享结果
 const shareResult = ref<{
@@ -323,6 +332,7 @@ const myShares = ref<Array<{
     size: number;
     shareUrl: string;
     hasPassword: boolean;
+    shareName: string;
 }>>([]);
 
 // 关闭对话框
@@ -380,7 +390,7 @@ const resetForm = () => {
     customAmount.value = 1;
     customUnit.value = 'hours';
     password.value = '';
-    description.value = '';
+    shareName.value = '';
     errorMessage.value = '';
 };
 
@@ -400,12 +410,15 @@ const handlePasswordInputFocus = () => {
     });
 };
 
-// 输入时约束：分享说明与密码
-const handleDescriptionInput = () => {
-    // 过滤危险字符和控制字符，限制长度到30
-    const sanitized = (description.value || '')
-        .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F<>]/g, '');
-    description.value = sanitized.slice(0, 30);
+// 输入时约束：分享名称与密码
+const handleShareNameInput = () => {
+    // 只允许中英文、数字和常见连字符（-、_、.），限制长度到10
+    // 中文字符范围：\u4e00-\u9fa5
+    // 英文字母和数字：A-Za-z0-9
+    // 常见连字符：-、_、.
+    const allowed = /[\u4e00-\u9fa5A-Za-z0-9\-_.]/g;
+    const chars = (shareName.value || '').match(allowed) || [];
+    shareName.value = chars.join('').slice(0, 10);
 };
 
 const handlePasswordInput = () => {
@@ -448,18 +461,21 @@ const createShare = async () => {
         return;
     }
 
-    // 验证分享说明（最多30字符）
-    if (description.value) {
-        const desc = description.value.trim();
-        // 禁止危险字符和控制字符
-        if (/[<>]/.test(desc) || /[\x00-\x08\x0B\x0C\x0E-\x1F]/.test(desc)) {
-            errorMessage.value = '分享说明包含不安全字符';
-            return;
-        }
-        if (desc.length > 30) {
-            errorMessage.value = '分享说明长度不能超过30个字符';
-            return;
-        }
+    // 验证分享名称（必填，最多10字符）
+    const name = shareName.value?.trim() || '';
+    if (!name || name.length === 0) {
+        errorMessage.value = '分享名称不能为空';
+        return;
+    }
+    if (name.length > 10) {
+        errorMessage.value = '分享名称长度不能超过10个字符';
+        return;
+    }
+    // 验证字符：只允许中英文、数字和常见连字符（-、_、.）
+    const shareNamePattern = /^[\u4e00-\u9fa5A-Za-z0-9\-_.]+$/;
+    if (!shareNamePattern.test(name)) {
+        errorMessage.value = '分享名称只能包含中英文、数字和常见连字符（-、_、.）';
+        return;
     }
 
     // 验证密码（最多30位 + 字符集限制）
@@ -520,7 +536,7 @@ const createShare = async () => {
                 jsonData: props.jsonData,
                 password: password.value || undefined,
                 expiresIn: expiresIn.value || undefined,
-                description: description.value || undefined,
+                shareName: name,
             },
         });
 
@@ -701,6 +717,7 @@ const fetchMyShares = async () => {
                 size: item.size,
                 shareUrl: item.shareUrl,
                 hasPassword: !!item.hasPassword,
+                shareName: item.shareName,
             }));
         } else {
             ElMessage.error(response.error || '获取分享列表失败');
