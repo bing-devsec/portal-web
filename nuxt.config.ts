@@ -55,11 +55,11 @@ export default defineNuxtConfig({
   // ==================== 运行时配置 ====================
   runtimeConfig: {
     public: {
-      // baseURL: '/api-backend'
-      baseURL: "http://127.0.0.1:8080",
+      baseURL: '/api-backend'
+      // baseURL: "http://127.0.0.1:8080",
     },
-    // ssrApiBase: 'http://meta-api:8080'
-    ssrApiBase: "http://127.0.0.1:8080",
+    ssrApiBase: 'http://meta-api:8080'
+    // ssrApiBase: "http://127.0.0.1:8080",
   },
 
   // ==================== 样式配置 ====================

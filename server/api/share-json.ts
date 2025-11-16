@@ -1,7 +1,7 @@
 import { defineEventHandler, readBody, getQuery, H3Event } from 'h3';
 import { randomBytes } from 'crypto';
 import { promises as fs } from 'fs';
-import { join } from 'path';
+import { join, resolve, normalize } from 'path';
 import { existsSync, mkdirSync } from 'fs';
 
 // 调用Go后端API解密浏览器指纹
@@ -129,9 +129,36 @@ const fingerprintRateLimit = new Map<string, { count: number; resetAt: number }>
 // 定时删除任务：在到期时立即删除（进程内，非持久）
 const shareDeletionTimers = new Map<string, NodeJS.Timeout>();
 
-// 获取文件路径
+// 验证分享ID格式（32位十六进制字符串）
+function isValidShareId(id: string): boolean {
+  if (!id || typeof id !== 'string') {
+    return false;
+  }
+  // 必须是32位十六进制字符串（16 bytes = 32 hex chars）
+  return /^[a-f0-9]{32}$/i.test(id);
+}
+
+// 获取文件路径（带安全检查）
 function getShareFilePath(id: string): string {
-  return join(CONFIG.STORAGE_DIR, `${id}.json`);
+  // 验证ID格式
+  if (!isValidShareId(id)) {
+    throw new Error('Invalid share ID format');
+  }
+  
+  // 使用规范化路径，确保在指定目录内
+  const basePath = resolve(CONFIG.STORAGE_DIR);
+  const filePath = resolve(basePath, `${id}.json`);
+  
+  // 安全检查：确保文件路径在基础目录内（防止路径遍历）
+  // 使用规范化路径进行比较，兼容Windows和Unix系统
+  const normalizedBasePath = normalize(basePath + '/');
+  const normalizedFilePath = normalize(filePath);
+  
+  if (!normalizedFilePath.startsWith(normalizedBasePath)) {
+    throw new Error('Path traversal detected');
+  }
+  
+  return filePath;
 }
 
 // 获取索引文件路径
@@ -245,7 +272,11 @@ async function readShareData(id: string): Promise<ShareData | null> {
 // 写入分享数据
 async function writeShareData(data: ShareData): Promise<void> {
   const filePath = getShareFilePath(data.id);
-  await fs.writeFile(filePath, JSON.stringify(data, null, 2), 'utf-8');
+  // 使用适当的文件权限（0600 = 仅所有者可读写）
+  await fs.writeFile(filePath, JSON.stringify(data, null, 2), { 
+    encoding: 'utf-8',
+    mode: 0o600  // 仅所有者可读写，防止其他用户访问
+  });
 }
 
 // 删除分享数据
@@ -477,6 +508,14 @@ export default defineEventHandler(async (event: H3Event) => {
         return {
           success: false,
           error: '分享ID不能为空',
+        };
+      }
+
+      // 验证ID格式（防止路径遍历攻击）
+      if (!isValidShareId(id)) {
+        return {
+          success: false,
+          error: '分享ID格式不正确',
         };
       }
 
@@ -744,6 +783,14 @@ export default defineEventHandler(async (event: H3Event) => {
         return {
           success: false,
           error: '分享ID不能为空',
+        };
+      }
+
+      // 验证ID格式（防止路径遍历攻击）
+      if (!isValidShareId(id)) {
+        return {
+          success: false,
+          error: '分享ID格式不正确',
         };
       }
 

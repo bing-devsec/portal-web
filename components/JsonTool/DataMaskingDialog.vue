@@ -52,7 +52,7 @@
                                         <div style="margin-bottom: 12px;">
                                             <p style="margin: 0 0 6px 0; font-weight: 600; color: #409eff;">2. 通配符匹配</p>
                                             <p style="margin: 0 0 4px 0; padding-left: 12px;">• 使用 <code style="background: #fff; padding: 2px 6px; border-radius: 2px;">*</code> 匹配任意字段名，如：<code style="background: #fff; padding: 2px 6px; border-radius: 2px;">*.password</code></p>
-                                            <p style="margin: 0; padding-left: 12px; color: #909399; font-size: 11px;">示例：<code style="background: #fff; padding: 2px 6px; border-radius: 2px;">*.password</code> 会匹配 <code style="background: #fff; padding: 2px 6px; border-radius: 2px;">user.password</code>、<code style="background: #fff; padding: 2px 6px; border-radius: 2px;">admin.password</code> 等</p>
+                                            <p style="margin: 0; padding-left: 12px; color: #909399; font-size: 11px;">示例：<code style="background: #fff; padding: 2px 6px; border-radius: 2px;">*.password</code> 会匹配 <code style="background: #fff; padding: 2px 6px; border-radius: 2px;">user.password</code>、<code style="background: #fff; padding: 2px 6px; border-radius: 2px;">root.admin.password</code> 等</p>
                                         </div>
 
                                         <div style="margin-bottom: 12px;">
@@ -61,15 +61,9 @@
                                             <p style="margin: 0; padding-left: 12px; color: #909399; font-size: 11px;">示例：<code style="background: #fff; padding: 2px 6px; border-radius: 2px;">company.employees[*].personalInfo.phone</code> 会匹配数组中所有员工的手机号</p>
                                         </div>
 
-                                        <div style="margin-bottom: 12px;">
-                                            <p style="margin: 0 0 6px 0; font-weight: 600; color: #409eff;">4. 正则表达式匹配</p>
-                                            <p style="margin: 0 0 4px 0; padding-left: 12px;">• 使用 <code style="background: #fff; padding: 2px 6px; border-radius: 2px;">/pattern/flags</code> 格式，如：<code style="background: #fff; padding: 2px 6px; border-radius: 2px;">/password|pwd/i</code></p>
-                                            <p style="margin: 0; padding-left: 12px; color: #909399; font-size: 11px;">示例：<code style="background: #fff; padding: 2px 6px; border-radius: 2px;">/password|pwd/i</code> 会匹配包含 password 或 pwd 的字段（不区分大小写）</p>
-                                        </div>
-
                                         <div style="margin-bottom: 0;">
-                                            <p style="margin: 0 0 6px 0; font-weight: 600; color: #409eff;">5. 或运算符（|）</p>
-                                            <p style="margin: 0 0 4px 0; padding-left: 12px;">• 使用 <code style="background: #fff; padding: 2px 6px; border-radius: 2px;">|</code> 连接多个路径，匹配任意一个即可</p>
+                                            <p style="margin: 0 0 6px 0; font-weight: 600; color: #409eff;">4. 或运算符（|）</p>
+                                            <p style="margin: 0 0 4px 0; padding-left: 12px;">• 使用 <code style="background: #fff; padding: 2px 6px; border-radius: 2px;">|</code> 连接多个路径，多个路径的结果去重后取并集</p>
                                             <p style="margin: 0; padding-left: 12px; color: #909399; font-size: 11px;">示例：<code style="background: #fff; padding: 2px 6px; border-radius: 2px;">name | settings[*].name</code> 匹配根层级的 <code style="background: #fff; padding: 2px 6px; border-radius: 2px;">name</code> 和数组中的所有 <code style="background: #fff; padding: 2px 6px; border-radius: 2px;">name</code></p>
                                         </div>
                                     </div>
@@ -861,7 +855,7 @@ const saveCurrentRule = async () => {
         // 询问用户是否要删除旧规则，因为两个内容完全相同的规则没有意义
         try {
             await ElMessageBox.confirm(
-                `已存在相同内容的规则"${existingSameContentRule.name}"。\n\n保存当前规则后，旧规则将被删除（因为两个内容完全相同的规则没有意义）。\n\n是否继续保存并删除旧规则？`,
+                `已存在相同内容的规则"${existingSameContentRule.name}"。\n\n保存当前规则后，旧规则将被删除。\n\n是否继续保存并删除旧规则？`,
                 '检测到重复规则',
                 {
                     confirmButtonText: '保存并删除旧规则',
@@ -1056,7 +1050,7 @@ const handleStrategyChange = (fieldPathConfig: FieldPathConfig, pathIndex: numbe
 // 从JSON对象中提取所有字段路径（已废弃，改用上下文感知提示）
 interface PathSuggestion {
     value: string;
-    type?: string; // 'exact' | 'wildcard' | 'array-wildcard' | 'regex'
+    type?: string; // 'exact' | 'wildcard' | 'array-wildcard'
 }
 
 // 解析路径字符串，支持数组语法（如 settings[*] 或 settings[0]）
@@ -1223,7 +1217,6 @@ const getTypeLabel = (type: string): string => {
         'exact': '精确匹配',
         'array-wildcard': '数组通配符',
         'wildcard': '通配符',
-        'regex': '正则表达式',
         'or': '或运算符'
     };
     return typeMap[type] || type;
@@ -1250,10 +1243,7 @@ const queryFieldPaths = (queryString: string, cb: (suggestions: PathSuggestion[]
         }
         
         // 检查是否包含 | 运算符（或运算符）
-        // 先检查是否是正则表达式（避免正则中的 | 被误判为或运算符）
-        const isRegex = currentPath.startsWith('/') && currentPath.endsWith('/');
-        
-        if (!isRegex && currentPath.includes('|')) {
+        if (currentPath.includes('|')) {
             // 找到最后一个 | 运算符的位置（考虑前后可能有空格）
             // 使用正则表达式匹配最后一个 | 运算符（包括前后空格）
             const orOperatorMatch = currentPath.match(/(.+?)(\s*\|\s*)$/);
@@ -1397,16 +1387,12 @@ const handleFieldPathInput = (value: string, pathIndex?: number) => {
         }
         
         // 检查 | 运算符的数量，最多支持4个（即5个路径）
-        // 先检查是否是正则表达式（避免正则中的 | 被误判为或运算符）
-        const isRegex = value.startsWith('/') && value.endsWith('/');
-        
-        // 如果输入值不包含 | 运算符（且不是正则表达式），且与之前保存的值不匹配
+        // 如果输入值不包含 | 运算符，且与之前保存的值不匹配
         // 说明用户开始输入新的路径，应该清除旧值
         const previousValue = fieldPathBeforeSelect.value.get(pathIndex);
-        if (!isRegex && !value.includes('|')) {
+        if (!value.includes('|')) {
             // 如果之前保存的值包含 | 运算符，说明是多个路径的组合，不应该清除
-            const prevIsRegex = previousValue && previousValue.startsWith('/') && previousValue.endsWith('/');
-            const prevHasOr = previousValue && !prevIsRegex && previousValue.includes('|');
+            const prevHasOr = previousValue && previousValue.includes('|');
             
             if (!prevHasOr) {
                 // 如果之前保存的值以 "."、"]" 或 "|" 结尾，说明用户已经输入了路径前缀
@@ -1427,7 +1413,7 @@ const handleFieldPathInput = (value: string, pathIndex?: number) => {
             }
         }
         
-        if (!isRegex && value.includes('|')) {
+        if (value.includes('|')) {
             // 检查 | 运算符的数量，最多支持4个（即5个路径）
             // 如果以 | 结尾，说明最后一个路径还在输入中，不算作完整的路径
             const orMatches = value.match(/\s*\|\s*/g) || [];
@@ -1509,17 +1495,11 @@ const handleFieldPathInput = (value: string, pathIndex?: number) => {
         // 且当前值不包含 | 运算符，且当前值不以之前保存的值开头
         // 说明这是 autocomplete 在选择时自动更新的值，不应该覆盖保存的值
         if (previousValue && previousValue.includes('|')) {
-            // 先检查是否是正则表达式（避免正则中的 | 被误判为或运算符）
-            const prevIsRegex = previousValue.startsWith('/') && previousValue.endsWith('/');
-            const currIsRegex = value.startsWith('/') && value.endsWith('/');
-            
-            if (!prevIsRegex && !currIsRegex) {
-                // 如果当前值不包含 | 运算符，且当前值不等于之前保存的值，且当前值不以之前保存的值开头
-                // 说明这是 autocomplete 在选择时自动更新的值（比如从 name|na 变成 name），不应该覆盖
-                if (!value.includes('|') && value !== previousValue && !value.startsWith(previousValue)) {
-                    // 不更新 fieldPathBeforeSelect，保持之前保存的值
-                    return;
-                }
+            // 如果当前值不包含 | 运算符，且当前值不等于之前保存的值，且当前值不以之前保存的值开头
+            // 说明这是 autocomplete 在选择时自动更新的值（比如从 name|na 变成 name），不应该覆盖
+            if (!value.includes('|') && value !== previousValue && !value.startsWith(previousValue)) {
+                // 不更新 fieldPathBeforeSelect，保持之前保存的值
+                return;
             }
         }
         
@@ -1572,48 +1552,43 @@ const handleFieldPathInput = (value: string, pathIndex?: number) => {
     // 当输入包含 | 运算符时（可能前后有空格），手动触发查询以确保提示显示
     // 这样可以确保每次输入 | 后都能显示提示，就像输入第一个路径时那样
     if (value && /\s*\|\s*$/.test(value)) {
-        // 先检查是否是正则表达式（避免正则中的 | 被误判为或运算符）
-        const isRegex = value.startsWith('/') && value.endsWith('/');
-        
-        if (!isRegex) {
-            nextTick(() => {
-                // 直接调用 queryFieldPaths 来获取建议
-                queryFieldPaths(value, (suggestions: PathSuggestion[]) => {
-                    // 找到对应的 autocomplete 组件并更新建议列表
-                    if (fieldPathAutocompleteRef.value && pathIndex !== undefined) {
-                        const refs = Array.isArray(fieldPathAutocompleteRef.value) 
-                            ? fieldPathAutocompleteRef.value 
-                            : [fieldPathAutocompleteRef.value];
-                        
-                        const targetInstance = refs[pathIndex];
-                        if (targetInstance) {
-                            // 安全地访问输入元素：检查 $el 是否是 DOM 元素
-                            let inputEl: HTMLInputElement | null = null;
-                            if (targetInstance.$el) {
-                                // 如果 $el 是 DOM 元素，直接使用 querySelector
-                                if (targetInstance.$el instanceof HTMLElement && targetInstance.$el.querySelector) {
-                                    inputEl = targetInstance.$el.querySelector('input');
-                                } else if (targetInstance.$el.querySelector) {
-                                    // 某些情况下 $el 可能是其他类型的元素
-                                    inputEl = targetInstance.$el.querySelector('input');
-                                }
-                            }
-                            
-                            if (inputEl && inputEl.value === value) {
-                                // 更新建议列表并显示
-                                if (targetInstance.suggestions !== undefined) {
-                                    targetInstance.suggestions = suggestions;
-                                    targetInstance.activated = true;
-                                    targetInstance.loading = false;
-                                }
-                                // 确保输入框获得焦点
-                                inputEl.focus();
+        nextTick(() => {
+            // 直接调用 queryFieldPaths 来获取建议
+            queryFieldPaths(value, (suggestions: PathSuggestion[]) => {
+                // 找到对应的 autocomplete 组件并更新建议列表
+                if (fieldPathAutocompleteRef.value && pathIndex !== undefined) {
+                    const refs = Array.isArray(fieldPathAutocompleteRef.value) 
+                        ? fieldPathAutocompleteRef.value 
+                        : [fieldPathAutocompleteRef.value];
+                    
+                    const targetInstance = refs[pathIndex];
+                    if (targetInstance) {
+                        // 安全地访问输入元素：检查 $el 是否是 DOM 元素
+                        let inputEl: HTMLInputElement | null = null;
+                        if (targetInstance.$el) {
+                            // 如果 $el 是 DOM 元素，直接使用 querySelector
+                            if (targetInstance.$el instanceof HTMLElement && targetInstance.$el.querySelector) {
+                                inputEl = targetInstance.$el.querySelector('input');
+                            } else if (targetInstance.$el.querySelector) {
+                                // 某些情况下 $el 可能是其他类型的元素
+                                inputEl = targetInstance.$el.querySelector('input');
                             }
                         }
+                        
+                        if (inputEl && inputEl.value === value) {
+                            // 更新建议列表并显示
+                            if (targetInstance.suggestions !== undefined) {
+                                targetInstance.suggestions = suggestions;
+                                targetInstance.activated = true;
+                                targetInstance.loading = false;
+                            }
+                            // 确保输入框获得焦点
+                            inputEl.focus();
+                        }
                     }
-                });
+                }
             });
-        }
+        });
     }
 };
 
@@ -1654,10 +1629,7 @@ const handleFieldPathSelect = (item: Record<string, any>, pathIndex?: number) =>
     let pathAfterOr = '';
     let orOperator = '';
     
-    // 先检查是否是正则表达式（避免正则中的 | 被误判为或运算符）
-    const isRegex = beforeSelectValue.startsWith('/') && beforeSelectValue.endsWith('/');
-    
-    if (!isRegex && beforeSelectValue.includes('|')) {
+    if (beforeSelectValue.includes('|')) {
         // 使用正则表达式找到最后一个 | 运算符（包括前后空格）
         const lastOrMatch = beforeSelectValue.match(/(.+?)(\s*\|\s*)$/);
         
@@ -1888,23 +1860,11 @@ const isValidFieldPath = (path: string): boolean => {
 };
 
 const parseFieldPath = (path: string): {
-    type: 'exact' | 'wildcard' | 'array-wildcard' | 'regex' | 'or' | 'invalid';
-    pattern: string | RegExp | string[];
+    type: 'exact' | 'wildcard' | 'array-wildcard' | 'or' | 'invalid';
+    pattern: string | string[];
     parts: string[];
 } => {
     const trimmed = path.trim();
-    
-    // 先检查是否是正则表达式（避免正则中的 | 被误判为或运算符）
-    if (trimmed.startsWith('/') && trimmed.endsWith('/')) {
-        const regexStr = trimmed.slice(1, -1);
-        const flags = trimmed.match(/\/([gimsuy]*)$/)?.[1] || '';
-        try {
-            const regex = new RegExp(regexStr, flags);
-            return { type: 'regex', pattern: regex, parts: [] };
-        } catch {
-            // 正则表达式无效，当作普通路径处理
-        }
-    }
     
     // 检查是否包含 | 运算符（或运算符）
     if (trimmed.includes('|')) {
@@ -2100,15 +2060,6 @@ const isFieldMatched = (fieldPath: string[], fieldName: string, fieldPathConfig:
             }
             return false;
         
-        case 'regex':
-            // 正则表达式匹配
-            if (parsed.pattern instanceof RegExp) {
-                const fullPath = joinFieldPath(fieldPath);
-                // 检查字段名和完整路径
-                return parsed.pattern.test(fieldName) || parsed.pattern.test(fullPath);
-            }
-            return false;
-        
         default:
             return false;
     }
@@ -2262,12 +2213,6 @@ const maskObject = (obj: any, rules: MaskingRule[], currentPath: string[] = []):
                             const wildcardPattern = parsed.pattern.replace(/\*/g, '.*');
                             const regex = new RegExp(`^${wildcardPattern}$`);
                             if (regex.test(fullItemPath)) {
-                                matchedConfig = fieldPathConfig;
-                                break;
-                            }
-                        } else if (parsed.type === 'regex' && parsed.pattern instanceof RegExp) {
-                            // 正则表达式匹配
-                            if (parsed.pattern.test(fullItemPath)) {
                                 matchedConfig = fieldPathConfig;
                                 break;
                             }
@@ -2960,28 +2905,4 @@ watch(() => dialogVisible.value, (newVal) => {
     margin-left: 8px;
     white-space: nowrap;
 }
-
-/* 自动补全下拉框样式（全局样式，因为 popper 挂载在 body 上） */
-:deep(.field-path-autocomplete) {
-    max-width: 600px;
-}
-
-:deep(.field-path-autocomplete .el-autocomplete-suggestion__list) {
-    max-height: 300px;
-}
-
-:deep(.field-path-autocomplete .el-autocomplete-suggestion__item) {
-    padding: 8px 12px;
-    line-height: 1.5;
-    background-color: transparent !important;
-}
-
-:deep(.field-path-autocomplete .el-autocomplete-suggestion__item.highlighted) {
-    background-color: #ecf5ff !important;
-}
-
-:deep(.field-path-autocomplete .el-autocomplete-suggestion__item:hover:not(.highlighted)) {
-    background-color: #f5f7fa;
-}
 </style>
-

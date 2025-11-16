@@ -815,17 +815,7 @@ const loadShareIntoEditor = async (row: any) => {
     min-width: 64px;
 }
 
-/* 表头居中、去除空白列视觉问题的细节优化 */
-.my-shares-body :deep(.el-table__header th) {
-    text-align: center;
-}
-.my-shares-body :deep(.el-table__cell) {
-    text-align: center;
-}
-/* 当没有设置固定高度时，避免出现纵向滚动条导致的右侧“gutter”视觉空白 */
-.my-shares-body :deep(.el-table__body-wrapper) {
-    overflow-y: auto;
-}
+
 
 /* URL 片样式（可点击复制） */
 .url-chip {
@@ -856,13 +846,6 @@ const loadShareIntoEditor = async (row: any) => {
     margin-bottom: 0 !important;
 }
 
-.share-dialog-wrapper :deep(.el-dialog__body) {
-    overflow-y: auto;
-    flex: 1;
-    min-height: 0; /* 允许 flex 子元素收缩 */
-    padding-right: 20px; /* 为滚动条留出空间，避免压住内容 */
-}
-
 .form-item {
     margin-bottom: 20px;
 }
@@ -890,11 +873,6 @@ const loadShareIntoEditor = async (row: any) => {
     max-height: 200px;
     overflow-y: auto !important;
     resize: vertical;
-}
-
-/* 统一文本框的滚动条样式 */
-.share-dialog :deep(.el-textarea__inner)::-webkit-scrollbar {
-    width: 8px; /* 统一滚动条宽度为8px */
 }
 
 .share-dialog :deep(.el-textarea__inner)::-webkit-scrollbar-track {
