@@ -224,6 +224,7 @@
         <el-dialog
             v-model="showConfigDialog"
             title="保存配置"
+            width="600px"
             class="config-save-dialog-wrapper"
             :close-on-click-modal="false"
             :align-center="false"
@@ -277,6 +278,7 @@
         <el-dialog
             v-model="showLoadConfigDialog"
             title="选择要加载的配置"
+            width="600px"
             class="config-load-dialog-wrapper"
             :close-on-click-modal="false"
             :align-center="false"
@@ -321,6 +323,7 @@
         <el-dialog
             v-model="showDeleteConfigDialog"
             title="选择要删除的配置"
+            width="600px"
             class="config-delete-dialog-wrapper"
             :close-on-click-modal="false"
             :align-center="false"
@@ -753,7 +756,6 @@ const resetForm = () => {
     fetchJsonMethod.value = 'GET';
     fetchJsonBody.value = '';
     fetchJsonHeaders.value = [
-        { key: 'Host', value: DEFAULT_HOST },
         { key: 'User-Agent', value: DEFAULT_USER_AGENT },
         { key: 'Accept', value: 'application/json' }
     ];
@@ -1633,26 +1635,12 @@ onUnmounted(() => {
     margin-bottom: 0 !important;
 }
 
-:deep(.fetch-json-main-dialog .el-dialog__body) {
-    overflow-y: auto;
-    flex: 1;
-    min-height: 0; /* 允许 flex 子元素收缩 */
-    padding-right: 20px; /* 为滚动条留出空间，避免压住内容 */
-}
-
 :deep(.config-save-dialog-wrapper .el-dialog) {
     max-height: calc(100vh - 20vh);
     display: flex;
     flex-direction: column;
     margin-top: 0 !important;
     margin-bottom: 0 !important;
-}
-
-:deep(.config-save-dialog-wrapper .el-dialog__body) {
-    overflow-y: auto;
-    flex: 1;
-    min-height: 0;
-    padding-right: 20px;
 }
 
 :deep(.config-load-dialog-wrapper .el-dialog) {
@@ -1663,26 +1651,12 @@ onUnmounted(() => {
     margin-bottom: 0 !important;
 }
 
-:deep(.config-load-dialog-wrapper .el-dialog__body) {
-    overflow-y: auto;
-    flex: 1;
-    min-height: 0;
-    padding-right: 20px;
-}
-
 :deep(.config-delete-dialog-wrapper .el-dialog) {
     max-height: calc(100vh - 20vh);
     display: flex;
     flex-direction: column;
     margin-top: 0 !important;
     margin-bottom: 0 !important;
-}
-
-:deep(.config-delete-dialog-wrapper .el-dialog__body) {
-    overflow-y: auto;
-    flex: 1;
-    min-height: 0;
-    padding-right: 20px;
 }
 
 /* 响应式设计 */

@@ -309,12 +309,6 @@ function checkRateLimit(fingerprint: string): boolean {
   return true;
 }
 
-// 计算总存储大小（从索引）
-async function getTotalSize(): Promise<number> {
-  const index = await readIndex();
-  return index.totalSize;
-}
-
 // 统计指纹的分享数量
 async function countSharesByFingerprint(fingerprint: string): Promise<number> {
   const index = await readIndex();

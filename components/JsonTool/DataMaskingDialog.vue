@@ -153,7 +153,7 @@
                                                 ref="fieldPathAutocompleteRef"
                                                 v-model="fieldPathConfig.fieldPath"
                                                 :fetch-suggestions="queryFieldPaths"
-                                                :placeholder="`例如: password, user.email, users[*].phone, /password|pwd/i`"
+                                                :placeholder="`例如: password, *.password, user.email, users[*].phone`"
                                                 clearable
                                                 maxlength="300"
                                                 show-word-limit
@@ -1054,8 +1054,8 @@ interface PathSuggestion {
 }
 
 // 解析路径字符串，支持数组语法（如 settings[*] 或 settings[0]）
-const parsePathToParts = (path: string): Array<{ key: string; isArray?: boolean }> => {
-    const parts: Array<{ key: string; isArray?: boolean }> = [];
+const parsePathToParts = (path: string): Array<{ key: string; isArray?: boolean; arrayIndex?: number | string }> => {
+    const parts: Array<{ key: string; isArray?: boolean; arrayIndex?: number | string }> = [];
     let current = '';
     let inBrackets = false;
     let bracketContent = '';
@@ -1076,10 +1076,14 @@ const parsePathToParts = (path: string): Array<{ key: string; isArray?: boolean 
                     // 数组通配符或索引
                     if (parts.length > 0) {
                         parts[parts.length - 1].isArray = true;
+                        parts[parts.length - 1].arrayIndex = bracketContent === '*' ? '*' : parseInt(bracketContent, 10);
                     } else if (current) {
                         // 如果还没有添加到parts，先添加key，然后标记为数组
-                        parts.push({ key: current, isArray: true });
+                        parts.push({ key: current, isArray: true, arrayIndex: bracketContent === '*' ? '*' : parseInt(bracketContent, 10) });
                         current = '';
+                    } else {
+                        // 根级别的数组访问，如 [1] 或 [*]
+                        parts.push({ key: '', isArray: true, arrayIndex: bracketContent === '*' ? '*' : parseInt(bracketContent, 10) });
                     }
                 }
                 inBrackets = false;
@@ -1105,12 +1109,27 @@ const parsePathToParts = (path: string): Array<{ key: string; isArray?: boolean 
 };
 
 // 根据路径获取JSON对象中的值
-const getValueByPathParts = (obj: any, parts: Array<{ key: string; isArray?: boolean }>): any => {
+const getValueByPathParts = (obj: any, parts: Array<{ key: string; isArray?: boolean; arrayIndex?: number | string }>): any => {
     let current = obj;
     
     for (const part of parts) {
         if (current === null || current === undefined) {
             return null;
+        }
+        
+        // 处理根级别的数组访问（key为空，isArray为true）
+        if (part.isArray && !part.key && Array.isArray(current)) {
+            if (part.arrayIndex === '*') {
+                // 通配符，返回第一个元素用于获取下一级key
+                current = current.length > 0 ? current[0] : null;
+            } else if (typeof part.arrayIndex === 'number') {
+                // 具体索引
+                current = current[part.arrayIndex] || null;
+            } else {
+                // 默认返回第一个元素
+                current = current.length > 0 ? current[0] : null;
+            }
+            continue;
         }
         
         if (part.key) {
@@ -1122,8 +1141,17 @@ const getValueByPathParts = (obj: any, parts: Array<{ key: string; isArray?: boo
         }
         
         if (part.isArray && Array.isArray(current)) {
-            // 如果是数组，返回第一个元素用于获取下一级key
-            current = current.length > 0 ? current[0] : null;
+            // 如果是数组，根据arrayIndex返回对应元素
+            if (part.arrayIndex === '*') {
+                // 通配符，返回第一个元素用于获取下一级key
+                current = current.length > 0 ? current[0] : null;
+            } else if (typeof part.arrayIndex === 'number') {
+                // 具体索引
+                current = current[part.arrayIndex] || null;
+            } else {
+                // 默认返回第一个元素
+                current = current.length > 0 ? current[0] : null;
+            }
         }
     }
     
@@ -1136,6 +1164,12 @@ const getNextLevelKeys = (jsonObj: any, currentPath: string): PathSuggestion[] =
     
     // 如果输入为空，返回一级key
     if (!currentPath || !currentPath.trim()) {
+        // 如果数据本身是数组，直接提示 [*]
+        if (Array.isArray(jsonObj)) {
+            suggestions.push({ value: '[*]', type: 'array-wildcard' });
+            return suggestions;
+        }
+        
         if (jsonObj && typeof jsonObj === 'object' && !Array.isArray(jsonObj)) {
             for (const [key, value] of Object.entries(jsonObj)) {
                 // 如果值是数组，添加两个建议：带[*]和不带[*]的
@@ -1171,16 +1205,18 @@ const getNextLevelKeys = (jsonObj: any, currentPath: string): PathSuggestion[] =
         return [];
     }
     
-    // 如果目标是数组，且路径以 "." 结尾（即用户输入了 "数组名."），不应该提示数组元素的key
-    // 因为数组后面不能直接跟 "."，应该使用 "数组名[*]" 或 "数组名[0]" 这样的形式
+    // 检查路径是否以数组访问结尾（如 [1] 或 [*]）
+    const endsWithArrayAccess = /\[(\*|\d+)\]$/.test(pathToParse);
+    
+    // 如果目标是数组，且路径以 "." 结尾
     if (Array.isArray(targetValue)) {
-        // 如果路径以 "." 结尾，说明用户输入了 "数组名."，这是无效的语法
+        // 如果路径以 "." 结尾，且前面不是数组访问（如 "数组名."），这是无效的语法
         // 不应该提示数组元素的key，应该返回空数组
-        if (trimmedPath.endsWith('.')) {
+        if (trimmedPath.endsWith('.') && !endsWithArrayAccess) {
             return [];
         }
         
-        // 如果路径不以 "." 结尾，说明路径可能是 "数组名[*]" 或 "数组名[0]"
+        // 如果路径以数组访问结尾（如 "数组名[*]" 或 "[*]"），或者路径以 "." 结尾且前面是数组访问（如 "[*]." 或 "[1]."）
         // 这种情况下，应该返回数组元素的key
         if (targetValue.length > 0) {
             const firstElement = targetValue[0];
@@ -1296,6 +1332,20 @@ const queryFieldPaths = (queryString: string, cb: (suggestions: PathSuggestion[]
             // 如果数组，提示两个：带[*]和不带[*]的
             const allFirstLevelKeys = getNextLevelKeys(jsonObj, '');
             const currentInput = currentPath.toLowerCase();
+            
+            // 检查当前输入是否完全匹配某个一级key（不区分大小写）
+            // 如果完全匹配，说明用户已经输入了完整的字段名，不应该显示提示
+            const exactMatch = allFirstLevelKeys.some(item => 
+                item.value.toLowerCase() === currentInput
+            );
+            
+            if (exactMatch) {
+                // 完全匹配，不显示提示
+                cb([]);
+                return;
+            }
+            
+            // 不完全匹配，返回过滤后的建议（用于部分输入时的过滤）
             const filtered = allFirstLevelKeys.filter(item => 
                 item.value.toLowerCase().startsWith(currentInput)
             );
@@ -1681,7 +1731,6 @@ const handleFieldPathSelect = (item: Record<string, any>, pathIndex?: number) =>
     // 计算拼接后的路径（只处理 | 后的部分）
     let newPathAfterOr: string;
     
-    // 如果 | 后的值已经等于选中的值，直接使用（避免重复）
     if (pathAfterOr === item.value) {
         newPathAfterOr = item.value;
     }
@@ -2435,13 +2484,6 @@ watch(() => dialogVisible.value, (newVal) => {
     margin-bottom: 0 !important;
 }
 
-.data-masking-dialog-wrapper :deep(.el-dialog__body) {
-    overflow-y: auto;
-    flex: 1;
-    min-height: 0;
-    padding-right: 20px;
-}
-
 .data-masking-dialog {
     padding: 0;
 }
@@ -2693,13 +2735,6 @@ watch(() => dialogVisible.value, (newVal) => {
     flex-direction: column;
     margin-top: 0 !important;
     margin-bottom: 0 !important;
-}
-
-.data-masking-dialog-wrapper :deep(.el-dialog__wrapper) .el-dialog__body {
-    overflow-y: auto;
-    flex: 1;
-    min-height: 0;
-    padding-right: 20px;
 }
 
 .select-rule-dialog {
