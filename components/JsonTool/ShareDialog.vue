@@ -40,7 +40,7 @@
                                     :data="myShares"
                                     size="small"
                                     border
-                                    style="width: 100%"
+                                    :style="{ width: '100%' }"
                                     empty-text="暂无分享"
                                     :header-cell-style="{ textAlign: 'center' }"
                                     :cell-style="{ textAlign: 'center' }"
@@ -457,7 +457,7 @@ const createShare = async () => {
     try {
         JSON.parse(props.jsonData);
     } catch (error) {
-        errorMessage.value = 'JSON格式不正确，请先格式化JSON数据';
+        errorMessage.value = 'JSON 数据格式不正确，请先格式化 JSON 数据';
         return;
     }
 

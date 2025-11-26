@@ -2413,7 +2413,7 @@ const maskObject = (obj: any, rules: MaskingRule[], currentPath: string[] = []):
 // 确认应用
 const confirmApply = () => {
     if (!props.jsonData || !props.jsonData.trim()) {
-        ElMessage.warning('JSON数据不能为空');
+        ElMessage.warning('JSON 数据不能为空');
         return;
     }
     
@@ -2432,7 +2432,7 @@ const confirmApply = () => {
         try {
             jsonObj = JSON.parse(props.jsonData);
         } catch (error) {
-            ElMessage.error('JSON格式不正确，请先格式化JSON数据');
+            ElMessage.error('JSON 数据格式不正确，请先格式化 JSON 数据');
             applying.value = false;
             return;
         }

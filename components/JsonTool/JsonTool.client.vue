@@ -17,17 +17,11 @@
             <div class="tool-bar-wrapper">
                 <!-- 左侧渐变遮罩和滚动按钮 -->
                 <div v-if="canScrollLeft" class="scroll-indicator scroll-indicator-left">
-                    <el-button 
-                        type="primary" 
-                        circle 
-                        size="small"
-                        class="scroll-btn scroll-btn-left"
-                        @click="scrollToolBar('left')"
-                        :icon="ArrowLeft"
-                    />
+                    <el-button type="primary" circle size="small" class="scroll-btn scroll-btn-left"
+                        @click="scrollToolBar('left')" :icon="ArrowLeft" />
                     <div class="gradient-mask gradient-mask-left"></div>
                 </div>
-                
+
                 <!-- 工具栏容器 -->
                 <div class="tool-bar" ref="toolBarRef" @scroll="handleToolBarScroll">
                     <!-- 设置按钮 -->
@@ -37,65 +31,65 @@
                         </el-icon>
                     </el-button>
 
-                <el-button-group>
-                    <el-button v-if="buttonVisibility.fetchJson" type="primary" @click="openFetchJsonDialog">获取JSON</el-button>
-                    <el-button v-if="buttonVisibility.format" type="primary" @click="formatJSON">格式化</el-button>
-                    <el-button v-if="buttonVisibility.compress" type="primary" @click="compressJSON">压缩</el-button>
-                    <el-button v-if="buttonVisibility.escape" type="primary" @click="handleEscapeCommand('escape')">转义</el-button>
-                    <el-button v-if="buttonVisibility.unescape" type="primary" @click="handleEscapeCommand('unescape')">去除转义</el-button>
-                    <el-button v-if="buttonVisibility.compressEscape" type="primary" @click="handleEscapeCommand('compress-escape')">压缩并转义</el-button>
-                    <el-button v-if="buttonVisibility.masking" type="primary" @click="openDataMaskingDialog">脱敏</el-button>
-                    <el-button v-if="buttonVisibility.sort" type="primary" @click="handleAdvancedCommand('sort')">排序</el-button>
-                    <el-button v-if="buttonVisibility.share" type="primary" @click="openShareDialog">分享</el-button>
-                </el-button-group>
+                    <el-button-group>
+                        <el-button v-if="buttonVisibility.fetchJson" type="primary"
+                            @click="openFetchJsonDialog">获取JSON</el-button>
+                        <el-button v-if="buttonVisibility.format" type="primary" @click="formatJSON">格式化</el-button>
+                        <el-button v-if="buttonVisibility.compress" type="primary" @click="compressJSON">压缩</el-button>
+                        <el-button v-if="buttonVisibility.escape" type="primary"
+                            @click="handleEscapeCommand('escape')">转义</el-button>
+                        <el-button v-if="buttonVisibility.unescape" type="primary"
+                            @click="handleEscapeCommand('unescape')">去除转义</el-button>
+                        <el-button v-if="buttonVisibility.compressEscape" type="primary"
+                            @click="handleEscapeCommand('compress-escape')">压缩并转义</el-button>
+                        <el-button v-if="buttonVisibility.masking" type="primary"
+                            @click="openDataMaskingDialog">脱敏</el-button>
+                        <el-button v-if="buttonVisibility.sort" type="primary"
+                            @click="handleAdvancedCommand('sort')">排序</el-button>
+                        <el-button v-if="buttonVisibility.share" type="primary" @click="openShareDialog">分享</el-button>
+                    </el-button-group>
 
-                <!-- 数据转换下拉按钮（紧挨着功能按钮组） -->
-                <el-dropdown v-if="buttonVisibility.dataConvert" trigger="click"
-                    @command="handleConvert">
-                    <el-button type="primary">
-                        数据转换
-                        <el-icon class="el-icon--right">
-                            <ArrowDown />
-                        </el-icon>
+                    <!-- 数据转换下拉按钮（紧挨着功能按钮组） -->
+                    <el-dropdown v-if="buttonVisibility.dataConvert" trigger="click" @command="handleConvert">
+                        <el-button type="primary">
+                            数据转换
+                            <el-icon class="el-icon--right">
+                                <ArrowDown />
+                            </el-icon>
+                        </el-button>
+                        <template #dropdown>
+                            <el-dropdown-menu>
+                                <el-dropdown-item command="yaml">JSON 转 YAML</el-dropdown-item>
+                                <el-dropdown-item command="toml">JSON 转 TOML</el-dropdown-item>
+                                <el-dropdown-item command="xml">JSON 转 XML</el-dropdown-item>
+                                <el-dropdown-item command="go">JSON 转 Go 结构体</el-dropdown-item>
+                                <el-dropdown-item command="cookie">Cookie 转 JSON</el-dropdown-item>
+                            </el-dropdown-menu>
+                        </template>
+                    </el-dropdown>
+
+                    <!-- 层级控制 -->
+                    <div v-if="buttonVisibility.collapse" class="collapse-control">
+                        <el-select v-model="selectedLevel" placeholder="层级" class="level-select"
+                            :disabled="maxLevel === 0">
+                            <el-option v-if="maxLevel === 0" label="第0层" :value="0" :disabled="true" />
+                            <el-option v-for="n in maxLevel" :key="n" :label="`第${n}层`" :value="n" />
+                        </el-select>
+                        <el-button type="success" @click="handleLevelAction" :disabled="maxLevel === 0">收缩</el-button>
+                    </div>
+
+                    <!-- 界面控制：全屏 -->
+                    <el-button v-if="buttonVisibility.fullscreen" type="warning" class="fullscreen-btn"
+                        @click="toggleFullscreen">
+                        {{ isFullscreen ? '退出' : '全屏' }}
                     </el-button>
-                    <template #dropdown>
-                        <el-dropdown-menu>
-                            <el-dropdown-item command="yaml">JSON 转 YAML</el-dropdown-item>
-                            <el-dropdown-item command="toml">JSON 转 TOML</el-dropdown-item>
-                            <el-dropdown-item command="xml">JSON 转 XML</el-dropdown-item>
-                            <el-dropdown-item command="go">JSON 转 Go 结构体</el-dropdown-item>
-                            <el-dropdown-item command="cookie">Cookie 转 JSON</el-dropdown-item>
-                        </el-dropdown-menu>
-                    </template>
-                </el-dropdown>
-
-                <!-- 层级控制 -->
-                <div v-if="buttonVisibility.collapse" class="collapse-control">
-                    <el-select v-model="selectedLevel" placeholder="层级" class="level-select" :disabled="maxLevel === 0">
-                        <el-option v-if="maxLevel === 0" label="第0层" :value="0" :disabled="true" />
-                        <el-option v-for="n in maxLevel" :key="n" :label="`第${n}层`" :value="n" />
-                    </el-select>
-                    <el-button type="success" @click="handleLevelAction" :disabled="maxLevel === 0">收缩</el-button>
                 </div>
 
-                <!-- 界面控制：全屏 -->
-                <el-button v-if="buttonVisibility.fullscreen" type="warning"
-                    class="fullscreen-btn" @click="toggleFullscreen">
-                    {{ isFullscreen ? '退出' : '全屏' }}
-                </el-button>
-                </div>
-                
                 <!-- 右侧渐变遮罩和滚动按钮 -->
                 <div v-if="canScrollRight" class="scroll-indicator scroll-indicator-right">
                     <div class="gradient-mask gradient-mask-right"></div>
-                    <el-button 
-                        type="primary" 
-                        circle 
-                        size="small"
-                        class="scroll-btn scroll-btn-right"
-                        @click="scrollToolBar('right')"
-                        :icon="ArrowRight"
-                    />
+                    <el-button type="primary" circle size="small" class="scroll-btn scroll-btn-right"
+                        @click="scrollToolBar('right')" :icon="ArrowRight" />
                 </div>
             </div>
 
@@ -190,7 +184,8 @@
         </div>
 
         <!-- 获取JSON数据对话框 -->
-        <FetchJsonDialog v-model="fetchJsonDialogVisible" :indent-size="2" :input-editor="inputEditor" />
+        <FetchJsonDialog v-model="fetchJsonDialogVisible" :indent-size="2" :input-editor="inputEditor"
+            @json-loaded="handleFetchJsonLoaded" />
 
         <!-- 分享对话框 -->
         <ShareDialog v-model="shareDialogVisible" :json-data="getInputEditorValue()"
@@ -272,6 +267,19 @@
                                 <div class="settings-item">
                                     <el-switch v-model="wordWrap" active-text="不换行" inactive-text="换行" size="default"
                                         @change="updateWordWrap" />
+                                </div>
+                            </div>
+
+                            <!-- 分隔线：缩进指南设置和默认全屏设置之间 -->
+                            <el-divider class="settings-subsection-divider" />
+
+                            <!-- 默认全屏设置 -->
+                            <div class="settings-subsection">
+                                <div class="settings-subsection-title">默认全屏</div>
+                                <div class="settings-item">
+                                    <el-switch v-model="startInFullscreen" :inactive-value="true" :active-value="false"
+                                        inactive-text="全屏" active-text="非全屏" size="default"
+                                        @change="handleInitialFullscreenChange" />
                                 </div>
                             </div>
 
@@ -419,6 +427,8 @@ const defaultSettings = {
     fontSize: 14,
     // 缩进指南设置
     showIndentGuide: true,
+    // 默认进入页面时是否全屏
+    startInFullscreen: false,
     // 格式化设置
     indentSize: 2,
     encodingMode: 0,
@@ -463,6 +473,7 @@ const saveSettings = () => {
             wordWrap: wordWrap.value,
             fontSize: fontSize.value,
             showIndentGuide: showIndentGuide.value,
+            startInFullscreen: startInFullscreen.value,
             indentSize: indentSize.value,
             encodingMode: encodingMode.value,
             arrayNewLine: arrayNewLine.value,
@@ -492,7 +503,8 @@ const wordWrap = ref(savedSettings.wordWrap); // 字符串换行设置
 const fontSize = ref(savedSettings.fontSize || 14); // 字体大小设置
 const showIndentGuide = ref(savedSettings.showIndentGuide); // 添加缩进指南状态
 const arrayNewLine = ref(savedSettings.arrayNewLine); // 添加数组换行控制开关
-const isFullscreen = ref(false); // 添加全屏状态控制（不持久化，每次刷新恢复默认）
+const startInFullscreen = ref(savedSettings.startInFullscreen ?? false); // 控制是否默认全屏
+const isFullscreen = ref(startInFullscreen.value); // 全屏状态控制，初始化遵循设置
 const isResizing = ref(false); // 添加是否正在调整宽度控制
 const leftPanelWidth = ref(50); // 添加面板宽度控制（实时值，用于布局）
 const stableLeftPanelWidth = ref(50); // 稳定宽度值，用于计算按钮显示状态（防抖更新）
@@ -1053,7 +1065,7 @@ const getEditorOptions = (size: number, isReadOnly: boolean = false, language: s
     minimap: { enabled: false }, // 禁用右侧的代码概览图
     lineNumbers: 'on' as const, // 启用行号
     roundedSelection: true, // 启用圆角选择
-    renderIndentGuides: true, // 启用缩进指南线
+    renderIndentGuides: showIndentGuide.value, // 根据设置显示缩进指南线
     renderLineHighlight: 'gutter' as const, // 启用所有行高亮
     lineNumbersMinChars: 1, // 设置行号最小字符数为1
     renderWhitespace: 'none' as const, // 禁用空白字符显示
@@ -1096,9 +1108,9 @@ const getEditorOptions = (size: number, isReadOnly: boolean = false, language: s
     useTabStops: false, // 禁用TabStop
     maxTokenizationLineLength: 100000,
     guides: {
-        indentation: true, // 启用缩进引导线
-        bracketPairs: true, // 启用括号配对
-        highlightActiveIndentation: true // 高亮显示当前缩进
+        indentation: showIndentGuide.value, // 根据设置显示缩进引导线
+        bracketPairs: showIndentGuide.value, // 根据设置显示括号配对引导线
+        highlightActiveIndentation: showIndentGuide.value // 根据设置显示当前缩进高亮
     },
 
     // 添加可访问性支持配置    
@@ -2187,6 +2199,7 @@ watch(
         wordWrap.value,
         fontSize.value,
         showIndentGuide.value,
+        startInFullscreen.value,
         indentSize.value,
         encodingMode.value,
         arrayNewLine.value,
@@ -2420,7 +2433,7 @@ const checkToolBarScroll = () => {
             canScrollRight.value = false;
             return;
         }
-        
+
         const { scrollLeft, scrollWidth, clientWidth } = toolBarRef.value;
         canScrollLeft.value = scrollLeft > 1; // 大于1是为了处理浮点数精度问题
         canScrollRight.value = scrollLeft < scrollWidth - clientWidth - 1; // 减1是为了处理浮点数精度问题
@@ -2435,13 +2448,13 @@ const handleToolBarScroll = () => {
 // 滚动工具栏
 const scrollToolBar = (direction: 'left' | 'right') => {
     if (!toolBarRef.value) return;
-    
+
     const scrollAmount = 200; // 每次滚动200px
     const currentScroll = toolBarRef.value.scrollLeft;
-    const targetScroll = direction === 'left' 
-        ? currentScroll - scrollAmount 
+    const targetScroll = direction === 'left'
+        ? currentScroll - scrollAmount
         : currentScroll + scrollAmount;
-    
+
     toolBarRef.value.scrollTo({
         left: targetScroll,
         behavior: 'smooth'
@@ -2483,6 +2496,8 @@ const setupResizeObservers = () => {
 onMounted(async () => {
     // 确保在客户端环境下运行
     if (typeof window === 'undefined') return;
+
+    window.addEventListener('keydown', handleEscapeKey);
 
     // 初始化基础环境
     initializeMessageStyles();
@@ -2537,7 +2552,7 @@ onMounted(async () => {
                 checkToolBarScroll();
             });
             resizeObserver.observe(toolBarRef.value);
-            
+
             // 监听窗口resize事件
             window.addEventListener('resize', checkToolBarScroll);
         }
@@ -2555,6 +2570,7 @@ onBeforeUnmount(() => {
     // 移除resize事件监听器
     window.removeEventListener('resize', debouncedResize);
     window.removeEventListener('resize', checkToolBarScroll);
+    window.removeEventListener('keydown', handleEscapeKey);
 
     // 清理消息提示样式元素
     if (messageStyleElement && messageStyleElement.parentNode) {
@@ -4787,7 +4803,7 @@ const openDataMaskingDialog = () => {
 
     const jsonData = inputEditor.getValue();
     if (!jsonData || !jsonData.trim()) {
-        showWarning('请先输入JSON数据');
+        showError('请先输入 JSON 数据');
         return;
     }
 
@@ -4795,7 +4811,7 @@ const openDataMaskingDialog = () => {
     try {
         JSON.parse(jsonData);
     } catch (error) {
-        showError('JSON格式不正确，请先格式化JSON数据');
+        showError('JSON 数据格式不正确，请先格式化 JSON 数据');
         return;
     }
 
@@ -4854,6 +4870,17 @@ const handleDataMaskingApply = (maskedJson: string) => {
     } catch (error: any) {
         showError('应用脱敏结果失败: ' + (error.message || '未知错误'));
     }
+};
+
+// 获取 JSON 数据后清空预览区域
+const handleFetchJsonLoaded = () => {
+    if (outputEditor) {
+        outputEditor.setValue('');
+        updateLineNumberWidth(outputEditor);
+        updateEditorHeight(outputEditor);
+    }
+    outputType.value = 'json';
+    outputEditorStatus.value = '';
 };
 
 // 获取输入编辑器内容
@@ -5995,6 +6022,24 @@ const toggleFullscreen = () => {
     isFullscreen.value = !isFullscreen.value
 };
 
+// 处理默认全屏设置切换，同时同步当前全屏状态
+const handleInitialFullscreenChange = (value: boolean | string | number) => {
+    const normalizedValue = value === true || value === 'true' || value === 1;
+    startInFullscreen.value = normalizedValue;
+    if (normalizedValue) {
+        isFullscreen.value = true;
+    } else if (isFullscreen.value) {
+        isFullscreen.value = false;
+    }
+};
+
+// 监听 ESC 键退出全屏
+const handleEscapeKey = (event: KeyboardEvent) => {
+    if (event.key === 'Escape' && isFullscreen.value) {
+        isFullscreen.value = false;
+    }
+};
+
 // 拖动时也要更新预览区域布局，让滚动条紧贴右边界，但需要恢复滚动内容位置
 const updateEditorLayouts = (updateOutputEditor: boolean = true, forceWidth?: { inputWidth?: number; outputWidth?: number }) => {
     if (inputEditor) {
@@ -6421,8 +6466,10 @@ const transferToInput = (e: MouseEvent) => {
     position: relative;
     flex: 1;
     scroll-behavior: smooth;
-    -webkit-overflow-scrolling: touch; /* iOS 平滑滚动 */
-    scrollbar-width: thin; /* Firefox 细滚动条 */
+    -webkit-overflow-scrolling: touch;
+    /* iOS 平滑滚动 */
+    scrollbar-width: thin;
+    /* Firefox 细滚动条 */
 }
 
 /* 工具栏滚动条样式优化 */

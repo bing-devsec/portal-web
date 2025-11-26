@@ -40,7 +40,7 @@
                         </div>
                     </div>
                     <div class="form-item">
-                        <label class="form-label">请求URL</label>
+                        <label class="form-label">请求URL <span style="color: #f56c6c;">*</span></label>
                         <el-input
                             v-model="fetchJsonUrl"
                             placeholder="请输入URL，例如: https://api.example.com/data.json"
@@ -52,7 +52,7 @@
                     </div>
 
                     <div class="form-item">
-                        <label class="form-label">请求方法</label>
+                        <label class="form-label">请求方法 <span style="color: #f56c6c;">*</span></label>
                         <el-select v-model="fetchJsonMethod" style="width: 100%">
                             <el-option label="GET" value="GET" />
                             <el-option label="POST" value="POST" />
@@ -63,7 +63,7 @@
                     </div>
 
                     <div class="form-item" v-if="fetchJsonMethod !== 'GET'">
-                        <label class="form-label">请求体</label>
+                        <label class="form-label">请求体（可选）</label>
                         <el-input
                             v-model="fetchJsonBody"
                             type="textarea"
@@ -82,7 +82,7 @@
 
                     <div class="form-item">
                         <div class="form-label-row">
-                            <label class="form-label">请求头</label>
+                            <label class="form-label">请求头（可选）</label>
                             <el-button size="small" type="primary" @click="addHeader">添加</el-button>
                         </div>
                         <div v-if="showEmptyHeaderWarning && hasEmptyHeader && fetchJsonHeaders.length > 0" style="color: #f56c6c; font-size: 12px; margin-top: 5px; margin-bottom: 5px;">
@@ -400,6 +400,7 @@ const props = defineProps<Props>();
 // Emits
 const emit = defineEmits<{
     'update:modelValue': [value: boolean];
+    'jsonLoaded': [jsonString: string];
 }>();
 
 // 安全限制常量
@@ -1589,6 +1590,7 @@ const fetchJsonData = async () => {
             const jsonString = JSON.stringify(response.data, null, props.indentSize);
             if (props.inputEditor) {
                 props.inputEditor.setValue(jsonString);
+                emit('jsonLoaded', jsonString);
                 dialogVisible.value = false;
             }
         } else {
