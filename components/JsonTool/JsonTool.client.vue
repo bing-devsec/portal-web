@@ -275,7 +275,7 @@
 
                             <!-- 默认全屏设置 -->
                             <div class="settings-subsection">
-                                <div class="settings-subsection-title">默认全屏</div>
+                                <div class="settings-subsection-title">默认全屏设置</div>
                                 <div class="settings-item">
                                     <el-switch v-model="startInFullscreen" :inactive-value="true" :active-value="false"
                                         inactive-text="全屏" active-text="非全屏" size="default"

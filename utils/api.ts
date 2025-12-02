@@ -191,7 +191,11 @@ export function useApiData<T>(url: string, options: any = {}) {
 				data: null as unknown as T
 			}),
 			// 如果设置了server: false，则禁用服务器端请求
-			server: options.server !== false
+			server: options.server !== false,
+			// 支持 lazy 选项
+			lazy: options.lazy ?? false,
+			// 支持 getCachedData 来保留缓存（用于跨页面共享数据）
+			getCachedData: options.getCachedData
 		}
 	);
 

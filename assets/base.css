@@ -1,4 +1,9 @@
 @charset "utf-8";
+
+/* ===========================
+   全局 Reset & 基础排版
+   =========================== */
+
 * {
     word-wrap: break-word
 }
@@ -36,6 +41,11 @@ ol {
     list-style-type: none
 }
 
+
+/* ===========================
+   页面背景与基础字体设置
+   =========================== */
+
 body {
     width: 100vw;
     background: url(./img/background.png) repeat 0 0
@@ -70,6 +80,9 @@ textarea {
     -moz-osx-font-smoothing: grayscale
 }
 
+
+/* 小屏字体与滚动条优化 */
+
 @media(max-width :992px) {
     html {
         overflow-y: auto
@@ -85,10 +98,16 @@ textarea {
     }
 }
 
+
+/* 基础行高与定位 */
+
 body {
     line-height: 1.6;
     position: relative
 }
+
+
+/* 链接与图片基础样式 */
 
 a {
     text-decoration: none;
@@ -127,6 +146,11 @@ nav {
     padding: 0
 }
 
+
+/* ===========================
+   布局：容器与栅格系统
+   =========================== */
+
 .container {
     margin-right: auto;
     margin-left: auto
@@ -137,6 +161,9 @@ nav {
     display: block;
     clear: both
 }
+
+
+/* 中等以上屏幕：容器宽度 */
 
 @media(min-width :992px) {
     .container {
@@ -155,6 +182,9 @@ nav {
         width: 1270px
     }
 }
+
+
+/* 栅格系统：列基础样式 */
 
 .col-1,
 .col-2,
@@ -227,6 +257,9 @@ nav {
     transition: all .3s ease-in
 }
 
+
+/* 中等屏幕及以上：栅格宽度定义（.col-sm-*) */
+
 @media(min-width:992px) {
     .col-sm-1,
     .col-sm-10,
@@ -288,10 +321,6 @@ nav {
     .col-sm-3 {
         padding-left: 4px;
         padding-right: 4px
-    }
-    .container {
-        padding-right: 8px;
-        padding-left: 8px
     }
     .col-sm-10 {
         font-size: 14px !important
@@ -373,6 +402,9 @@ nav {
     }
 }
 
+
+/* 显隐控制 */
+
 .visible-xs {
     display: none !important
 }
@@ -385,6 +417,11 @@ nav {
         display: none !important
     }
 }
+
+
+/* ===========================
+   文本排版：标题、段落与强调
+   =========================== */
 
 h1,
 h2,
@@ -424,6 +461,9 @@ strong {
     font-weight: bold
 }
 
+
+/* 文本工具类 */
+
 .text-c {
     text-align: center
 }
@@ -456,6 +496,9 @@ strong {
     border-radius: 4px
 }
 
+
+/* 通用外观工具类 */
+
 .box-shadow {
     -webkit-box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
     box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1)
@@ -468,6 +511,11 @@ strong {
 a {
     color: #222
 }
+
+
+/* ===========================
+   导航栏与菜单
+   =========================== */
 
 .navbar {
     position: relative;
@@ -521,6 +569,9 @@ a {
     padding-right: 5px
 }
 
+
+/* 导航栏小屏适配 */
+
 @media(max-width:992px) {
     .navbar-wrapper {
         height: 45px !important
@@ -547,6 +598,11 @@ a {
         text-align: left
     }
 }
+
+
+/* ===========================
+   面板与页脚
+   =========================== */
 
 .panel {
     background-color: #fff;
@@ -576,9 +632,17 @@ a {
     color: #666
 }
 
+
+/* Element Plus 消息提示微调 */
+
 .el-message {
     top: 7px !important;
 }
+
+
+/* ===========================
+   侧边卡片：分类 Tab 与友链标签
+   =========================== */
 
 .tab-category a {
     display: inline-block;
@@ -588,7 +652,7 @@ a {
 }
 
 
-/* 友链 */
+/* 友链 Tag 风格（动态 class：tags0 ~ tags8） */
 
 .tags0 {
     color: #0056b3;
@@ -674,6 +738,11 @@ a {
     background-position: left bottom;
 }
 
+
+/* ===========================
+   列表页：文章列表与提示卡片
+   =========================== */
+
 .index_arc .no_pic {
     padding: 20px;
 }
@@ -681,6 +750,9 @@ a {
 .tipCard {
     margin-top: 0;
 }
+
+
+/* 注意：下方重复定义 .tab-category-item，仅为兼容旧写法，保持不动 */
 
 .tab-category-item {
     border-top: 1px solid #EDEDED;

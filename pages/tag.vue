@@ -159,39 +159,8 @@ interface LinkResponse {
     rows: Link[];
 }
 
-// 使用 useApiData 获取热门文章列表
-const { data: hotArticleData } = useApiData<HotArticleResponse>('/user/article/hot', {
-    key: 'hot-articles-list'
-});
-const hotArticles = computed(() => hotArticleData.value?.rows || []);
-
-// 使用 useApiData 获取标签列表
-const { data: tagData } = useApiData<TagResponse>('/user/tag/list', {
-    key: 'tags-list'
-});
-const tags = computed(() => tagData.value?.rows || []);
-
-// 使用 useApiData 获取友情链接列表
-const { data: linkData } = useApiData<LinkResponse>('/user/link', {
-    key: 'friend-links-list'
-});
-// 基于ID生成稳定的随机类名
-const getRandomClass = (id: string) => {
-    const hash = id.split('').reduce((acc, char) => {
-        return ((acc << 5) - acc) + char.charCodeAt(0) | 0;
-    }, 0);
-    return Math.abs(hash % 9).toString();
-};
-
-const friendLinks = computed(() => {
-    if (!linkData.value?.rows) return [];
-    return linkData.value.rows
-        .sort((a, b) => a.name.localeCompare(b.name, 'zh-Hans-CN', { sensitivity: 'variant' }))
-        .map(link => ({
-            ...link,
-            randomClass: getRandomClass(link.id)
-        }));
-});
+// 使用统一的侧边栏数据 composable，实现跨页面数据共享
+const { hotArticles, tags, friendLinks } = useSidebarData();
 </script>
 
 <style scoped>
