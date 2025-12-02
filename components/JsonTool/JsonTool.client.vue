@@ -46,6 +46,7 @@
                             @click="openDataMaskingDialog">脱敏</el-button>
                         <el-button v-if="buttonVisibility.sort" type="primary"
                             @click="handleAdvancedCommand('sort')">排序</el-button>
+                        <el-button type="primary" @click="handleSaveArchive">存档</el-button>
                         <el-button v-if="buttonVisibility.share" type="primary" @click="openShareDialog">分享</el-button>
                     </el-button-group>
 
@@ -64,6 +65,26 @@
                                 <el-dropdown-item command="xml">JSON 转 XML</el-dropdown-item>
                                 <el-dropdown-item command="go">JSON 转 Go 结构体</el-dropdown-item>
                                 <el-dropdown-item command="cookie">Cookie 转 JSON</el-dropdown-item>
+                            </el-dropdown-menu>
+                        </template>
+                    </el-dropdown>
+
+                    <!-- 历史存档下拉按钮 -->
+                    <el-dropdown v-if="archives.length" trigger="click" @command="handleArchiveCommand">
+                        <el-button type="primary">
+                            历史存档
+                            <el-icon class="el-icon--right">
+                                <ArrowDown />
+                            </el-icon>
+                        </el-button>
+                        <template #dropdown>
+                            <el-dropdown-menu>
+                                <el-dropdown-item v-for="item in archives" :key="item.id" :command="item.id">
+                                    {{ item.name }}
+                                </el-dropdown-item>
+                                <el-dropdown-item divided command="__clear_all" style="color: #f56c6c">
+                                    清空所有存档
+                                </el-dropdown-item>
                             </el-dropdown-menu>
                         </template>
                     </el-dropdown>
@@ -286,6 +307,18 @@
                             <!-- 分隔线：字体大小设置和缩进指南设置之间 -->
                             <el-divider class="settings-subsection-divider" />
 
+                            <!-- 存档设置 -->
+                            <div class="settings-subsection">
+                                <div class="settings-subsection-title">存档设置</div>
+                                <div class="settings-item">
+                                    <el-switch v-model="customArchiveName" active-text="自定义名称" inactive-text="自动编号"
+                                        size="default" />
+                                </div>
+                            </div>
+
+                            <!-- 分隔线：存档设置和缩进指南设置之间 -->
+                            <el-divider class="settings-subsection-divider" />
+
                             <!-- 缩进指南设置 -->
                             <div class="settings-subsection">
                                 <div class="settings-subsection-title">缩进指南设置</div>
@@ -435,7 +468,9 @@ const defaultSettings = {
     arrayNewLine: true,
     // 排序设置
     sortMethod: 'dictionary' as 'dictionary' | 'length',
-    sortOrder: 'asc' as 'asc' | 'desc'
+    sortOrder: 'asc' as 'asc' | 'desc',
+    // 存档设置
+    customArchiveName: false
 };
 
 // 加载设置
@@ -478,7 +513,8 @@ const saveSettings = () => {
             encodingMode: encodingMode.value,
             arrayNewLine: arrayNewLine.value,
             sortMethod: sortMethod.value,
-            sortOrder: sortOrder.value
+            sortOrder: sortOrder.value,
+            customArchiveName: customArchiveName.value
         };
         localStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify(settingsToSave));
     } catch (error) { }
@@ -523,9 +559,48 @@ const dataMaskingDialogVisible = ref(false);
 // 排序相关状态
 const sortMethod = ref<'dictionary' | 'length'>(savedSettings.sortMethod);
 const sortOrder = ref<'asc' | 'desc'>(savedSettings.sortOrder);
+const customArchiveName = ref<boolean>(savedSettings.customArchiveName ?? false); // 是否自定义存档名称
 
 // 菜单栏按钮显示控制状态
 const buttonVisibility = ref(savedSettings.buttonVisibility);
+
+// ==================== JSON 存档管理 ====================
+interface JsonArchive {
+    id: string;
+    name: string;
+    size: number;
+    content: string;
+}
+
+const ARCHIVE_STORAGE_KEY = 'json-tool-archives';
+// 存档总大小限制：5MB
+const MAX_ARCHIVE_TOTAL_SIZE = 5 * 1024 * 1024;
+
+const archives = ref<JsonArchive[]>([]);
+
+const loadArchives = () => {
+    if (typeof window === 'undefined') return;
+    try {
+        const raw = sessionStorage.getItem(ARCHIVE_STORAGE_KEY);
+        if (!raw) return;
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) {
+            archives.value = parsed;
+        }
+    } catch {
+        // 忽略解析错误，视为无存档
+        archives.value = [];
+    }
+};
+
+const saveArchives = () => {
+    if (typeof window === 'undefined') return;
+    try {
+        sessionStorage.setItem(ARCHIVE_STORAGE_KEY, JSON.stringify(archives.value));
+    } catch (error) {
+        showError('存档保存失败：浏览器存储空间可能已满');
+    }
+};
 
 
 // 设置对话框相关状态
@@ -912,6 +987,9 @@ let stableWidthUpdateTimer: ReturnType<typeof setTimeout> | null = null; // 稳�
 // 编辑器状态栏信息
 const inputEditorStatus = ref('');
 const outputEditorStatus = ref('');
+
+// 初始化存档数据（该组件为 .client，确保只在客户端执行）
+loadArchives();
 const isFolding = ref(false); // 是否正在执行折叠操作
 
 // 拖动相关状态（提升到外层作用域，避免每次拖动创建新变量）
@@ -2204,7 +2282,8 @@ watch(
         encodingMode.value,
         arrayNewLine.value,
         sortMethod.value,
-        sortOrder.value
+        sortOrder.value,
+        customArchiveName.value
     ],
     () => {
         saveSettings();
@@ -4889,6 +4968,139 @@ const getInputEditorValue = (): string => {
     return inputEditor.getValue();
 };
 
+// ==================== 存档相关逻辑 ====================
+
+const calculateArchiveSize = (content: string): number => {
+    try {
+        // 使用 TextEncoder 更精确计算字节数
+        const encoder = new TextEncoder();
+        return encoder.encode(content).length;
+    } catch {
+        // 兼容性降级：使用字符串长度近似
+        return content.length;
+    }
+};
+
+const handleSaveArchive = async () => {
+    if (!inputEditor) {
+        showError('编辑器未初始化，请稍候再试');
+        return;
+    }
+
+    const content = inputEditor.getValue() || '';
+    if (!content.trim()) {
+        showError('当前没有可存档的内容');
+        return;
+    }
+
+    const size = calculateArchiveSize(content);
+    const totalSize = archives.value.reduce((sum, item) => sum + item.size, 0);
+
+    if (totalSize + size > MAX_ARCHIVE_TOTAL_SIZE) {
+        showError('存档失败：所有存档总大小超过限制，请先清理部分存档');
+        return;
+    }
+
+    let name = '';
+
+    if (customArchiveName.value) {
+        try {
+            const { value } = await ElMessageBox.prompt(
+                '请输入存档名称（1-10 个字符，仅限英文、数字、中文及 -/_）',
+                '保存存档',
+                {
+                    inputValue: `存档${archives.value.length + 1}`,
+                    inputPlaceholder: '例如：测试数据1',
+                    confirmButtonText: '保存',
+                    cancelButtonText: '取消'
+                }
+            );
+
+            name = String(value || '').trim();
+            if (!name) {
+                showError('存档名称不能为空');
+                return;
+            }
+        } catch {
+            // 用户取消输入
+            return;
+        }
+    } else {
+        name = `存档${archives.value.length + 1}`;
+    }
+
+    // 名称校验：1-10 个字符，只允许英文、数字、中文和常见连字符(-、_)
+    const namePattern = /^[A-Za-z0-9\u4e00-\u9fa5\-_]{1,10}$/;
+    if (!namePattern.test(name)) {
+        showError('存档名称不合法');
+        return;
+    }
+
+    const id = `${Date.now()}-${archives.value.length + 1}`;
+
+    const archive: JsonArchive = {
+        id,
+        name,
+        size,
+        content
+    };
+
+    // 新存档放在最前面
+    archives.value.unshift(archive);
+    saveArchives();
+
+    ElMessage.success({
+        message: '已保存到本地存档（当前会话有效）',
+        offset: getMessageOffset()
+    });
+};
+
+const handleArchiveCommand = async (command: string) => {
+    if (command === '__clear_all') {
+        try {
+            await ElMessageBox.confirm(
+                '确定要清空所有存档吗？此操作不可恢复。',
+                '清空存档',
+                {
+                    confirmButtonText: '清空',
+                    cancelButtonText: '取消',
+                    dangerouslyUseHTMLString: false,
+                    customClass: 'clear-archive-dialog'
+                }
+            );
+        } catch {
+            // 用户取消
+            return;
+        }
+
+        archives.value = [];
+        saveArchives();
+        ElMessage.success({
+            message: '已清空所有存档',
+            offset: getMessageOffset()
+        });
+        return;
+    }
+
+    const archive = archives.value.find(item => item.id === command);
+    if (!archive) {
+        showError('未找到对应的存档');
+        return;
+    }
+
+    if (!inputEditor) {
+        showError('编辑器未初始化，请稍候再试');
+        return;
+    }
+
+    inputEditor.setValue(archive.content);
+
+    ElMessage.success({
+        message: `已加载存档：${archive.name}`,
+        offset: getMessageOffset()
+    });
+};
+
 // 处理加载分享的JSON数据到输入区域
 const handleLoadSharedJson = (jsonData: string) => {
     try {
@@ -6468,27 +6680,16 @@ const transferToInput = (e: MouseEvent) => {
     scroll-behavior: smooth;
     -webkit-overflow-scrolling: touch;
     /* iOS 平滑滚动 */
-    scrollbar-width: thin;
-    /* Firefox 细滚动条 */
+    scrollbar-width: none;
+    /* Firefox 隐藏滚动条 */
+    -ms-overflow-style: none;
+    /* IE/Edge 隐藏滚动条 */
 }
 
-/* 工具栏滚动条样式优化 */
+/* 工具栏滚动条隐藏 */
 .tool-bar::-webkit-scrollbar {
-    height: 6px;
-}
-
-.tool-bar::-webkit-scrollbar-track {
-    background: #f5f5f5;
-    border-radius: 3px;
-}
-
-.tool-bar::-webkit-scrollbar-thumb {
-    background: #c0c4cc;
-    border-radius: 3px;
-}
-
-.tool-bar::-webkit-scrollbar-thumb:hover {
-    background: #a0a4a8;
+    display: none;
+    /* Chrome/Safari 隐藏滚动条 */
 }
 
 /* 滚动指示器 */
