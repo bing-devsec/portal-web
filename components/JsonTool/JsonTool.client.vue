@@ -12,7 +12,7 @@
         </div>
 
         <!-- 原有的 JSON 工具容器 -->
-        <div class="json-tool-container" :class="{ 'fullscreen': isFullscreen }">
+        <div class="json-tool-container" :class="{ fullscreen: isFullscreen }">
             <!-- 工具栏 -->
             <div class="tool-bar-wrapper">
                 <!-- 左侧渐变遮罩和滚动按钮 -->
@@ -46,7 +46,7 @@
                             @click="openDataMaskingDialog">脱敏</el-button>
                         <el-button v-if="buttonVisibility.sort" type="primary"
                             @click="handleAdvancedCommand('sort')">排序</el-button>
-                        <el-button type="primary" @click="handleSaveArchive">存档</el-button>
+                        <el-button v-if="buttonVisibility.archive" type="primary" @click="handleSaveArchive">存档</el-button>
                         <el-button v-if="buttonVisibility.share" type="primary" @click="openShareDialog">分享</el-button>
                     </el-button-group>
 
@@ -69,26 +69,6 @@
                         </template>
                     </el-dropdown>
 
-                    <!-- 历史存档下拉按钮 -->
-                    <el-dropdown v-if="archives.length" trigger="click" @command="handleArchiveCommand">
-                        <el-button type="primary">
-                            历史存档
-                            <el-icon class="el-icon--right">
-                                <ArrowDown />
-                            </el-icon>
-                        </el-button>
-                        <template #dropdown>
-                            <el-dropdown-menu>
-                                <el-dropdown-item v-for="item in archives" :key="item.id" :command="item.id">
-                                    {{ item.name }}
-                                </el-dropdown-item>
-                                <el-dropdown-item divided command="__clear_all" style="color: #f56c6c">
-                                    清空所有存档
-                                </el-dropdown-item>
-                            </el-dropdown-menu>
-                        </template>
-                    </el-dropdown>
-
                     <!-- 层级控制 -->
                     <div v-if="buttonVisibility.collapse" class="collapse-control">
                         <el-select v-model="selectedLevel" placeholder="层级" class="level-select"
@@ -102,7 +82,7 @@
                     <!-- 界面控制：全屏 -->
                     <el-button v-if="buttonVisibility.fullscreen" type="warning" class="fullscreen-btn"
                         @click="toggleFullscreen">
-                        {{ isFullscreen ? '退出' : '全屏' }}
+                        {{ isFullscreen ? "退出" : "全屏" }}
                     </el-button>
                 </div>
 
@@ -116,6 +96,40 @@
 
             <!-- 编辑区域 -->
             <div class="editor-container">
+                <!-- 存档侧边栏（有存档时才显示） -->
+                <template v-if="archives.length">
+                    <div class="archive-sidebar" :class="{
+                        collapsed: archiveSidebarWidth <= calculateArchiveMinWidth(),
+                    }" :style="{ width: archiveSidebarWidth + 'px' }">
+                        <div class="archive-sidebar-header">
+                            <span class="archive-sidebar-title">存档</span>
+                        </div>
+                        <div class="archive-list" v-if="archives.length">
+                            <div v-for="item in archives" :key="item.id" class="archive-item">
+                                <span class="archive-name" :title="item.name" @click="handleArchiveCommand(item.id)">
+                                    {{
+                                        archiveSidebarWidth <= calculateArchiveMinWidth() ? item.name ? item.name.slice(0,2): "##" : item.name }} </span>
+                                        <div v-if="archiveSidebarWidth > calculateArchiveMinWidth()"
+                                            class="archive-actions">
+                                            <el-icon class="archive-action-icon"
+                                                @click.stop="handleRenameArchive(item)">
+                                                <Edit />
+                                            </el-icon>
+                                            <el-icon class="archive-action-icon"
+                                                @click.stop="handleDeleteArchive(item)">
+                                                <Delete />
+                                            </el-icon>
+                                        </div>
+                            </div>
+                        </div>
+                        <div v-else-if="archiveSidebarWidth > calculateArchiveMinWidth()" class="archive-empty">
+                            暂无存档
+                        </div>
+                    </div>
+                    <!-- 分割线 -->
+                    <div class="archive-resizer" @mousedown="startArchiveResize" @touchstart="startArchiveResize"></div>
+                </template>
+
                 <div class="editor-panel" :style="{ width: `${leftPanelWidth}%` }">
                     <div class="panel-header">
                         <div class="panel-title">
@@ -216,6 +230,12 @@
         <DataMaskingDialog v-model="dataMaskingDialogVisible" :json-data="getInputEditorValue()"
             @apply="handleDataMaskingApply" />
 
+        <!-- 存档名称输入对话框 -->
+        <ArchiveNameDialog v-model="archiveNameDialogVisible" :title="archiveNameDialogTitle"
+            :input-value="archiveNameDialogInputValue" :placeholder="archiveNameDialogPlaceholder"
+            :existing-archives="archives" :exclude-archive-id="archiveNameDialogExcludeId"
+            @confirm="handleArchiveNameConfirm" @cancel="handleArchiveNameCancel" />
+
         <!-- 设置弹窗 -->
         <el-dialog v-model="settingsDialogVisible" class="settings-dialog-wrapper" :close-on-click-modal="false"
             :align-center="false" top="12vh" width="850px">
@@ -237,30 +257,36 @@
                                 <div class="settings-subsection-title">菜单栏功能设置</div>
                                 <div class="button-visibility-list">
                                     <!-- 第一行 -->
-                                    <div class="button-visibility-item" style="grid-column: 1; grid-row: 1;">
+                                    <div class="button-visibility-item" style="grid-column: 1; grid-row: 1">
                                         <el-checkbox v-model="buttonVisibility.compress">压缩</el-checkbox>
                                     </div>
-                                    <div class="button-visibility-item" style="grid-column: 2; grid-row: 1;">
+                                    <div class="button-visibility-item" style="grid-column: 2; grid-row: 1">
                                         <el-checkbox v-model="buttonVisibility.escape">转义</el-checkbox>
                                     </div>
-                                    <div class="button-visibility-item" style="grid-column: 3; grid-row: 1;">
+                                    <div class="button-visibility-item" style="grid-column: 3; grid-row: 1">
                                         <el-checkbox v-model="buttonVisibility.unescape">去除转义</el-checkbox>
                                     </div>
-                                    <div class="button-visibility-item" style="grid-column: 4; grid-row: 1;">
+                                    <div class="button-visibility-item" style="grid-column: 4; grid-row: 1">
                                         <el-checkbox v-model="buttonVisibility.compressEscape">压缩并转义</el-checkbox>
                                     </div>
-                                    <!-- 第二行 -->
-                                    <div class="button-visibility-item" style="grid-column: 1; grid-row: 2;">
-                                        <el-checkbox v-model="buttonVisibility.masking">脱敏</el-checkbox>
-                                    </div>
-                                    <div class="button-visibility-item" style="grid-column: 2; grid-row: 2;">
+                                    <div class="button-visibility-item" style="grid-column: 5; grid-row: 1">
                                         <el-checkbox v-model="buttonVisibility.sort">排序</el-checkbox>
                                     </div>
-                                    <div class="button-visibility-item" style="grid-column: 3; grid-row: 2;">
+                                    <!-- 第二行 -->
+                                    <div class="button-visibility-item" style="grid-column: 1; grid-row: 2">
+                                        <el-checkbox v-model="buttonVisibility.masking">脱敏</el-checkbox>
+                                    </div>
+                                    <div class="button-visibility-item" style="grid-column: 2; grid-row: 2">
                                         <el-checkbox v-model="buttonVisibility.share">分享</el-checkbox>
                                     </div>
-                                    <div class="button-visibility-item" style="grid-column: 4; grid-row: 2;">
+                                    <div class="button-visibility-item" style="grid-column: 3; grid-row: 2">
                                         <el-checkbox v-model="buttonVisibility.fetchJson">获取JSON</el-checkbox>
+                                    </div>
+                                    <div class="button-visibility-item" style="grid-column: 4; grid-row: 2">
+                                        <el-checkbox v-model="buttonVisibility.dataConvert">数据转换</el-checkbox>
+                                    </div>
+                                    <div class="button-visibility-item" style="grid-column: 5; grid-row: 2">
+                                        <el-checkbox v-model="buttonVisibility.archive">存档</el-checkbox>
                                     </div>
                                 </div>
                             </div>
@@ -352,7 +378,7 @@
                                 </el-radio-group>
                             </div>
 
-                            <el-divider style="margin: 12px 0;" />
+                            <el-divider style="margin: 12px 0" />
 
                             <div class="settings-item">
                                 <div class="settings-item-header">
@@ -365,7 +391,7 @@
                                 </el-radio-group>
                             </div>
 
-                            <el-divider style="margin: 12px 0;" />
+                            <el-divider style="margin: 12px 0" />
 
                             <div class="settings-item">
                                 <div class="settings-item-header">
@@ -397,7 +423,7 @@
                                 </el-radio-group>
                             </div>
 
-                            <el-divider style="margin: 12px 0;" />
+                            <el-divider style="margin: 12px 0" />
 
                             <div class="settings-item">
                                 <div class="settings-item-header">
@@ -422,20 +448,29 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, onBeforeUnmount, nextTick, watch, onUnmounted, computed } from 'vue';
-import { ElMessage, ElMessageBox } from 'element-plus';
-import type { UploadFile } from 'element-plus';
-import * as monaco from 'monaco-editor';
-import editorWorker from 'monaco-editor/esm/vs/editor/editor.worker?worker';
-import jsonWorker from 'monaco-editor/esm/vs/language/json/json.worker?worker';
-import { Loading, ArrowLeft, ArrowRight, ArrowDown, CopyDocument, Download, Upload, Delete, Setting, WarningFilled, DataAnalysis, Location, Collection, Document, Sort, InfoFilled, Refresh, Connection, Share, Lock, FullScreen, Operation } from '@element-plus/icons-vue';
-import FetchJsonDialog from './FetchJsonDialog.vue';
-import ShareDialog from './ShareDialog.vue';
-import DataMaskingDialog from './DataMaskingDialog.vue';
-import JSON5 from 'json5';
+import {
+    ref,
+    onMounted,
+    onBeforeUnmount,
+    nextTick,
+    watch,
+    onUnmounted,
+    computed,
+} from "vue";
+import { ElMessage, ElMessageBox } from "element-plus";
+import type { UploadFile } from "element-plus";
+import * as monaco from "monaco-editor";
+import editorWorker from "monaco-editor/esm/vs/editor/editor.worker?worker";
+import jsonWorker from "monaco-editor/esm/vs/language/json/json.worker?worker";
+import { Loading, ArrowLeft, ArrowRight, ArrowDown, CopyDocument, Download, Upload, Delete, Setting, WarningFilled, Document, Sort, Edit } from "@element-plus/icons-vue";
+import FetchJsonDialog from "./FetchJsonDialog.vue";
+import ShareDialog from "./ShareDialog.vue";
+import DataMaskingDialog from "./DataMaskingDialog.vue";
+import ArchiveNameDialog from "./ArchiveNameDialog.vue";
+import JSON5 from "json5";
 
 // ==================== 设置持久化管理 ====================
-const SETTINGS_STORAGE_KEY = 'json-tool-settings';
+const SETTINGS_STORAGE_KEY = "json-tool-settings";
 
 // 默认设置
 const defaultSettings = {
@@ -452,7 +487,8 @@ const defaultSettings = {
         share: false,
         dataConvert: true,
         collapse: true,
-        fullscreen: true
+        archive: true,
+        fullscreen: true,
     },
     // 字符串换行设置（反转逻辑：false=换行，true=不换行，默认不换行）
     wordWrap: true,
@@ -467,15 +503,15 @@ const defaultSettings = {
     encodingMode: 0,
     arrayNewLine: true,
     // 排序设置
-    sortMethod: 'dictionary' as 'dictionary' | 'length',
-    sortOrder: 'asc' as 'asc' | 'desc',
+    sortMethod: "dictionary" as "dictionary" | "length",
+    sortOrder: "asc" as "asc" | "desc",
     // 存档设置
-    customArchiveName: false
+    customArchiveName: false,
 };
 
 // 加载设置
 const loadSettings = () => {
-    if (typeof window === 'undefined') return defaultSettings;
+    if (typeof window === "undefined") return defaultSettings;
 
     try {
         const saved = localStorage.getItem(SETTINGS_STORAGE_KEY);
@@ -488,8 +524,8 @@ const loadSettings = () => {
                 ...parsed,
                 buttonVisibility: {
                     ...defaultSettings.buttonVisibility,
-                    ...(parsed.buttonVisibility || {})
-                }
+                    ...(parsed.buttonVisibility || {}),
+                },
             };
         }
     } catch (error) { }
@@ -500,7 +536,7 @@ const loadSettings = () => {
 // 保存设置
 let isInitializing = true; // 标记是否正在初始化，避免初始化时触发保存
 const saveSettings = () => {
-    if (typeof window === 'undefined' || isInitializing) return;
+    if (typeof window === "undefined" || isInitializing) return;
 
     try {
         const settingsToSave = {
@@ -514,7 +550,7 @@ const saveSettings = () => {
             arrayNewLine: arrayNewLine.value,
             sortMethod: sortMethod.value,
             sortOrder: sortOrder.value,
-            customArchiveName: customArchiveName.value
+            customArchiveName: customArchiveName.value,
         };
         localStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify(settingsToSave));
     } catch (error) { }
@@ -545,7 +581,7 @@ const isResizing = ref(false); // 添加是否正在调整宽度控制
 const leftPanelWidth = ref(50); // 添加面板宽度控制（实时值，用于布局）
 const stableLeftPanelWidth = ref(50); // 稳定宽度值，用于计算按钮显示状态（防抖更新）
 const encodingMode = ref(savedSettings.encodingMode); // 添加编码处理模式：0-保持原样，1-转中文，2-转Unicode
-const outputType = ref<'json' | 'yaml' | 'toml' | 'xml' | 'go'>('json'); // 添加当前输出类型的状态
+const outputType = ref<"json" | "yaml" | "toml" | "xml" | "go">("json"); // 添加当前输出类型的状态
 
 // 获取JSON数据对话框相关状态
 const fetchJsonDialogVisible = ref(false);
@@ -556,10 +592,20 @@ const shareDialogVisible = ref(false);
 // 数据脱敏对话框相关状态
 const dataMaskingDialogVisible = ref(false);
 
+// 存档名称输入对话框相关状态
+const archiveNameDialogVisible = ref(false);
+const archiveNameDialogTitle = ref("保存存档");
+const archiveNameDialogInputValue = ref("");
+const archiveNameDialogPlaceholder = ref("例如：测试数据1");
+const archiveNameDialogExcludeId = ref<string>(""); // 编辑时排除的存档ID
+const archiveNameDialogCallback = ref<((name: string) => void) | null>(null);
+
 // 排序相关状态
-const sortMethod = ref<'dictionary' | 'length'>(savedSettings.sortMethod);
-const sortOrder = ref<'asc' | 'desc'>(savedSettings.sortOrder);
-const customArchiveName = ref<boolean>(savedSettings.customArchiveName ?? false); // 是否自定义存档名称
+const sortMethod = ref<"dictionary" | "length">(savedSettings.sortMethod);
+const sortOrder = ref<"asc" | "desc">(savedSettings.sortOrder);
+const customArchiveName = ref<boolean>(
+    savedSettings.customArchiveName ?? false
+); // 是否自定义存档名称
 
 // 菜单栏按钮显示控制状态
 const buttonVisibility = ref(savedSettings.buttonVisibility);
@@ -572,14 +618,16 @@ interface JsonArchive {
     content: string;
 }
 
-const ARCHIVE_STORAGE_KEY = 'json-tool-archives';
-// 存档总大小限制：5MB
-const MAX_ARCHIVE_TOTAL_SIZE = 5 * 1024 * 1024;
+const ARCHIVE_STORAGE_KEY = "json-tool-archives";
+// 存档总大小限制：10MB（逻辑限制，实际上限由浏览器决定）
+const MAX_ARCHIVE_TOTAL_SIZE = 10 * 1024 * 1024;
+// 存档数量上限
+const MAX_ARCHIVE_COUNT = 20;
 
 const archives = ref<JsonArchive[]>([]);
 
 const loadArchives = () => {
-    if (typeof window === 'undefined') return;
+    if (typeof window === "undefined") return;
     try {
         const raw = sessionStorage.getItem(ARCHIVE_STORAGE_KEY);
         if (!raw) return;
@@ -594,18 +642,17 @@ const loadArchives = () => {
 };
 
 const saveArchives = () => {
-    if (typeof window === 'undefined') return;
+    if (typeof window === "undefined") return;
     try {
         sessionStorage.setItem(ARCHIVE_STORAGE_KEY, JSON.stringify(archives.value));
     } catch (error) {
-        showError('存档保存失败：浏览器存储空间可能已满');
+        showError("存档保存失败：浏览器存储空间可能已满");
     }
 };
 
-
 // 设置对话框相关状态
 const settingsDialogVisible = ref(false);
-const settingsCollapseActiveNames = ref<string | number>('settings'); // 手风琴展开项，默认展开"设置"
+const settingsCollapseActiveNames = ref<string | number>("settings"); // 手风琴展开项，默认展开"设置"
 
 const editorsInitialized = ref(false); // 在script setup部分添加
 const inputEditorContainer = ref<HTMLElement | null>(null); // 输入编辑器容器
@@ -620,13 +667,16 @@ let inputEditorResizeObserver: ResizeObserver | null = null; // 输入编辑器�
 
 // 预先计算的折叠信息：Map<行号, {type: 'object' | 'array', count: number}>
 // 在格式化时一次性计算，避免实时计算的高成本
-const precomputedFoldingInfo = new Map<number, { type: 'object' | 'array'; count: number }>();
+const precomputedFoldingInfo = new Map<
+    number,
+    { type: "object" | "array"; count: number }
+>();
 
 // 用于存储待计算的折叠区域信息（异步计算时使用）
 interface PendingFoldingItem {
     startLine: number;
     endLine: number;
-    type: 'object' | 'array';
+    type: "object" | "array";
 }
 
 // 异步计算任务的状态
@@ -660,15 +710,15 @@ const precomputeFoldingInfo = async (
         return;
     }
 
-    const lines = formattedText.split('\n');
+    const lines = formattedText.split("\n");
     const lineCount = lines.length;
 
     // 使用栈来跟踪所有未闭合的对象/数组
     interface StackItem {
-        startLine: number;  // 起始行号（1-based）
-        type: 'object' | 'array';  // 类型
-        depth: number;  // 括号深度
-        charIndex: number;  // 在当前行中的字符索引
+        startLine: number; // 起始行号（1-based）
+        type: "object" | "array"; // 类型
+        depth: number; // 括号深度
+        charIndex: number; // 在当前行中的字符索引
     }
 
     const stack: StackItem[] = [];
@@ -694,7 +744,7 @@ const precomputeFoldingInfo = async (
                 continue;
             }
 
-            if (char === '\\') {
+            if (char === "\\") {
                 escapeNext = true;
                 continue;
             }
@@ -705,26 +755,26 @@ const precomputeFoldingInfo = async (
             }
 
             if (!inString) {
-                if (char === '{' || char === '[') {
+                if (char === "{" || char === "[") {
                     // 找到新的对象或数组开始
                     stack.push({
                         startLine: currentLine,
-                        type: char === '{' ? 'object' : 'array',
+                        type: char === "{" ? "object" : "array",
                         depth: stack.length,
-                        charIndex: currentCharIndex
+                        charIndex: currentCharIndex,
                     });
-                } else if (char === '}' || char === ']') {
+                } else if (char === "}" || char === "]") {
                     // 找到匹配的结束括号
                     if (stack.length > 0) {
                         const lastItem = stack[stack.length - 1];
-                        const expectedType = char === '}' ? 'object' : 'array';
+                        const expectedType = char === "}" ? "object" : "array";
 
                         if (lastItem.type === expectedType) {
                             // 匹配成功，记录待计算的区域
                             pendingItems.push({
                                 startLine: lastItem.startLine,
                                 endLine: currentLine,
-                                type: lastItem.type
+                                type: lastItem.type,
                             });
                             stack.pop();
                         }
@@ -740,8 +790,11 @@ const precomputeFoldingInfo = async (
     const normalItems: PendingFoldingItem[] = [];
 
     if (priorityLines) {
-        pendingItems.forEach(item => {
-            if (item.startLine >= priorityLines.start && item.startLine <= priorityLines.end) {
+        pendingItems.forEach((item) => {
+            if (
+                item.startLine >= priorityLines.start &&
+                item.startLine <= priorityLines.end
+            ) {
                 priorityItems.push(item);
             } else {
                 normalItems.push(item);
@@ -756,12 +809,12 @@ const precomputeFoldingInfo = async (
         pendingItems: [...priorityItems, ...normalItems], // 优先项在前
         lines,
         isRunning: true,
-        cancelToken: false
+        cancelToken: false,
     };
     asyncComputeTask = task;
 
     // 使用 requestIdleCallback 或 setTimeout 进行分批处理
-    const useIdleCallback = typeof requestIdleCallback !== 'undefined';
+    const useIdleCallback = typeof requestIdleCallback !== "undefined";
     const BATCH_SIZE = 50; // 每批处理50个区域
     let currentIndex = 0;
 
@@ -782,7 +835,7 @@ const precomputeFoldingInfo = async (
             // 计算该区域的keys或items数量
             const count = calculateFoldingCount(
                 task.lines,
-                item.startLine - 1,  // 转换为0-based索引
+                item.startLine - 1, // 转换为0-based索引
                 item.endLine - 1,
                 item.type
             );
@@ -791,7 +844,7 @@ const precomputeFoldingInfo = async (
             if (count > 0) {
                 precomputedFoldingInfo.set(item.startLine, {
                     type: item.type,
-                    count: count
+                    count: count,
                 });
             }
 
@@ -833,22 +886,24 @@ const calculateFoldingCount = (
     lines: string[],
     startLineIndex: number,
     endLineIndex: number,
-    type: 'object' | 'array'
+    type: "object" | "array"
 ): number => {
     // 提取该区域的内容
-    let content = '';
+    let content = "";
     for (let i = startLineIndex; i <= endLineIndex; i++) {
         if (i < lines.length) {
             content += lines[i];
             if (i < endLineIndex) {
-                content += '\n';
+                content += "\n";
             }
         }
     }
 
     // 找到开始和结束括号的位置
-    const startBracket = type === 'object' ? content.indexOf('{') : content.indexOf('[');
-    const endBracket = type === 'object' ? content.lastIndexOf('}') : content.lastIndexOf(']');
+    const startBracket =
+        type === "object" ? content.indexOf("{") : content.indexOf("[");
+    const endBracket =
+        type === "object" ? content.lastIndexOf("}") : content.lastIndexOf("]");
 
     if (startBracket === -1 || endBracket === -1 || endBracket <= startBracket) {
         return 0;
@@ -862,7 +917,7 @@ const calculateFoldingCount = (
     }
 
     // 计算keys或items数量
-    if (type === 'object') {
+    if (type === "object") {
         // 对于对象，计算一级key的数量
         // 方法：统计第一层的冒号数量（在JSON中，第一层的冒号一定对应一个key）
         let keyCount = 0;
@@ -880,7 +935,7 @@ const calculateFoldingCount = (
                 continue;
             }
 
-            if (char === '\\') {
+            if (char === "\\") {
                 escapeNext = true;
                 continue;
             }
@@ -891,15 +946,15 @@ const calculateFoldingCount = (
             }
 
             if (!inString) {
-                if (char === '{') {
+                if (char === "{") {
                     braceDepth++;
-                } else if (char === '}') {
+                } else if (char === "}") {
                     braceDepth--;
-                } else if (char === '[') {
+                } else if (char === "[") {
                     bracketDepth++;
-                } else if (char === ']') {
+                } else if (char === "]") {
                     bracketDepth--;
-                } else if (char === ':' && braceDepth === 0 && bracketDepth === 0) {
+                } else if (char === ":" && braceDepth === 0 && bracketDepth === 0) {
                     // 第一层的冒号（不在嵌套对象或数组中），说明这是一个key
                     keyCount++;
                     keyPositions.push(i);
@@ -929,7 +984,7 @@ const calculateFoldingCount = (
                 continue;
             }
 
-            if (char === '\\') {
+            if (char === "\\") {
                 escapeNext = true;
                 hasContent = true;
                 continue;
@@ -942,21 +997,21 @@ const calculateFoldingCount = (
             }
 
             if (!inString) {
-                if (char === '{') {
+                if (char === "{") {
                     braceDepth++;
                     depth = braceDepth + bracketDepth;
                     hasContent = true;
-                } else if (char === '}') {
+                } else if (char === "}") {
                     braceDepth--;
                     depth = braceDepth + bracketDepth;
-                } else if (char === '[') {
+                } else if (char === "[") {
                     bracketDepth++;
                     depth = braceDepth + bracketDepth;
                     hasContent = true;
-                } else if (char === ']') {
+                } else if (char === "]") {
                     bracketDepth--;
                     depth = braceDepth + bracketDepth;
-                } else if (char === ',' && depth === 0) {
+                } else if (char === "," && depth === 0) {
                     // 第一层的逗号，表示一个元素结束
                     if (hasContent) {
                         elementCount++;
@@ -985,8 +1040,8 @@ let outputEditorResizeObserver: ResizeObserver | null = null; // 输出编辑器
 let stableWidthUpdateTimer: ReturnType<typeof setTimeout> | null = null; // 稳定宽度更新定时器
 
 // 编辑器状态栏信息
-const inputEditorStatus = ref('');
-const outputEditorStatus = ref('');
+const inputEditorStatus = ref("");
+const outputEditorStatus = ref("");
 
 // 初始化存档数据（该组件为 .client，确保只在客户端执行）
 loadArchives();
@@ -1033,7 +1088,9 @@ const showInputActions = computed(() => {
 
     // 拖动时使用实时宽度，确保按钮立即响应（解决标题换行问题）
     // 非拖动时使用稳定宽度，避免不必要的计算
-    const widthToUse = isResizing.value ? leftPanelWidth.value : stableLeftPanelWidth.value;
+    const widthToUse = isResizing.value
+        ? leftPanelWidth.value
+        : stableLeftPanelWidth.value;
     const leftPanelWidthPx = (widthToUse / 100) * editorContainerWidth.value;
 
     // 宽度小于临界值时立即隐藏按钮，确保标题不换行
@@ -1047,46 +1104,50 @@ const showOutputActions = computed(() => {
 
     // 拖动时使用实时宽度，确保按钮立即响应（解决标题换行问题）
     // 非拖动时使用稳定宽度，避免不必要的计算
-    const widthToUse = isResizing.value ? leftPanelWidth.value : stableLeftPanelWidth.value;
-    const rightPanelWidthPx = ((100 - widthToUse) / 100) * editorContainerWidth.value;
+    const widthToUse = isResizing.value
+        ? leftPanelWidth.value
+        : stableLeftPanelWidth.value;
+    const rightPanelWidthPx =
+        ((100 - widthToUse) / 100) * editorContainerWidth.value;
 
     // 宽度小于临界值时立即隐藏按钮，确保标题不换行
     return rightPanelWidthPx >= BUTTON_MIN_WIDTH;
 });
 
-
 // 添加消息提示函数
 const showSuccess = (message: string) => {
     ElMessage({
         message,
-        type: 'success'
-    })
+        type: "success",
+    });
 };
 
 const showError = (message: string) => {
     ElMessage({
         message,
-        type: 'error'
-    })
+        type: "error",
+    });
 };
 
 const showWarning = (message: string) => {
     ElMessage({
         message,
-        type: 'warning'
-    })
+        type: "warning",
+    });
 };
 
 const showInfo = (message: string, duration: number = 300) => {
     ElMessage({
         message,
-        type: 'info',
-        duration
-    })
+        type: "info",
+        duration,
+    });
 };
 
 // 更新编辑器行号宽度
-const updateLineNumberWidth = (editor: monaco.editor.IStandaloneCodeEditor | null) => {
+const updateLineNumberWidth = (
+    editor: monaco.editor.IStandaloneCodeEditor | null
+) => {
     if (!editor) return;
 
     const lineCount = editor.getModel()?.getLineCount() || 0;
@@ -1095,8 +1156,8 @@ const updateLineNumberWidth = (editor: monaco.editor.IStandaloneCodeEditor | nul
     const minChars = digitCount + 1;
 
     editor.updateOptions({
-        lineNumbers: 'on',
-        lineNumbersMinChars: minChars
+        lineNumbers: "on",
+        lineNumbersMinChars: minChars,
     });
 
     // 必须调用 layout() 才能让行号宽度更新生效
@@ -1104,7 +1165,9 @@ const updateLineNumberWidth = (editor: monaco.editor.IStandaloneCodeEditor | nul
 };
 
 // 更新编辑器高度
-const updateEditorHeight = (editor: monaco.editor.IStandaloneCodeEditor | null) => {
+const updateEditorHeight = (
+    editor: monaco.editor.IStandaloneCodeEditor | null
+) => {
     if (!editor) return;
 
     // 获取 Monaco 编辑器实例的容器（.monaco-editor-instance）
@@ -1121,7 +1184,7 @@ const updateEditorHeight = (editor: monaco.editor.IStandaloneCodeEditor | null) 
     // 使用容器高度和宽度
     editor.layout({
         width: containerWidth,
-        height: containerHeight
+        height: containerHeight,
     });
 };
 
@@ -1132,31 +1195,36 @@ const updateEditorLayout = () => {
 };
 
 // 获取编辑器配置
-const getEditorOptions = (size: number, isReadOnly: boolean = false, language: string = 'json', enableLargeFileFolding: boolean = false) => ({
+const getEditorOptions = (
+    size: number,
+    isReadOnly: boolean = false,
+    language: string = "json",
+    enableLargeFileFolding: boolean = false
+) => ({
     // 基础配置
-    value: '',
+    value: "",
     language,
-    theme: 'vs',
+    theme: "vs",
     readOnly: isReadOnly,
 
     // 外观配置
     minimap: { enabled: false }, // 禁用右侧的代码概览图
-    lineNumbers: 'on' as const, // 启用行号
+    lineNumbers: "on" as const, // 启用行号
     roundedSelection: true, // 启用圆角选择
     renderIndentGuides: showIndentGuide.value, // 根据设置显示缩进指南线
-    renderLineHighlight: 'gutter' as const, // 启用所有行高亮
     lineNumbersMinChars: 1, // 设置行号最小字符数为1
-    renderWhitespace: 'none' as const, // 禁用空白字符显示
+    renderWhitespace: "none" as const, // 禁用空白字符显示
 
     // 右键菜单配置
     contextmenu: true, // 启用右键菜单
 
     // 滚动配置
     scrollBeyondLastLine: false, // 禁止滚动超过最后一行
-    scrollbar: { // 滚动条配置
-        vertical: 'visible' as const, // 垂直滚动条可见
+    scrollbar: {
+        // 滚动条配置
+        vertical: "visible" as const, // 垂直滚动条可见
         verticalScrollbarSize: 10, // 垂直滚动条大小
-        useShadows: true, // 禁用阴影  
+        useShadows: true, // 禁用阴影
         scrollByPage: false, // 不按页滚动
         alwaysConsumeMouseWheel: true, // 总是响应鼠标滚轮事件
     },
@@ -1166,21 +1234,23 @@ const getEditorOptions = (size: number, isReadOnly: boolean = false, language: s
 
     // 折叠配置
     folding: true, // 启用代码折叠功能（这是基础配置，必须开启）
-    ...(enableLargeFileFolding ? {
-        // 大文件折叠优化配置
-        // 注意：这些选项可能不在 TypeScript 类型定义中，但实际运行时有效
-        foldingMaximumRegions: 100000, // 增加折叠区域上限（默认约5000），支持超大JSON文件
-        largeFileOptimizations: false, // 禁用大文件优化，强制启用完整语法分析和折叠计算
-    } : {}),
+    ...(enableLargeFileFolding
+        ? {
+            // 大文件折叠优化配置
+            // 注意：这些选项可能不在 TypeScript 类型定义中，但实际运行时有效
+            foldingMaximumRegions: 100000, // 增加折叠区域上限（默认约5000），支持超大JSON文件
+            largeFileOptimizations: false, // 禁用大文件优化，强制启用完整语法分析和折叠计算
+        }
+        : {}),
 
     // 编辑器配置
     links: false, // 禁用链接检测功能
     tabSize: size, //  使用传入的大小作为Tab宽度
     indentSize: size, // 使用传入的大小作为缩进宽度
-    wordWrap: wordWrap.value ? 'off' as const : 'on' as const, // 字符串换行设置（反转逻辑：false=换行，true=不换行）
+    wordWrap: wordWrap.value ? ("off" as const) : ("on" as const), // 字符串换行设置（反转逻辑：false=换行，true=不换行）
     fontSize: fontSize.value, // 字体大小设置
-    autoClosingBrackets: 'languageDefined' as const, // 根据语言自动闭合括号
-    autoClosingQuotes: 'languageDefined' as const, // 根据语言自动闭合引号
+    autoClosingBrackets: "languageDefined" as const, // 根据语言自动闭合括号
+    autoClosingQuotes: "languageDefined" as const, // 根据语言自动闭合引号
     formatOnPaste: true, // 启用粘贴时自动格式化
     maxUndoRedoEntries: 100, // 历史记录可撤销/重做的最大步数为100
     useTabStops: false, // 禁用TabStop
@@ -1188,27 +1258,28 @@ const getEditorOptions = (size: number, isReadOnly: boolean = false, language: s
     guides: {
         indentation: showIndentGuide.value, // 根据设置显示缩进引导线
         bracketPairs: showIndentGuide.value, // 根据设置显示括号配对引导线
-        highlightActiveIndentation: showIndentGuide.value // 根据设置显示当前缩进高亮
+        highlightActiveIndentation: showIndentGuide.value, // 根据设置显示当前缩进高亮
     },
 
-    // 添加可访问性支持配置    
+    // 添加可访问性支持配置
     quickSuggestions: true,
-    find: {     // 配置查找组件
+    find: {
+        // 配置查找组件
         addExtraSpaceOnTop: false, // 查找框顶部不添加额外空间
-        autoFindInSelection: 'multiline' as const, // 不自动在选择区域内查找
-        seedSearchStringFromSelection: 'always' as const, // 不使用选择内容作为查找初始内容
-        globalFindClipboard: false // 禁用全局查找剪贴板
+        autoFindInSelection: "multiline" as const, // 不自动在选择区域内查找
+        seedSearchStringFromSelection: "always" as const, // 不使用选择内容作为查找初始内容
+        globalFindClipboard: false, // 禁用全局查找剪贴板
     },
 
     // Unicode 高亮配置 - 禁用中文等非基本ASCII字符的黄色方框高亮
-    unicodeHighlight: {}
+    unicodeHighlight: {},
 });
 
 // 更新字符串换行
 const updateWordWrap = () => {
     // 反转逻辑：wordWrap=false 表示换行（'on'），wordWrap=true 表示不换行（'off'）
     const options = {
-        wordWrap: wordWrap.value ? 'off' as const : 'on' as const
+        wordWrap: wordWrap.value ? ("off" as const) : ("on" as const),
     };
 
     inputEditor?.updateOptions(options);
@@ -1223,7 +1294,7 @@ const updateWordWrap = () => {
 // 更新字体大小
 const updateFontSize = () => {
     const options = {
-        fontSize: fontSize.value
+        fontSize: fontSize.value,
     };
 
     inputEditor?.updateOptions(options);
@@ -1237,8 +1308,8 @@ const updateIndentGuides = () => {
         guides: {
             indentation: showIndentGuide.value,
             highlightActiveIndentation: showIndentGuide.value,
-            bracketPairs: showIndentGuide.value
-        }
+            bracketPairs: showIndentGuide.value,
+        },
     };
 
     inputEditor?.updateOptions(options);
@@ -1246,7 +1317,10 @@ const updateIndentGuides = () => {
 };
 
 // 更新输出编辑器配置（包括模型选项，确保缩进指南线正确显示）
-const updateOutputEditorConfig = (language: string = 'json', enableLargeFileFolding: boolean = false) => {
+const updateOutputEditorConfig = (
+    language: string = "json",
+    enableLargeFileFolding: boolean = false
+) => {
     if (!outputEditor) return;
 
     const model = outputEditor.getModel();
@@ -1256,33 +1330,42 @@ const updateOutputEditorConfig = (language: string = 'json', enableLargeFileFold
         model.updateOptions({
             tabSize: indentSize.value,
             indentSize: indentSize.value,
-            insertSpaces: true
+            insertSpaces: true,
         });
     }
 
     // 更新编辑器配置
-    outputEditor.updateOptions(getEditorOptions(indentSize.value, true, language, enableLargeFileFolding));
+    outputEditor.updateOptions(
+        getEditorOptions(indentSize.value, true, language, enableLargeFileFolding)
+    );
 
     updateLineNumberWidth(outputEditor);
     updateEditorHeight(outputEditor);
 };
 
 // 设置折叠信息显示（在折叠区域显示 n keys 或 n items）
-const setupFoldingInfoDisplay = (editor: monaco.editor.IStandaloneCodeEditor) => {
+const setupFoldingInfoDisplay = (
+    editor: monaco.editor.IStandaloneCodeEditor
+) => {
     if (!editor) return;
 
     const model = editor.getModel();
     if (!model) return;
 
     // 从预先计算的数据中获取折叠区域的信息
-    const getFoldingInfo = (startLine: number): { type: 'object' | 'array', count: number } | null => {
+    const getFoldingInfo = (
+        startLine: number
+    ): { type: "object" | "array"; count: number } | null => {
         const info = precomputedFoldingInfo.get(startLine) || null;
         return info;
     };
 
     // 存储已添加的信息元素，用于清理
     // key: lineNumber, value: { element: HTMLElement, foldedElement: Element }
-    const infoElements = new Map<number, { element: HTMLElement; foldedElement: Element }>();
+    const infoElements = new Map<
+        number,
+        { element: HTMLElement; foldedElement: Element }
+    >();
 
     // 控制是否禁用更新（层级收缩时）
     let isUpdateDisabled = false;
@@ -1375,7 +1458,7 @@ const setupFoldingInfoDisplay = (editor: monaco.editor.IStandaloneCodeEditor) =>
             let minLine = Infinity;
             let maxLine = 0;
 
-            visibleRanges.forEach(range => {
+            visibleRanges.forEach((range) => {
                 if (range.startLineNumber < minLine) minLine = range.startLineNumber;
                 if (range.endLineNumber > maxLine) maxLine = range.endLineNumber;
             });
@@ -1418,7 +1501,7 @@ const setupFoldingInfoDisplay = (editor: monaco.editor.IStandaloneCodeEditor) =>
             }
 
             // 查找所有包含 inline-folded 类的元素
-            const foldedElements = editorDom.querySelectorAll('.inline-folded');
+            const foldedElements = editorDom.querySelectorAll(".inline-folded");
 
             // 收集当前存在的折叠元素对应的行号（仅可见区域）
             const currentFoldedLines = new Set<number>();
@@ -1426,7 +1509,7 @@ const setupFoldingInfoDisplay = (editor: monaco.editor.IStandaloneCodeEditor) =>
             // 遍历所有折叠元素，但只处理可见区域内的
             foldedElements.forEach((foldedElement, index) => {
                 // 获取包含这个折叠元素的视图行
-                const viewLine = foldedElement.closest('.view-line') as HTMLElement;
+                const viewLine = foldedElement.closest(".view-line") as HTMLElement;
                 if (!viewLine) return;
 
                 // 使用Monaco Editor的getTargetAtClientPoint API，通过DOM元素的坐标来获取准确的行号
@@ -1477,20 +1560,29 @@ const setupFoldingInfoDisplay = (editor: monaco.editor.IStandaloneCodeEditor) =>
                     // 这种情况通常发生在单行数组折叠时，折叠元素可能不在标准的view-line中
                     if (!lineNumber && visibleRange) {
                         // 获取编辑器内容区域的DOM元素（.view-lines）
-                        const viewLinesContainer = editorDom.querySelector('.view-lines') as HTMLElement;
+                        const viewLinesContainer = editorDom.querySelector(
+                            ".view-lines"
+                        ) as HTMLElement;
                         if (viewLinesContainer) {
                             const viewLinesRect = viewLinesContainer.getBoundingClientRect();
                             const foldedRect = foldedElement.getBoundingClientRect();
 
                             // 计算折叠元素相对于内容区域的Y坐标
-                            const elementY = foldedRect.top + foldedRect.height / 2 - viewLinesRect.top;
+                            const elementY =
+                                foldedRect.top + foldedRect.height / 2 - viewLinesRect.top;
 
                             // 遍历可见范围内的所有行，通过Y坐标匹配来查找
-                            for (let line = visibleRange.start; line <= visibleRange.end; line++) {
+                            for (
+                                let line = visibleRange.start;
+                                line <= visibleRange.end;
+                                line++
+                            ) {
                                 try {
                                     // 使用Monaco API获取行的Y坐标范围（相对于内容区域）
                                     const lineTop = editor.getTopForLineNumber(line);
-                                    const lineHeight = editor.getOption(monaco.editor.EditorOption.lineHeight);
+                                    const lineHeight = editor.getOption(
+                                        monaco.editor.EditorOption.lineHeight
+                                    );
                                     const lineBottom = lineTop + lineHeight;
 
                                     // 检查折叠元素的Y坐标是否在这一行的范围内
@@ -1549,8 +1641,10 @@ const setupFoldingInfoDisplay = (editor: monaco.editor.IStandaloneCodeEditor) =>
                 const existingInfo = infoElements.get(lineNumber);
                 if (existingInfo) {
                     // 检查元素是否还在DOM中，并且对应的foldedElement是否还是同一个
-                    if (document.body.contains(existingInfo.element) &&
-                        existingInfo.foldedElement === foldedElement) {
+                    if (
+                        document.body.contains(existingInfo.element) &&
+                        existingInfo.foldedElement === foldedElement
+                    ) {
                         // 元素已存在且有效，跳过
                         return;
                     } else {
@@ -1567,20 +1661,22 @@ const setupFoldingInfoDisplay = (editor: monaco.editor.IStandaloneCodeEditor) =>
                 }
 
                 // 构建显示文本
-                const displayText = info.type === 'object'
-                    ? `${info.count} keys`
-                    : `${info.count} items`;
+                const displayText =
+                    info.type === "object" ? `${info.count} keys` : `${info.count} items`;
 
                 // 创建信息元素
-                const infoElement = document.createElement('span');
-                infoElement.className = 'folding-info-text';
+                const infoElement = document.createElement("span");
+                infoElement.className = "folding-info-text";
                 infoElement.textContent = ` ${displayText}`;
 
                 // 将信息元素直接插入到 inline-folded 元素之后
                 // 这样信息就会显示在 "..." 后面
                 if (foldedElement.parentNode) {
                     // 在 foldedElement 后面插入信息元素
-                    foldedElement.parentNode.insertBefore(infoElement, foldedElement.nextSibling);
+                    foldedElement.parentNode.insertBefore(
+                        infoElement,
+                        foldedElement.nextSibling
+                    );
                     infoElements.set(lineNumber, { element: infoElement, foldedElement });
                 } else {
                     // 如果找不到父节点，尝试添加到视图行
@@ -1592,7 +1688,8 @@ const setupFoldingInfoDisplay = (editor: monaco.editor.IStandaloneCodeEditor) =>
             // 清理不再存在的折叠元素对应的信息，以及不可见区域的信息元素
             infoElements.forEach((info, lineNumber) => {
                 // 检查是否在可见区域外，或者折叠元素已不存在
-                const isOutsideVisibleRange = lineNumber < visibleRange.start || lineNumber > visibleRange.end;
+                const isOutsideVisibleRange =
+                    lineNumber < visibleRange.start || lineNumber > visibleRange.end;
                 const isFoldedElementRemoved = !currentFoldedLines.has(lineNumber);
 
                 if (isFoldedElementRemoved) {
@@ -1643,22 +1740,30 @@ const setupFoldingInfoDisplay = (editor: monaco.editor.IStandaloneCodeEditor) =>
     // 但只在折叠相关的类变化时才触发
     const observer = new MutationObserver((mutations) => {
         // 检查是否有折叠相关的变化
-        const hasFoldingChange = mutations.some(mutation => {
-            if (mutation.type === 'attributes' && mutation.attributeName === 'class') {
+        const hasFoldingChange = mutations.some((mutation) => {
+            if (
+                mutation.type === "attributes" &&
+                mutation.attributeName === "class"
+            ) {
                 const target = mutation.target as Element;
-                return target.classList.contains('inline-folded') ||
-                    target.querySelector('.inline-folded') !== null;
+                return (
+                    target.classList.contains("inline-folded") ||
+                    target.querySelector(".inline-folded") !== null
+                );
             }
-            if (mutation.type === 'childList') {
-                return Array.from(mutation.addedNodes).some(node =>
-                    node instanceof Element && (
-                        node.classList.contains('inline-folded') ||
-                        node.querySelector('.inline-folded') !== null
-                    )
-                ) || Array.from(mutation.removedNodes).some(node =>
-                    node instanceof Element && (
-                        node.classList.contains('inline-folded') ||
-                        node.querySelector('.inline-folded') !== null
+            if (mutation.type === "childList") {
+                return (
+                    Array.from(mutation.addedNodes).some(
+                        (node) =>
+                            node instanceof Element &&
+                            (node.classList.contains("inline-folded") ||
+                                node.querySelector(".inline-folded") !== null)
+                    ) ||
+                    Array.from(mutation.removedNodes).some(
+                        (node) =>
+                            node instanceof Element &&
+                            (node.classList.contains("inline-folded") ||
+                                node.querySelector(".inline-folded") !== null)
                     )
                 );
             }
@@ -1677,36 +1782,41 @@ const setupFoldingInfoDisplay = (editor: monaco.editor.IStandaloneCodeEditor) =>
             childList: true,
             subtree: true,
             attributes: true,
-            attributeFilter: ['class']
+            attributeFilter: ["class"],
         });
     }
 
     // 监听鼠标点击事件（用户点击折叠按钮时）
-    editorDom?.addEventListener('click', (e) => {
-        // 检查 model 是否已被销毁
-        if (!model || model.isDisposed()) {
-            return;
-        }
-        const target = e.target as Element;
-        const isFoldingClick = target.closest('.folding') || target.closest('.inline-folded');
-        // 只在点击折叠相关元素时触发
-        if (isFoldingClick) {
-            // 对于小数据量，使用更短的延迟确保快速响应
-            const lineCount = model.getLineCount();
-            if (lineCount < 1000) {
-                // 小数据量：清除防抖，使用短延迟立即更新
-                if (updateTimer) clearTimeout(updateTimer);
-                updateTimer = setTimeout(() => {
-                    if (!isUpdateDisabled && model && !model.isDisposed()) {
-                        updateFoldingInfo();
-                    }
-                }, 30); // 小数据量使用30ms延迟
-            } else {
-                // 大数据量：使用防抖
-                debouncedUpdate();
+    editorDom?.addEventListener(
+        "click",
+        (e) => {
+            // 检查 model 是否已被销毁
+            if (!model || model.isDisposed()) {
+                return;
             }
-        }
-    }, true);
+            const target = e.target as Element;
+            const isFoldingClick =
+                target.closest(".folding") || target.closest(".inline-folded");
+            // 只在点击折叠相关元素时触发
+            if (isFoldingClick) {
+                // 对于小数据量，使用更短的延迟确保快速响应
+                const lineCount = model.getLineCount();
+                if (lineCount < 1000) {
+                    // 小数据量：清除防抖，使用短延迟立即更新
+                    if (updateTimer) clearTimeout(updateTimer);
+                    updateTimer = setTimeout(() => {
+                        if (!isUpdateDisabled && model && !model.isDisposed()) {
+                            updateFoldingInfo();
+                        }
+                    }, 30); // 小数据量使用30ms延迟
+                } else {
+                    // 大数据量：使用防抖
+                    debouncedUpdate();
+                }
+            }
+        },
+        true
+    );
 
     // 监听滚动事件（性能优化：滚动时更新可见区域的折叠信息）
     // 使用 requestAnimationFrame 进行节流，确保滚动时流畅更新
@@ -1793,8 +1903,10 @@ const setupFoldingInfoDisplay = (editor: monaco.editor.IStandaloneCodeEditor) =>
 // 提取 JSON 字符串内容（去除引号和转义字符）
 const extractStringValue = (text: string): string | null => {
     // 移除首尾的引号
-    if ((text.startsWith('"') && text.endsWith('"')) ||
-        (text.startsWith("'") && text.endsWith("'"))) {
+    if (
+        (text.startsWith('"') && text.endsWith('"')) ||
+        (text.startsWith("'") && text.endsWith("'"))
+    ) {
         const inner = text.slice(1, -1);
         try {
             // 使用 JSON.parse 来处理转义字符
@@ -1808,7 +1920,10 @@ const extractStringValue = (text: string): string | null => {
 };
 
 // 查找字符串的完整范围（包括引号）
-const findStringRange = (model: monaco.editor.ITextModel, position: monaco.Position): monaco.Range | null => {
+const findStringRange = (
+    model: monaco.editor.ITextModel,
+    position: monaco.Position
+): monaco.Range | null => {
     const lineNumber = position.lineNumber;
     const column = position.column;
     const lineContent = model.getLineContent(lineNumber);
@@ -1816,121 +1931,105 @@ const findStringRange = (model: monaco.editor.ITextModel, position: monaco.Posit
     // Monaco 的 column 是从 1 开始的，转换为数组索引（从 0 开始）
     const currentIndex = column - 1;
 
-    // 检查当前位置是否是引号
-    if (currentIndex < lineContent.length && lineContent[currentIndex] === '"') {
-        // 如果当前位置是引号，检查它是否是字符串的开始还是结束
-        // 先检查是否是字符串开始（向后查找是否有结束引号）
-        let escapeNext = false;
-        let foundEnd = false;
-        let endCol = -1;
+    // 辅助函数：检查指定位置是否是转义的引号
+    const isEscapedQuote = (index: number, content: string): boolean => {
+        if (index <= 0) return false;
+        let backslashCount = 0;
+        let i = index - 1;
+        // 向前查找连续的反斜杠
+        while (i >= 0 && content[i] === "\\") {
+            backslashCount++;
+            i--;
+        }
+        // 如果反斜杠数量是奇数，说明引号被转义了
+        return backslashCount % 2 === 1;
+    };
 
-        for (let i = currentIndex + 1; i < lineContent.length; i++) {
-            const char = lineContent[i];
-
-            if (escapeNext) {
-                escapeNext = false;
-                continue;
+    // 辅助函数：从指定位置向前查找最近的未转义的引号
+    const findStartQuote = (startIndex: number, content: string): number | null => {
+        for (let i = startIndex; i >= 0; i--) {
+            if (content[i] === '"' && !isEscapedQuote(i, content)) {
+                return i;
             }
+        }
+        return null;
+    };
 
-            if (char === '\\') {
-                escapeNext = true;
-                continue;
+    // 辅助函数：从指定位置向后查找最近的未转义的引号
+    const findEndQuote = (startIndex: number, content: string): number | null => {
+        for (let i = startIndex; i < content.length; i++) {
+            if (content[i] === '"' && !isEscapedQuote(i, content)) {
+                return i;
             }
+        }
+        return null;
+    };
 
-            if (char === '"') {
-                foundEnd = true;
-                endCol = i;
-                break;
+    // 策略1: 如果当前位置是引号，判断它是开始还是结束
+    if (currentIndex < lineContent.length && lineContent[currentIndex] === '"' && !isEscapedQuote(currentIndex, lineContent)) {
+        // 尝试向后查找结束引号（假设这是开始引号）
+        const endQuote = findEndQuote(currentIndex + 1, lineContent);
+        if (endQuote !== null) {
+            // 验证：检查这个范围是否包含当前位置
+            if (currentIndex <= endQuote) {
+                return new monaco.Range(
+                    lineNumber,
+                    currentIndex + 1,
+                    lineNumber,
+                    endQuote + 2
+                );
             }
         }
 
-        if (foundEnd) {
-            return new monaco.Range(lineNumber, currentIndex + 1, lineNumber, endCol + 2);
-        }
-
-        // 如果不是字符串开始，检查是否是字符串结束（向前查找是否有开始引号）
-        escapeNext = false;
-        let foundStart = false;
-        let startCol = -1;
-
-        for (let i = currentIndex - 1; i >= 0; i--) {
-            const char = lineContent[i];
-
-            if (escapeNext) {
-                escapeNext = false;
-                continue;
-            }
-
-            if (char === '\\') {
-                escapeNext = true;
-                continue;
-            }
-
-            if (char === '"') {
-                foundStart = true;
-                startCol = i;
-                break;
-            }
-        }
-
-        if (foundStart) {
-            return new monaco.Range(lineNumber, startCol + 1, lineNumber, currentIndex + 2);
-        }
-    }
-
-    // 当前位置不是引号，向前查找字符串开始位置
-    let startCol = -1;
-    let endCol = -1;
-    let escapeNext = false;
-
-    // 向前查找字符串开始位置（找到最近的未转义的引号）
-    for (let i = currentIndex; i >= 0; i--) {
-        const char = lineContent[i];
-
-        if (escapeNext) {
-            escapeNext = false;
-            continue;
-        }
-
-        if (char === '\\') {
-            escapeNext = true;
-            continue;
-        }
-
-        if (char === '"') {
-            // 找到字符串开始位置
-            startCol = i;
-            break;
-        }
-    }
-
-    // 如果找到开始位置，查找结束位置
-    if (startCol !== -1) {
-        escapeNext = false;
-        for (let i = startCol + 1; i < lineContent.length; i++) {
-            const char = lineContent[i];
-
-            if (escapeNext) {
-                escapeNext = false;
-                continue;
-            }
-
-            if (char === '\\') {
-                escapeNext = true;
-                continue;
-            }
-
-            if (char === '"') {
-                // 找到字符串结束位置
-                endCol = i;
-                break;
+        // 尝试向前查找开始引号（假设这是结束引号）
+        const startQuote = findStartQuote(currentIndex - 1, lineContent);
+        if (startQuote !== null) {
+            // 验证：检查这个范围是否包含当前位置
+            if (startQuote <= currentIndex) {
+                return new monaco.Range(
+                    lineNumber,
+                    startQuote + 1,
+                    lineNumber,
+                    currentIndex + 2
+                );
             }
         }
     }
 
-    // 如果找到了完整的字符串范围，并且当前位置在字符串内（包括引号）
-    if (startCol !== -1 && endCol !== -1 && currentIndex >= startCol && currentIndex <= endCol + 1) {
-        return new monaco.Range(lineNumber, startCol + 1, lineNumber, endCol + 2);
+    // 策略2: 当前位置不是引号，或者引号匹配失败，从当前位置向前查找字符串开始
+    // 首先找到最近的未转义引号（可能是开始或结束）
+    let nearestQuote = findStartQuote(currentIndex, lineContent);
+    
+    if (nearestQuote === null) {
+        return null;
+    }
+
+    // 尝试将这个引号作为开始引号，向后查找结束引号
+    const endQuote = findEndQuote(nearestQuote + 1, lineContent);
+    if (endQuote !== null) {
+        // 验证：当前位置是否在这个字符串范围内（包括引号）
+        if (currentIndex >= nearestQuote && currentIndex <= endQuote + 1) {
+            return new monaco.Range(
+                lineNumber,
+                nearestQuote + 1,
+                lineNumber,
+                endQuote + 2
+            );
+        }
+    }
+
+    // 策略3: 如果上面的策略失败，尝试将最近的引号作为结束引号，向前查找开始引号
+    const startQuote = findStartQuote(nearestQuote - 1, lineContent);
+    if (startQuote !== null) {
+        // 验证：当前位置是否在这个字符串范围内（包括引号）
+        if (currentIndex >= startQuote && currentIndex <= nearestQuote + 1) {
+            return new monaco.Range(
+                lineNumber,
+                startQuote + 1,
+                lineNumber,
+                nearestQuote + 2
+            );
+        }
     }
 
     return null;
@@ -1944,21 +2043,21 @@ const copyToClipboard = async (text: string) => {
             await navigator.clipboard.writeText(text);
         } else {
             // 降级方案：使用传统方法（execCommand 已废弃，但作为兼容性降级方案）
-            const textArea = document.createElement('textarea');
+            const textArea = document.createElement("textarea");
             textArea.value = text;
             textArea.readOnly = true; // 防止用户看到选中内容
-            textArea.style.position = 'fixed';
-            textArea.style.left = '-999999px';
-            textArea.style.top = '-999999px';
-            textArea.style.opacity = '0';
+            textArea.style.position = "fixed";
+            textArea.style.left = "-999999px";
+            textArea.style.top = "-999999px";
+            textArea.style.opacity = "0";
             document.body.appendChild(textArea);
             textArea.focus();
             textArea.select();
             try {
                 // document.execCommand 已废弃，但作为降级方案仍可使用
-                const success = document.execCommand('copy');
+                const success = document.execCommand("copy");
                 if (!success) {
-                    throw new Error('execCommand failed');
+                    throw new Error("execCommand failed");
                 }
             } catch (err) {
                 // 忽略错误
@@ -1973,7 +2072,7 @@ const copyToClipboard = async (text: string) => {
 
 // 格式化文件大小（B/KB/MB）
 const formatFileSize = (bytes: number): string => {
-    if (bytes === 0) return '0 B';
+    if (bytes === 0) return "0 B";
     if (bytes < 1024) return `${bytes} B`;
     if (bytes < 1024 * 1024) {
         const kb = bytes / 1024;
@@ -1985,23 +2084,26 @@ const formatFileSize = (bytes: number): string => {
     return mb % 1 === 0 ? `${mb} MB` : `${mb.toFixed(2)} MB`;
 };
 
-
 // 更新编辑器状态栏信息
-const updateEditorStatus = (editor: monaco.editor.IStandaloneCodeEditor | null, statusRef: { value: string }, isInputEditor: boolean = false) => {
+const updateEditorStatus = (
+    editor: monaco.editor.IStandaloneCodeEditor | null,
+    statusRef: { value: string },
+    isInputEditor: boolean = false
+) => {
     if (!editor) {
-        statusRef.value = '';
+        statusRef.value = "";
         return;
     }
 
     const selection = editor.getSelection();
     if (!selection) {
-        statusRef.value = '';
+        statusRef.value = "";
         return;
     }
 
     const model = editor.getModel();
     if (!model) {
-        statusRef.value = '';
+        statusRef.value = "";
         return;
     }
 
@@ -2015,7 +2117,8 @@ const updateEditorStatus = (editor: monaco.editor.IStandaloneCodeEditor | null, 
     const hasSelection = !selection.isEmpty();
 
     // 检查是否全选（从第1行第1列到最后一行的最后一列）
-    const isFullSelection = hasSelection &&
+    const isFullSelection =
+        hasSelection &&
         startLine === 1 &&
         startColumn === 1 &&
         endLine === totalLines &&
@@ -2042,7 +2145,7 @@ const updateEditorStatus = (editor: monaco.editor.IStandaloneCodeEditor | null, 
         if (selectedText.trim()) {
             try {
                 // 转义特殊字符用于正则表达式搜索（完全匹配）
-                const escapedText = selectedText.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+                const escapedText = selectedText.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
                 // 在整个文档中查找所有完全匹配的位置
                 // findMatches(searchString, searchOnlyEditableRange, isRegex, matchCase, wordSeparators, captureMatches, limitResultCount?)
@@ -2050,8 +2153,8 @@ const updateEditorStatus = (editor: monaco.editor.IStandaloneCodeEditor | null, 
                     escapedText,
                     false, // 搜索整个文档（不只是可编辑范围）
                     false, // 不是正则表达式（已转义为字面量）
-                    true,  // 区分大小写（完全匹配）
-                    null,  // 不使用单词分隔符
+                    true, // 区分大小写（完全匹配）
+                    null, // 不使用单词分隔符
                     false, // 不捕获组
                     undefined // 不限制结果数量
                 );
@@ -2095,7 +2198,11 @@ const updateEditorStatus = (editor: monaco.editor.IStandaloneCodeEditor | null, 
 };
 
 // 设置编辑器选择变化监听
-const setupSelectionListener = (editor: monaco.editor.IStandaloneCodeEditor | null, statusRef: { value: string }, isInputEditor: boolean = false) => {
+const setupSelectionListener = (
+    editor: monaco.editor.IStandaloneCodeEditor | null,
+    statusRef: { value: string },
+    isInputEditor: boolean = false
+) => {
     if (!editor) return;
 
     // 监听选择变化
@@ -2113,7 +2220,9 @@ const setupSelectionListener = (editor: monaco.editor.IStandaloneCodeEditor | nu
 };
 
 // 设置双击选中整个字符串并复制功能
-const setupDoubleClickSelectString = (editor: monaco.editor.IStandaloneCodeEditor) => {
+const setupDoubleClickSelectString = (
+    editor: monaco.editor.IStandaloneCodeEditor
+) => {
     let lastClickTime = 0;
     let lastClickPosition: monaco.Position | null = null;
 
@@ -2129,7 +2238,8 @@ const setupDoubleClickSelectString = (editor: monaco.editor.IStandaloneCodeEdito
         }
 
         // 检测双击（两次点击间隔小于 300ms 且在同一位置附近）
-        const isDoubleClick = currentTime - lastClickTime < 300 &&
+        const isDoubleClick =
+            currentTime - lastClickTime < 300 &&
             lastClickPosition &&
             lastClickPosition.lineNumber === currentPosition.lineNumber &&
             Math.abs(lastClickPosition.column - currentPosition.column) <= 1;
@@ -2140,42 +2250,51 @@ const setupDoubleClickSelectString = (editor: monaco.editor.IStandaloneCodeEdito
             if (!model) return;
 
             // 保存当前点击位置（因为延迟执行时 e.target.position 可能已失效）
-            const clickPosition = new monaco.Position(currentPosition.lineNumber, currentPosition.column);
+            const clickPosition = new monaco.Position(
+                currentPosition.lineNumber,
+                currentPosition.column
+            );
 
             // 延迟处理，让 Monaco 的双击选中先完成
             setTimeout(() => {
-                // 查找完整的字符串范围
+                // 查找完整的字符串范围（包括引号）
                 const stringRange = findStringRange(model, clickPosition);
 
                 if (stringRange) {
-                    // 设置选中范围为整个字符串（包括引号）
-                    editor.setSelection(stringRange);
+                    // 创建不包含引号的范围（排除两端的引号）
+                    const stringValueRange = new monaco.Range(
+                        stringRange.startLineNumber,
+                        stringRange.startColumn + 1, // 跳过开始引号
+                        stringRange.endLineNumber,
+                        stringRange.endColumn - 1    // 跳过结束引号
+                    );
 
-                    // 获取整个字符串文本（包括引号）
-                    const fullStringText = model.getValueInRange(stringRange);
+                    // 获取字符串值文本（不包含引号，保持转义字符的字面形式）
+                    const stringValueText = model.getValueInRange(stringValueRange);
 
-                    // 提取字符串值（去除引号和转义）
-                    const stringValue = extractStringValue(fullStringText);
+                    // 设置选中范围为字符串值（不包含引号）
+                    editor.setSelection(stringValueRange);
 
-                    if (stringValue !== null && stringValue !== undefined) {
-                        // 复制字符串值到剪贴板
-                        copyToClipboard(stringValue);
-                        showSuccess('字符串已复制到剪贴板');
-                    }
+                    // 复制字符串值到剪贴板（不包含引号，保持原始转义字符形式）
+                    copyToClipboard(stringValueText);
+                    showSuccess("字符串已复制到剪贴板");
                 }
             }, 10);
         }
 
         // 更新记录
         lastClickTime = currentTime;
-        lastClickPosition = new monaco.Position(currentPosition.lineNumber, currentPosition.column);
+        lastClickPosition = new monaco.Position(
+            currentPosition.lineNumber,
+            currentPosition.column
+        );
     });
 };
 
 // 添加窗口大小变化的处理函数
 const handleResize = () => {
     // 更新容器宽度
-    const container = document.querySelector('.editor-container');
+    const container = document.querySelector(".editor-container");
     if (container) {
         editorContainerWidth.value = container.getBoundingClientRect().width;
     }
@@ -2237,37 +2356,43 @@ watch([indentSize, arrayNewLine, showIndentGuide], () => {
         return;
     }
     try {
-        const currentValue = inputEditor?.getValue() || '';
+        const currentValue = inputEditor?.getValue() || "";
         JSON.parse(currentValue);
     } catch {
         // 解析失败不做处理
     }
 });
 
-// 确保某些按钮始终为true（格式化、数据转换、收缩、全屏）
-watch(() => buttonVisibility.value.format, (newVal) => {
-    if (!newVal) {
-        buttonVisibility.value.format = true;
-    }
-}, { immediate: true });
+// 确保某些按钮始终为true（格式化、收缩、全屏）
+watch(
+    () => buttonVisibility.value.format,
+    (newVal) => {
+        if (!newVal) {
+            buttonVisibility.value.format = true;
+        }
+    },
+    { immediate: true }
+);
 
-watch(() => buttonVisibility.value.dataConvert, (newVal) => {
-    if (!newVal) {
-        buttonVisibility.value.dataConvert = true;
-    }
-}, { immediate: true });
+watch(
+    () => buttonVisibility.value.collapse,
+    (newVal) => {
+        if (!newVal) {
+            buttonVisibility.value.collapse = true;
+        }
+    },
+    { immediate: true }
+);
 
-watch(() => buttonVisibility.value.collapse, (newVal) => {
-    if (!newVal) {
-        buttonVisibility.value.collapse = true;
-    }
-}, { immediate: true });
-
-watch(() => buttonVisibility.value.fullscreen, (newVal) => {
-    if (!newVal) {
-        buttonVisibility.value.fullscreen = true;
-    }
-}, { immediate: true });
+watch(
+    () => buttonVisibility.value.fullscreen,
+    (newVal) => {
+        if (!newVal) {
+            buttonVisibility.value.fullscreen = true;
+        }
+    },
+    { immediate: true }
+);
 
 // ==================== 自动保存设置到 localStorage ====================
 // 监听所有设置的变化并自动保存
@@ -2283,7 +2408,7 @@ watch(
         arrayNewLine.value,
         sortMethod.value,
         sortOrder.value,
-        customArchiveName.value
+        customArchiveName.value,
     ],
     () => {
         saveSettings();
@@ -2306,7 +2431,7 @@ let messageStyleElement: HTMLStyleElement | null = null;
 
 // 更新消息提示位置的函数
 const updateMessageOffset = () => {
-    if (typeof window === 'undefined' || !messageStyleElement) return;
+    if (typeof window === "undefined" || !messageStyleElement) return;
     const offset = getMessageOffset();
     messageStyleElement.textContent = `
         .el-message {
@@ -2321,25 +2446,24 @@ const updateMessageOffset = () => {
 
 // ==================== onMounted 辅助函数 ====================
 
-
 // 初始化消息样式
 const initializeMessageStyles = () => {
-    if (typeof window === 'undefined') return;
-    messageStyleElement = document.createElement('style');
+    if (typeof window === "undefined") return;
+    messageStyleElement = document.createElement("style");
     updateMessageOffset();
     document.head.appendChild(messageStyleElement);
 };
 
 // 初始化Monaco环境
 const initializeMonacoEnvironment = () => {
-    if (typeof window === 'undefined') return;
+    if (typeof window === "undefined") return;
     window.MonacoEnvironment = {
         getWorker(_, label): Worker {
-            if (label === 'json') {
+            if (label === "json") {
                 return new jsonWorker();
             }
             return new editorWorker();
-        }
+        },
     };
 };
 
@@ -2349,13 +2473,13 @@ const createInputEditor = () => {
 
     // 对于输入编辑器，也启用大文件折叠优化（因为用户可能输入大量JSON）
     // 输入编辑器始终使用2个空格缩进，不受格式化设置影响
-    const inputOptions = getEditorOptions(2, false, 'json', true);
+    const inputOptions = getEditorOptions(2, false, "json", true);
     inputEditor = monaco.editor.create(inputEditorContainer.value, inputOptions);
     nextTick(() => {
-        const textarea = inputEditorContainer.value?.querySelector('textarea');
+        const textarea = inputEditorContainer.value?.querySelector("textarea");
         if (textarea) {
-            textarea.setAttribute('id', 'monaco-input-editor');
-            textarea.setAttribute('name', 'monaco-input-editor');
+            textarea.setAttribute("id", "monaco-input-editor");
+            textarea.setAttribute("name", "monaco-input-editor");
         }
     });
 };
@@ -2365,13 +2489,13 @@ const createOutputEditor = () => {
     if (!outputEditorContainer.value) return;
 
     // 默认启用大文件折叠优化（因为是输出编辑器，通常会处理较大的JSON）
-    const options = getEditorOptions(indentSize.value, true, 'json', true);
+    const options = getEditorOptions(indentSize.value, true, "json", true);
     outputEditor = monaco.editor.create(outputEditorContainer.value, options);
     nextTick(() => {
-        const textarea = outputEditorContainer.value?.querySelector('textarea');
+        const textarea = outputEditorContainer.value?.querySelector("textarea");
         if (textarea) {
-            textarea.setAttribute('id', 'monaco-output-editor');
-            textarea.setAttribute('name', 'monaco-output-editor');
+            textarea.setAttribute("id", "monaco-output-editor");
+            textarea.setAttribute("name", "monaco-output-editor");
         }
     });
 };
@@ -2381,12 +2505,14 @@ const configureInputEditor = () => {
     if (!inputEditor) return;
 
     // 输入编辑器始终使用2个空格缩进，不受格式化设置影响
-    inputEditor.getModel()?.updateOptions({ tabSize: 2, indentSize: 2, insertSpaces: true });
+    inputEditor
+        .getModel()
+        ?.updateOptions({ tabSize: 2, indentSize: 2, insertSpaces: true });
     // 同时更新编辑器选项，确保formatOnPaste使用2个空格
     inputEditor.updateOptions({ tabSize: 2, indentSize: 2 } as any);
 
     // 初始化时不加载数据，保持空白
-    inputEditor.setValue('');
+    inputEditor.setValue("");
     maxLevel.value = 0;
     selectedLevel.value = 0;
 
@@ -2408,18 +2534,18 @@ const configureInputEditor = () => {
         // 使用防抖更新行号宽度，避免频繁调用
         debouncedUpdateLineNumberWidth(inputEditor);
 
-        const value = inputEditor?.getValue() || '';
+        const value = inputEditor?.getValue() || "";
         if (value.trim()) {
-            const cleanedContent = value.replace(/[\u0000-\u0019]+/g, '');
+            const cleanedContent = value.replace(/[\u0000-\u0019]+/g, "");
 
             // 检查行数和深度限制
             const checkResult = checkLinesAndDepth(cleanedContent);
             if (!checkResult.isValid) {
-                showError(checkResult.error || '内容不符合要求');
+                showError(checkResult.error || "内容不符合要求");
                 maxLevel.value = 0;
                 selectedLevel.value = 0;
                 // 如果深度超过99层，自动清空输入区域内容
-                if (checkResult.error && checkResult.error.includes('深度超过99层')) {
+                if (checkResult.error && checkResult.error.includes("深度超过99层")) {
                     // 延迟清空，避免在内容变化监听中直接修改编辑器内容导致的问题
                     setTimeout(() => {
                         if (inputEditor) {
@@ -2427,15 +2553,17 @@ const configureInputEditor = () => {
                             if (model) {
                                 const fullRange = model.getFullModelRange();
                                 if (!fullRange.isEmpty()) {
-                                    inputEditor.executeEdits('clear-input-depth-limit', [{
-                                        range: fullRange,
-                                        text: ''
-                                    }]);
+                                    inputEditor.executeEdits("clear-input-depth-limit", [
+                                        {
+                                            range: fullRange,
+                                            text: "",
+                                        },
+                                    ]);
                                 }
                             }
                         }
                         if (outputEditor) {
-                            outputEditor.setValue('');
+                            outputEditor.setValue("");
                             updateEditorHeight(outputEditor);
                             updateLineNumberWidth(outputEditor);
                         }
@@ -2457,7 +2585,7 @@ const configureInputEditor = () => {
         } else {
             maxLevel.value = 0;
             selectedLevel.value = 0;
-            outputEditor?.setValue('');
+            outputEditor?.setValue("");
             updateEditorHeight(outputEditor);
             updateLineNumberWidth(outputEditor);
         }
@@ -2468,7 +2596,9 @@ const configureInputEditor = () => {
 const configureOutputEditor = () => {
     if (!outputEditor) return;
 
-    outputEditor.getModel()?.updateOptions({ tabSize: indentSize.value, insertSpaces: true });
+    outputEditor
+        .getModel()
+        ?.updateOptions({ tabSize: indentSize.value, insertSpaces: true });
     // 设置双击选中整个字符串并复制功能
     setupDoubleClickSelectString(outputEditor);
     // 设置选择变化监听
@@ -2490,14 +2620,14 @@ const initializeEditorLayout = () => {
 
 // 设置窗口resize监听器
 const setupWindowResizeListener = () => {
-    if (typeof window === 'undefined') return;
-    window.addEventListener('resize', debouncedResize);
+    if (typeof window === "undefined") return;
+    window.addEventListener("resize", debouncedResize);
 };
 
 // 初始化容器宽度
 const initializeContainerWidth = () => {
     setTimeout(() => {
-        const container = document.querySelector('.editor-container');
+        const container = document.querySelector(".editor-container");
         if (container) {
             editorContainerWidth.value = container.getBoundingClientRect().width;
         }
@@ -2525,24 +2655,25 @@ const handleToolBarScroll = () => {
 };
 
 // 滚动工具栏
-const scrollToolBar = (direction: 'left' | 'right') => {
+const scrollToolBar = (direction: "left" | "right") => {
     if (!toolBarRef.value) return;
 
     const scrollAmount = 200; // 每次滚动200px
     const currentScroll = toolBarRef.value.scrollLeft;
-    const targetScroll = direction === 'left'
-        ? currentScroll - scrollAmount
-        : currentScroll + scrollAmount;
+    const targetScroll =
+        direction === "left"
+            ? currentScroll - scrollAmount
+            : currentScroll + scrollAmount;
 
     toolBarRef.value.scrollTo({
         left: targetScroll,
-        behavior: 'smooth'
+        behavior: "smooth",
     });
 };
 
 // 设置ResizeObserver
 const setupResizeObservers = () => {
-    if (typeof ResizeObserver === 'undefined') return;
+    if (typeof ResizeObserver === "undefined") return;
 
     // 监听输入编辑器容器
     if (inputEditorContainer.value) {
@@ -2574,9 +2705,9 @@ const setupResizeObservers = () => {
 // 在组件挂载时添加监听器
 onMounted(async () => {
     // 确保在客户端环境下运行
-    if (typeof window === 'undefined') return;
+    if (typeof window === "undefined") return;
 
-    window.addEventListener('keydown', handleEscapeKey);
+    window.addEventListener("keydown", handleEscapeKey);
 
     // 初始化基础环境
     initializeMessageStyles();
@@ -2606,10 +2737,10 @@ onMounted(async () => {
                 // 检查URL参数，加载分享数据
                 await loadSharedDataFromUrl();
             } catch (error: any) {
-                showError('Monaco编辑器初始化失败: ' + error.message);
+                showError("Monaco编辑器初始化失败: " + error.message);
             }
         } catch (error: any) {
-            showError('Monaco编辑器初始化失败: ' + error.message);
+            showError("Monaco编辑器初始化失败: " + error.message);
         }
     }, 200);
 
@@ -2626,14 +2757,14 @@ onMounted(async () => {
     setTimeout(() => {
         checkToolBarScroll();
         // 监听窗口大小变化，更新滚动状态
-        if (typeof ResizeObserver !== 'undefined' && toolBarRef.value) {
+        if (typeof ResizeObserver !== "undefined" && toolBarRef.value) {
             const resizeObserver = new ResizeObserver(() => {
                 checkToolBarScroll();
             });
             resizeObserver.observe(toolBarRef.value);
 
             // 监听窗口resize事件
-            window.addEventListener('resize', checkToolBarScroll);
+            window.addEventListener("resize", checkToolBarScroll);
         }
     }, 300);
 
@@ -2647,9 +2778,9 @@ onBeforeUnmount(() => {
     ElMessage.closeAll();
 
     // 移除resize事件监听器
-    window.removeEventListener('resize', debouncedResize);
-    window.removeEventListener('resize', checkToolBarScroll);
-    window.removeEventListener('keydown', handleEscapeKey);
+    window.removeEventListener("resize", debouncedResize);
+    window.removeEventListener("resize", checkToolBarScroll);
+    window.removeEventListener("keydown", handleEscapeKey);
 
     // 清理消息提示样式元素
     if (messageStyleElement && messageStyleElement.parentNode) {
@@ -2682,16 +2813,20 @@ onBeforeUnmount(() => {
 // 添加组件卸载时的资源释放
 onUnmounted(() => {
     // 确保所有 worker 都被终止
-    if (typeof window !== 'undefined' && window.MonacoEnvironment) {
+    if (typeof window !== "undefined" && window.MonacoEnvironment) {
         // @ts-ignore
         window.MonacoEnvironment = undefined;
     }
 });
 
 // 计算JSON对象的深度和层级数
-const calculateJsonStructure = (obj: any, mode: 'depth' | 'level' = 'depth', currentValue: number = mode === 'depth' ? 0 : 1): number => {
-    if (typeof obj !== 'object' || obj === null) {
-        return mode === 'depth' ? currentValue : currentValue - 1;
+const calculateJsonStructure = (
+    obj: any,
+    mode: "depth" | "level" = "depth",
+    currentValue: number = mode === "depth" ? 0 : 1
+): number => {
+    if (typeof obj !== "object" || obj === null) {
+        return mode === "depth" ? currentValue : currentValue - 1;
     }
 
     // 空对象或空数组处理
@@ -2700,7 +2835,7 @@ const calculateJsonStructure = (obj: any, mode: 'depth' | 'level' = 'depth', cur
     }
 
     // 深度超过限制直接返回（仅适用于depth模式）
-    if (mode === 'depth' && currentValue > 99) {
+    if (mode === "depth" && currentValue > 99) {
         return 100;
     }
 
@@ -2711,14 +2846,18 @@ const calculateJsonStructure = (obj: any, mode: 'depth' | 'level' = 'depth', cur
         for (const item of obj) {
             const childValue = calculateJsonStructure(item, mode, currentValue + 1);
             maxValue = Math.max(maxValue, childValue);
-            if (mode === 'depth' && maxValue > 99) return 100;
+            if (mode === "depth" && maxValue > 99) return 100;
         }
     } else {
         for (const key in obj) {
             if (Object.prototype.hasOwnProperty.call(obj, key)) {
-                const childValue = calculateJsonStructure(obj[key], mode, currentValue + 1);
+                const childValue = calculateJsonStructure(
+                    obj[key],
+                    mode,
+                    currentValue + 1
+                );
                 maxValue = Math.max(maxValue, childValue);
-                if (mode === 'depth' && maxValue > 99) return 100;
+                if (mode === "depth" && maxValue > 99) return 100;
             }
         }
     }
@@ -2728,22 +2867,24 @@ const calculateJsonStructure = (obj: any, mode: 'depth' | 'level' = 'depth', cur
 
 // 获取对象深度
 const getObjectDepth = (obj: any, depth: number = 0): number => {
-    return calculateJsonStructure(obj, 'depth', depth);
+    return calculateJsonStructure(obj, "depth", depth);
 };
 
 // 计算 JSON 的最大层级
 const calculateMaxLevel = (obj: any, currentLevel: number = 1): number => {
-    return calculateJsonStructure(obj, 'level', currentLevel);
+    return calculateJsonStructure(obj, "level", currentLevel);
 };
 
 // 检查行数和深度，返回检查结果
-const checkLinesAndDepth = (content: string): { isValid: boolean; error?: string } => {
+const checkLinesAndDepth = (
+    content: string
+): { isValid: boolean; error?: string } => {
     // 检查行数
-    const lines = content.split('\n');
+    const lines = content.split("\n");
     if (lines.length > MAX_LINES) {
         return {
             isValid: false,
-            error: `内容超过行数限制（共 ${lines.length} 行，限制为 ${MAX_LINES} 行）。请使用较小的文件或使用其他工具处理超大文件。`
+            error: `内容超过行数限制（共 ${lines.length} 行，限制为 ${MAX_LINES} 行）。请使用较小的文件或使用其他工具处理超大文件。`,
         };
     }
 
@@ -2754,7 +2895,7 @@ const checkLinesAndDepth = (content: string): { isValid: boolean; error?: string
         if (depth > 99) {
             return {
                 isValid: false,
-                error: 'JSON深度超过99层, 拒绝处理此JSON数据'
+                error: "JSON深度超过99层, 拒绝处理此JSON数据",
             };
         }
     } catch (e) {
@@ -2773,28 +2914,70 @@ function customStringify(
     encodingModeOverride?: number,
     arrayNewLineOverride?: boolean
 ): string {
-    const indent = ' '.repeat(space);
+    const indent = " ".repeat(space);
     // 如果提供了编码模式覆盖值，使用它；否则使用全局设置
-    const currentEncodingMode = encodingModeOverride !== undefined ? encodingModeOverride : encodingMode.value;
+    const currentEncodingMode = encodingModeOverride !== undefined? encodingModeOverride: encodingMode.value;
     // 如果提供了数组样式覆盖值，使用它；否则使用全局设置
-    const currentArrayNewLine = arrayNewLineOverride !== undefined ? arrayNewLineOverride : arrayNewLine.value;
+    const currentArrayNewLine =
+        arrayNewLineOverride !== undefined
+            ? arrayNewLineOverride
+            : arrayNewLine.value;
 
     const isPrimitiveArray = (arr: any[]): boolean => {
-        return arr.every(item =>
-            typeof item === 'string' ||
-            typeof item === 'number' ||
-            typeof item === 'boolean' ||
-            item === null
+        return arr.every(
+            (item) =>
+                typeof item === "string" ||
+                typeof item === "number" ||
+                typeof item === "boolean" ||
+                item === null
         );
+    };
+
+    // 智能处理十六进制转义序列，转换为标准JSON转义序列以保持合法性和可读性
+    const convertHexToJsonEscape = (hex: string): string => {
+        const codePoint = parseInt(hex, 16);
+        
+        // 标准JSON转义序列（使用简写形式，提高可读性）
+        switch (codePoint) {
+            case 0x08: return "\\b";  // 退格
+            case 0x09: return "\\t";  // 制表符
+            case 0x0A: return "\\n";  // 换行符
+            case 0x0C: return "\\f";  // 换页
+            case 0x0D: return "\\r";  // 回车符
+            case 0x22: return '\\"';  // 双引号
+            case 0x5C: return "\\\\"; // 反斜杠
+        }
+        
+        // 其他控制字符（\x00, \x01-\x07, \x0B, \x0E-\x1F, \x7F-\x9F）转换为 \uXXXX 形式
+        if (codePoint <= 0x1F || (codePoint >= 0x7F && codePoint <= 0x9F)) {
+            return "\\u" + ("0000" + codePoint.toString(16)).slice(-4).toLowerCase();
+        }
+        
+        // 可打印字符（如 \x20 空格）保持为实际字符
+        return String.fromCharCode(codePoint);
     };
 
     // 预构建字符串值到原始转义形式的映射（只扫描一次原始字符串）
     // 支持双引号和单引号字符串（JSON5支持单引号）
-    const buildStringEscapeMap = (originalJSON: string): Map<string, string> => {
-        const map = new Map<string, string>();
+    // 在模式0（保持原样）下，使用数组存储所有出现的原始形式，以便为每个出现位置保留其原始形式
+    const buildStringEscapeMap = (originalJSON: string): Map<string, string | string[]> => {
+        const map = new Map<string, string | string[]>();
         if (!originalJSON) return map;
 
-        const validEscapes = ['"', "'", '\\', '/', 'b', 'f', 'n', 'r', 't', 'u', '0', 'v'];
+        const validEscapes = [
+            '"',
+            "'",
+            "\\",
+            "/",
+            "b",
+            "f",
+            "n",
+            "r",
+            "t",
+            "u",
+            "0",
+            "v",
+        ];
         // 匹配双引号和单引号字符串
         const regex = /(["'])((?:\\.|(?!\1)[^\\])*?)\1/g;
         let match;
@@ -2808,10 +2991,16 @@ function customStringify(
             // 尝试解析这个原始字符串（使用对应的引号）
             try {
                 parsedValue = JSON5.parse(`${quote}${originalEscaped}${quote}`);
+                // JSON5.parse 成功时，需要将 \xXX 智能转换为标准JSON转义序列
+                // 控制字符转换为标准转义（\n, \t等），可打印字符保持为实际字符
+                // 这样既保留了原始字符串中的其他转义序列（如 \uXXXX），又确保了 \xXX 被正确转换
+                finalEscaped = originalEscaped.replace(/\\x([0-9a-fA-F]{2})/gi, (match, hex) => {
+                    return convertHexToJsonEscape(hex);
+                });
             } catch {
                 // 解析失败，说明包含无效转义序列，手动解析
-                parsedValue = '';
-                let correctedEscaped = ''; // 用于存储修正后的转义形式
+                parsedValue = "";
+                let correctedEscaped = ""; // 用于存储修正后的转义形式
                 let i = 0;
                 let escaped = false;
 
@@ -2820,101 +3009,109 @@ function customStringify(
                         const char = originalEscaped[i];
                         if (validEscapes.includes(char)) {
                             // 有效转义序列，按照标准处理
-                            if (char === 'u' && i + 4 < originalEscaped.length) {
+                            if (char === "u" && i + 4 < originalEscaped.length) {
                                 const hex = originalEscaped.substring(i, i + 4);
                                 if (/^[0-9a-fA-F]{4}$/i.test(hex)) {
                                     parsedValue += String.fromCharCode(parseInt(hex, 16));
-                                    correctedEscaped += '\\u' + hex;
+                                    correctedEscaped += "\\u" + hex;
                                     i += 4;
                                     escaped = false;
                                     continue;
                                 }
-                            } else if (char === 'x' && i + 2 < originalEscaped.length) {
-                                // \xXX 序列
+                            } else if (char === "x" && i + 2 < originalEscaped.length) {
+                                // \xXX 序列：智能转换为标准JSON转义序列
+                                // 控制字符转换为标准转义（\n, \t等），可打印字符保持为实际字符
                                 const hex = originalEscaped.substring(i, i + 2);
                                 if (/^[0-9a-fA-F]{2}$/i.test(hex)) {
-                                    parsedValue += String.fromCharCode(parseInt(hex, 16));
-                                    correctedEscaped += '\\x' + hex;
+                                    const codePoint = parseInt(hex, 16);
+                                    const actualChar = String.fromCharCode(codePoint);
+                                    parsedValue += actualChar;
+                                    // 使用智能转换函数，保持JSON合法性和可读性
+                                    correctedEscaped += convertHexToJsonEscape(hex);
                                     i += 2;
                                     escaped = false;
                                     continue;
                                 }
-                            } else if (char === 'n') {
-                                parsedValue += '\n';
-                                correctedEscaped += '\\n';
+                            } else if (char === "n") {
+                                parsedValue += "\n";
+                                correctedEscaped += "\\n";
                                 i++;
                                 escaped = false;
                                 continue;
-                            } else if (char === 'r') {
-                                parsedValue += '\r';
-                                correctedEscaped += '\\r';
+                            } else if (char === "r") {
+                                parsedValue += "\r";
+                                correctedEscaped += "\\r";
                                 i++;
                                 escaped = false;
                                 continue;
-                            } else if (char === 't') {
-                                parsedValue += '\t';
-                                correctedEscaped += '\\t';
+                            } else if (char === "t") {
+                                parsedValue += "\t";
+                                correctedEscaped += "\\t";
                                 i++;
                                 escaped = false;
                                 continue;
-                            } else if (char === 'b') {
-                                parsedValue += '\b';
-                                correctedEscaped += '\\b';
+                            } else if (char === "b") {
+                                parsedValue += "\b";
+                                correctedEscaped += "\\b";
                                 i++;
                                 escaped = false;
                                 continue;
-                            } else if (char === 'f') {
-                                parsedValue += '\f';
-                                correctedEscaped += '\\f';
+                            } else if (char === "f") {
+                                parsedValue += "\f";
+                                correctedEscaped += "\\f";
                                 i++;
                                 escaped = false;
                                 continue;
-                            } else if (char === '\\') {
-                                parsedValue += '\\';
-                                correctedEscaped += '\\\\';
+                            } else if (char === "\\") {
+                                parsedValue += "\\";
+                                correctedEscaped += "\\\\";
                                 i++;
                                 escaped = false;
                                 continue;
                             } else if (char === '"' || char === "'") {
                                 parsedValue += char;
-                                correctedEscaped += '\\' + char;
+                                correctedEscaped += "\\" + char;
                                 i++;
                                 escaped = false;
                                 continue;
-                            } else if (char === '/') {
-                                parsedValue += '/';
-                                correctedEscaped += '\\/';
+                            } else if (char === "/") {
+                                parsedValue += "/";
+                                correctedEscaped += "\\/";
                                 i++;
                                 escaped = false;
                                 continue;
-                            } else if (char === '0') {
+                            } else if (char === "0") {
                                 // 检查是否是单独的 \0 还是多位数字序列
-                                let digits = '0';
+                                let digits = "0";
                                 let j = i + 1;
                                 // 检查后续是否还有数字（最多3位）
-                                while (j < originalEscaped.length && /^[0-7]$/.test(originalEscaped[j]) && digits.length < 3) {
+                                while (
+                                    j < originalEscaped.length &&
+                                    /^[0-7]$/.test(originalEscaped[j]) &&
+                                    digits.length < 3
+                                ) {
                                     digits += originalEscaped[j];
                                     j++;
                                 }
-                                if (digits === '0' && j === i + 1) {
+                                if (digits === "0" && j === i + 1) {
                                     // \0 单独出现，这是有效的
-                                    parsedValue += '\0';
-                                    correctedEscaped += '\\0';
+                                    parsedValue += "\0";
+                                    correctedEscaped += "\\0";
                                     i++;
                                     escaped = false;
                                     continue;
                                 } else {
                                     // 多位数字序列，需要转义
                                     // 注意：correctedEscaped 已经在第2121行加了一个反斜杠，所以这里只需要再加一个反斜杠
-                                    parsedValue += '\\' + digits;
-                                    correctedEscaped += '\\' + digits;
+                                    parsedValue += "\\" + digits;
+                                    correctedEscaped += "\\" + digits;
                                     i += digits.length;
                                     escaped = false;
                                     continue;
                                 }
-                            } else if (char === 'v') {
-                                parsedValue += '\v';
-                                correctedEscaped += '\\v';
+                            } else if (char === "v") {
+                                parsedValue += "\v";
+                                correctedEscaped += "\\v";
                                 i++;
                                 escaped = false;
                                 continue;
@@ -2927,25 +3124,25 @@ function customStringify(
                             let j = i + 1;
                             // 无效的数字转义序列，需要转义为 \\1, \\2, ..., \\123 等
                             // 注意：correctedEscaped 已经在第2121行加了一个反斜杠，所以这里只需要再加一个反斜杠
-                            parsedValue += '\\' + digits;
-                            correctedEscaped += '\\' + digits;
+                            parsedValue += "\\" + digits;
+                            correctedEscaped += "\\" + digits;
                             i += digits.length;
                             escaped = false;
                             continue;
                         } else {
                             // 其他无效转义序列（如 \a, \c 等），需要转义
                             // 注意：correctedEscaped 已经在第2121行加了一个反斜杠，所以这里只需要再加一个反斜杠
-                            parsedValue += '\\' + char;
-                            correctedEscaped += '\\' + char;
+                            parsedValue += "\\" + char;
+                            correctedEscaped += "\\" + char;
                             i++;
                             escaped = false;
                             continue;
                         }
                     }
 
-                    if (originalEscaped[i] === '\\') {
+                    if (originalEscaped[i] === "\\") {
                         escaped = true;
-                        correctedEscaped += '\\';
+                        correctedEscaped += "\\";
                         i++;
                     } else {
                         parsedValue += originalEscaped[i];
@@ -2957,22 +3154,43 @@ function customStringify(
                 finalEscaped = correctedEscaped;
             }
 
-            // 优先保存包含 Unicode 转义序列的形式
-            // 如果映射已存在，检查当前原始转义形式是否包含 Unicode 转义序列
-            // 如果包含，则更新映射（优先使用 Unicode 转义形式）
+            // 根据编码模式决定保存策略
+            // 模式0（保持原样）：为每个字符串值保留所有出现的原始形式（使用数组）
+            // 模式1和2：优先保留Unicode转义形式（使用单个值）
             if (!map.has(parsedValue)) {
-                map.set(parsedValue, finalEscaped);
-            } else {
-                // 如果映射已存在，检查当前原始转义形式是否包含 Unicode 转义序列
-                const existingEscape = map.get(parsedValue)!;
-                const hasUnicodeEscape = /\\u[0-9a-fA-F]{4}/.test(finalEscaped);
-                const existingHasUnicodeEscape = /\\u[0-9a-fA-F]{4}/.test(existingEscape);
-
-                // 如果当前形式包含 Unicode 转义，而现有形式不包含，则更新
-                if (hasUnicodeEscape && !existingHasUnicodeEscape) {
+                // 第一次遇到这个值
+                if (currentEncodingMode === 0) {
+                    // 模式0：使用数组存储，以便为每个出现位置保留其原始形式
+                    map.set(parsedValue, [finalEscaped]);
+                } else {
+                    // 模式1和2：直接保存单个值
                     map.set(parsedValue, finalEscaped);
                 }
-                // 如果两者都包含或都不包含 Unicode 转义，保持第一次遇到的（避免覆盖）
+            } else {
+                // 如果映射已存在，根据编码模式决定是否更新
+                const existingEscape = map.get(parsedValue)!;
+                
+                if (currentEncodingMode === 0) {
+                    // 模式0（保持原样）：将新的原始形式添加到数组中
+                    // 这样可以确保每个出现位置都能保留其原始形式
+                    if (Array.isArray(existingEscape)) {
+                        existingEscape.push(finalEscaped);
+                    } else {
+                        // 如果之前不是数组（不应该发生），转换为数组
+                        map.set(parsedValue, [existingEscape as string, finalEscaped]);
+                    }
+                } else {
+                    // 模式1和2：优先保留Unicode转义形式
+                    const hasUnicodeEscape = /\\u[0-9a-fA-F]{4}/.test(finalEscaped);
+                    const existingEscapeStr = Array.isArray(existingEscape) ? existingEscape[0] : existingEscape as string;
+                    const existingHasUnicodeEscape = /\\u[0-9a-fA-F]{4}/.test(existingEscapeStr);
+                    
+                    // 如果当前形式包含 Unicode 转义，而现有形式不包含，则更新
+                    if (hasUnicodeEscape && !existingHasUnicodeEscape) {
+                        map.set(parsedValue, finalEscaped);
+                    }
+                    // 如果两者都包含或都不包含 Unicode 转义，保持第一次遇到的（避免覆盖）
+                }
             }
         }
 
@@ -2980,15 +3198,30 @@ function customStringify(
     };
 
     // 预先构建映射（如果提供了原始字符串）
-    const stringEscapeMap = originalString ? buildStringEscapeMap(originalString) : null;
+    const stringEscapeMap = originalString
+        ? buildStringEscapeMap(originalString)
+        : null;
+    
+    // 在模式0下，用于跟踪每个字符串值的使用次数（按出现顺序）
+    // 每次格式化时都会重置，确保从第一个出现位置开始
+    const stringUsageCount = new Map<string, number>();
 
-    const escapeString = (str: string): string => {
+    const escapeString = (str: string, index?: number): string => {
         // 如果有预构建的映射，直接查找
         if (stringEscapeMap) {
             const originalEscape = stringEscapeMap.get(str);
             if (originalEscape !== undefined) {
-                // 找到原始转义形式，直接使用（已经是正确的转义形式）
-                return originalEscape;
+                if (currentEncodingMode === 0 && Array.isArray(originalEscape)) {
+                    // 模式0：使用数组，按出现顺序使用
+                    const usageIndex = index !== undefined ? index : (stringUsageCount.get(str) || 0);
+                    const escapeForm = originalEscape[usageIndex] || originalEscape[0];
+                    stringUsageCount.set(str, usageIndex + 1);
+                    return escapeForm;
+                } else {
+                    // 模式1和2：使用单个值
+                    const escapeForm = Array.isArray(originalEscape) ? originalEscape[0] : originalEscape as string;
+                    return escapeForm;
+                }
             }
         }
 
@@ -2996,15 +3229,15 @@ function customStringify(
         // 注意：标准转义不会将中文字符转换为 Unicode 转义（除非是控制字符）
         // 所以当 encodingMode === 0 时，如果找不到映射，中文字符会保持为中文
         return str
-            .replace(/\\/g, '\\\\')  // 必须首先处理反斜杠
-            .replace(/"/g, '\\"')    // 处理双引号
-            .replace(/[\b]/g, '\\b') // 处理退格
-            .replace(/\f/g, '\\f')   // 处理换页
-            .replace(/\n/g, '\\n')   // 处理换行
-            .replace(/\r/g, '\\r')   // 处理回车
-            .replace(/\t/g, '\\t')   // 处理制表符
-            .replace(/[\u0000-\u001F\u007F-\u009F]/g, c => {
-                return '\\u' + ('0000' + c.charCodeAt(0).toString(16)).slice(-4);
+            .replace(/\\/g, "\\\\") // 必须首先处理反斜杠
+            .replace(/"/g, '\\"') // 处理双引号
+            .replace(/[\b]/g, "\\b") // 处理退格
+            .replace(/\f/g, "\\f") // 处理换页
+            .replace(/\n/g, "\\n") // 处理换行
+            .replace(/\r/g, "\\r") // 处理回车
+            .replace(/\t/g, "\\t") // 处理制表符
+            .replace(/[\u0000-\u001F\u007F-\u009F]/g, (c) => {
+                return "\\u" + ("0000" + c.charCodeAt(0).toString(16)).slice(-4);
             });
     };
 
@@ -3012,20 +3245,23 @@ function customStringify(
     const handleChineseToUnicode = (str: string): string => {
         if (currentEncodingMode !== 2) return str; // 如果不是转Unicode模式，直接返回
 
-        return str.replace(/[\u0080-\uFFFF]/g, char => {
+        return str.replace(/[\u0080-\uFFFF]/g, (char) => {
             const codePoint = char.charCodeAt(0);
 
             // 对于控制字符和特殊字符，一定要转换为Unicode
-            if (codePoint < 32 || (codePoint >= 127 && codePoint <= 159) ||
+            if (
+                codePoint < 32 ||
+                (codePoint >= 127 && codePoint <= 159) ||
                 // 特别处理双向文本控制字符
-                (codePoint >= 0x202A && codePoint <= 0x202E) ||
+                (codePoint >= 0x202a && codePoint <= 0x202e) ||
                 (codePoint >= 0x2066 && codePoint <= 0x2069) ||
-                codePoint === 0x061C) {
-                return '\\u' + ('0000' + codePoint.toString(16)).slice(-4);
+                codePoint === 0x061c
+            ) {
+                return "\\u" + ("0000" + codePoint.toString(16)).slice(-4);
             }
 
             // 对于其他非ASCII字符
-            return '\\u' + ('0000' + codePoint.toString(16)).slice(-4);
+            return "\\u" + ("0000" + codePoint.toString(16)).slice(-4);
         });
     };
 
@@ -3033,19 +3269,30 @@ function customStringify(
     const handleUnicodeToChiness = (str: string): string => {
         if (currentEncodingMode !== 1) return str; // 如果不是转中文模式，直接返回
 
-        return str.replace(/\\u([0-9a-fA-F]{4})/g, (match, hex) => {
+        // 先处理十六进制转义 \xXX
+        let processed = str.replace(/\\x([0-9a-fA-F]{2})/gi, (match, hex) => {
+            const codePoint = parseInt(hex, 16);
+            return String.fromCharCode(codePoint);
+        });
+
+        // 然后处理Unicode转义 \uXXXX
+        processed = processed.replace(/\\u([0-9a-fA-F]{4})/g, (match, hex) => {
             const codePoint = parseInt(hex, 16);
 
             // 检测特殊控制字符，保持它们的转义形式
-            if ((codePoint >= 0x202A && codePoint <= 0x202E) ||
+            if (
+                (codePoint >= 0x202a && codePoint <= 0x202e) ||
                 (codePoint >= 0x2066 && codePoint <= 0x2069) ||
-                codePoint === 0x061C) {
+                codePoint === 0x061c
+            ) {
                 return match; // 保持原样
             }
 
             // 其他Unicode字符正常转换为中文
             return String.fromCharCode(codePoint);
         });
+
+        return processed;
     };
 
     const processString = (str: string): string => {
@@ -3064,15 +3311,39 @@ function customStringify(
             return processed;
         } else if (currentEncodingMode === 2) {
             // 模式2：转Unicode
-            // 如果有映射且映射中包含Unicode转义，直接使用映射
+            // 如果有映射，使用映射中的原始转义形式
             if (stringEscapeMap) {
                 const originalEscape = stringEscapeMap.get(str);
-                if (originalEscape !== undefined && /\\u[0-9a-fA-F]{4}/.test(originalEscape)) {
-                    // 映射中有Unicode转义，直接使用
-                    return originalEscape;
+                if (originalEscape !== undefined) {
+                    let escapeForm = Array.isArray(originalEscape) ? originalEscape[0] : originalEscape as string;
+                    // 将映射中的 \xXX 转换为 \uXXXX（防御性处理，实际上在 buildStringEscapeMap 中已经被解析为实际字符了）
+                    escapeForm = escapeForm.replace(/\\x([0-9a-fA-F]{2})/gi, (match, hex) => {
+                        const codePoint = parseInt(hex, 16);
+                        return "\\u" + ("0000" + codePoint.toString(16)).slice(-4);
+                    });
+                    // 将控制字符（包括空格）转换为Unicode转义
+                    escapeForm = escapeForm.replace(/[\u0000-\u001F\u007F-\u009F]/g, (char) => {
+                        const codePoint = char.charCodeAt(0);
+                        return "\\u" + ("0000" + codePoint.toString(16)).slice(-4);
+                    });
+                    // 将中文字符和其他非ASCII字符转换为Unicode转义
+                    escapeForm = escapeForm.replace(/[\u0080-\uFFFF]/g, (char) => {
+                        const codePoint = char.charCodeAt(0);
+                        // 对于特殊控制字符，保持转义形式
+                        if (
+                            (codePoint >= 0x202a && codePoint <= 0x202e) ||
+                            (codePoint >= 0x2066 && codePoint <= 0x2069) ||
+                            codePoint === 0x061c
+                        ) {
+                            return "\\u" + ("0000" + codePoint.toString(16)).slice(-4);
+                        }
+                        // 对于其他非ASCII字符
+                        return "\\u" + ("0000" + codePoint.toString(16)).slice(-4);
+                    });
+                    return escapeForm;
                 }
             }
-            // 如果没有映射或映射中没有Unicode转义，先转义，然后转换为Unicode
+            // 如果没有映射，先转义，然后转换为Unicode
             let processed = escapeString(str);
             processed = handleChineseToUnicode(processed);
             return processed;
@@ -3082,36 +3353,40 @@ function customStringify(
         return escapeString(str);
     };
 
-    const format = (obj: any, currentIndent: string = ''): string => {
-        if (obj === null) return 'null';
+    const format = (obj: any, currentIndent: string = ""): string => {
+        if (obj === null) return "null";
 
         if (Array.isArray(obj)) {
-            if (obj.length === 0) return '[]';
+            if (obj.length === 0) return "[]";
 
             if (!currentArrayNewLine && isPrimitiveArray(obj)) {
-                const items = obj.map(item => {
-                    if (typeof item === 'string') return `"${processString(item)}"`;
+                const items = obj.map((item) => {
+                    if (typeof item === "string") return `"${processString(item)}"`;
                     return String(item);
                 });
-                return `[${items.join(', ')}]`;
+                return `[${items.join(", ")}]`;
             }
 
-            const items = obj.map(item => currentIndent + indent + format(item, currentIndent + indent))
-            return `[\n${items.join(',\n')}\n${currentIndent}]`;
+            const items = obj.map(
+                (item) => currentIndent + indent + format(item, currentIndent + indent)
+            );
+            return `[\n${items.join(",\n")}\n${currentIndent}]`;
         }
 
-        if (typeof obj === 'object') {
+        if (typeof obj === "object") {
             const entries = Object.entries(obj);
-            if (entries.length === 0) return '{}';
+            if (entries.length === 0) return "{}";
 
             const items = entries.map(([key, value]) => {
                 const formattedValue = format(value, currentIndent + indent);
-                return `${currentIndent}${indent}"${processString(key)}": ${formattedValue}`;
+                return `${currentIndent}${indent}"${processString(
+                    key
+                )}": ${formattedValue}`;
             });
-            return `{\n${items.join(',\n')}\n${currentIndent}}`;
+            return `{\n${items.join(",\n")}\n${currentIndent}}`;
         }
 
-        if (typeof obj === 'string') return `"${processString(obj)}"`;
+        if (typeof obj === "string") return `"${processString(obj)}"`;
         return String(obj);
     };
 
@@ -3119,20 +3394,23 @@ function customStringify(
 }
 
 // 清理JSON数据，去除undefined, null, NaN, Infinity, -Infinity, Symbol, Function, Date, RegExp等
-const sanitizeForJson = (value: any, memo: WeakMap<object, any> = new WeakMap()): any => {
+const sanitizeForJson = (
+    value: any,
+    memo: WeakMap<object, any> = new WeakMap()
+): any => {
     if (value === undefined) {
         return null;
     }
 
-    if (typeof value === 'number') {
+    if (typeof value === "number") {
         return Number.isFinite(value) ? value : null;
     }
 
-    if (typeof value === 'bigint') {
+    if (typeof value === "bigint") {
         return value.toString();
     }
 
-    if (typeof value === 'symbol' || typeof value === 'function') {
+    if (typeof value === "symbol" || typeof value === "function") {
         return null;
     }
 
@@ -3145,7 +3423,7 @@ const sanitizeForJson = (value: any, memo: WeakMap<object, any> = new WeakMap())
     }
 
     if (value instanceof Set) {
-        return Array.from(value).map(item => sanitizeForJson(item, memo));
+        return Array.from(value).map((item) => sanitizeForJson(item, memo));
     }
 
     if (value instanceof Map) {
@@ -3162,19 +3440,19 @@ const sanitizeForJson = (value: any, memo: WeakMap<object, any> = new WeakMap())
         }
         const result: any[] = [];
         memo.set(value, result);
-        value.forEach(item => {
+        value.forEach((item) => {
             result.push(sanitizeForJson(item, memo));
         });
         return result;
     }
 
-    if (value && typeof value === 'object') {
+    if (value && typeof value === "object") {
         if (memo.has(value)) {
             return memo.get(value);
         }
         const result: Record<string, any> = {};
         memo.set(value, result);
-        Object.keys(value).forEach(key => {
+        Object.keys(value).forEach((key) => {
             result[key] = sanitizeForJson((value as Record<string, any>)[key], memo);
         });
         return result;
@@ -3184,8 +3462,10 @@ const sanitizeForJson = (value: any, memo: WeakMap<object, any> = new WeakMap())
 };
 
 // JSON预处理函数 - 处理结构层面的问题（注释、尾逗号）和无效转义序列
-const preprocessJSON = (jsonString: string): { data: any, originalString: string } => {
-    if (!jsonString || typeof jsonString !== 'string') {
+const preprocessJSON = (
+    jsonString: string
+): { data: any; originalString: string } => {
+    if (!jsonString || typeof jsonString !== "string") {
         return { data: null, originalString: jsonString };
     }
     let lastError: unknown = null;
@@ -3201,31 +3481,31 @@ const preprocessJSON = (jsonString: string): { data: any, originalString: string
 
     // 第二层：自定义清理 + JSON5解析
     // 步骤1：手动去除注释和处理特殊转义
-    let cleanedJSON = '';
-    let inString = false;      // 是否在字符串内
-    let stringQuoteType: '"' | "'" | null = null;  // 当前字符串的引号类型（用于匹配开始和结束引号）
-    let escaped = false;       // 上一个字符是否为转义字符
-    let inSingleLineComment = false;  // 是否在单行注释内
-    let inMultiLineComment = false;   // 是否在多行注释内
+    let cleanedJSON = "";
+    let inString = false; // 是否在字符串内
+    let stringQuoteType: '"' | "'" | null = null; // 当前字符串的引号类型（用于匹配开始和结束引号）
+    let escaped = false; // 上一个字符是否为转义字符
+    let inSingleLineComment = false; // 是否在单行注释内
+    let inMultiLineComment = false; // 是否在多行注释内
 
     try {
         // 标准JSON有效转义序列
-        const standardEscapes = ['"', '\\', '/', 'b', 'f', 'n', 'r', 't', 'u'];
+        const standardEscapes = ['"', "\\", "/", "b", "f", "n", "r", "t", "u"];
         // JSON5新增的有效转义序列
-        const json5Escapes = ["'", '0', 'v'];
+        const json5Escapes = ["'", "0", "v"];
         // 所有有效转义序列
         const validEscapes = [...standardEscapes, ...json5Escapes];
 
         for (let i = 0; i < jsonString.length; i++) {
             const char = jsonString[i];
-            const nextChar = jsonString[i + 1] || '';
+            const nextChar = jsonString[i + 1] || "";
 
             // 处理字符串内的转义字符
-            if (char === '\\' && !escaped && inString) {
+            if (char === "\\" && !escaped && inString) {
                 // 检查是否是续行符（反斜杠后跟换行符，JSON5支持）
-                if (nextChar === '\n' || nextChar === '\r') {
+                if (nextChar === "\n" || nextChar === "\r") {
                     // 续行符：跳过反斜杠和换行符
-                    if (nextChar === '\r' && jsonString[i + 2] === '\n') {
+                    if (nextChar === "\r" && jsonString[i + 2] === "\n") {
                         i += 2; // 跳过 \r\n
                     } else {
                         i++; // 跳过单个换行符
@@ -3234,7 +3514,7 @@ const preprocessJSON = (jsonString: string): { data: any, originalString: string
                     continue;
                 }
                 // 检查是否是有效转义序列
-                if (nextChar === 'u') {
+                if (nextChar === "u") {
                     // Unicode转义序列 \uXXXX 或 \u{X...}
                     const unicodeHex = jsonString.substring(i + 2, i + 6);
                     if (/^[0-9a-fA-F]{4}$/i.test(unicodeHex)) {
@@ -3243,11 +3523,11 @@ const preprocessJSON = (jsonString: string): { data: any, originalString: string
                         i += 5; // 跳过 \uXXXX (已经处理了 \，所以跳过 uXXXX)
                         escaped = false;
                         continue;
-                    } else if (jsonString[i + 2] === '{') {
+                    } else if (jsonString[i + 2] === "{") {
                         // \u{X...} 格式，保留原样（JSON5支持）
                         // 找到闭合的 }
                         let j = i + 3;
-                        while (j < jsonString.length && jsonString[j] !== '}') {
+                        while (j < jsonString.length && jsonString[j] !== "}") {
                             j++;
                         }
                         if (j < jsonString.length) {
@@ -3257,17 +3537,17 @@ const preprocessJSON = (jsonString: string): { data: any, originalString: string
                             continue;
                         } else {
                             // 没有找到闭合的 }，无效的Unicode转义，将\转义为\\
-                            cleanedJSON += '\\\\';
+                            cleanedJSON += "\\\\";
                             escaped = false;
                             continue;
                         }
                     } else {
                         // 无效的Unicode转义，将\转义为\\
-                        cleanedJSON += '\\\\';
+                        cleanedJSON += "\\\\";
                         escaped = false;
                         continue;
                     }
-                } else if (nextChar === 'x') {
+                } else if (nextChar === "x") {
                     // \xXX 序列（JSON5支持），保留原样
                     const hexChars = jsonString.substring(i + 2, i + 4);
                     if (/^[0-9a-fA-F]{2}$/i.test(hexChars)) {
@@ -3277,7 +3557,7 @@ const preprocessJSON = (jsonString: string): { data: any, originalString: string
                         continue;
                     } else {
                         // 无效的 \x 序列，将\转义为\\
-                        cleanedJSON += '\\\\';
+                        cleanedJSON += "\\\\";
                         escaped = false;
                         continue;
                     }
@@ -3291,27 +3571,35 @@ const preprocessJSON = (jsonString: string): { data: any, originalString: string
                     // 注意：\8 和 \9 不是八进制数字，但 \123 这样的序列可能是八进制
                     if (/^[0-7]$/.test(nextChar)) {
                         // 如果是 0-7，可能是八进制序列，检查后续数字（最多3位）
-                        while (j < jsonString.length && /^[0-7]$/.test(jsonString[j]) && digits.length < 3) {
+                        while (
+                            j < jsonString.length &&
+                            /^[0-7]$/.test(jsonString[j]) &&
+                            digits.length < 3
+                        ) {
                             digits += jsonString[j];
                             j++;
                         }
                     } else {
                         // \8 或 \9，不是八进制，只处理单个字符
                         // 但也要检查是否后面还有数字（如 \89）
-                        while (j < jsonString.length && /^[0-9]$/.test(jsonString[j]) && digits.length < 3) {
+                        while (
+                            j < jsonString.length &&
+                            /^[0-9]$/.test(jsonString[j]) &&
+                            digits.length < 3
+                        ) {
                             digits += jsonString[j];
                             j++;
                         }
                     }
                     // 如果是 \0，且后面没有更多数字，这是有效的（\0 是 null 字符，JSON5支持）
-                    if (digits === '0' && j === i + 2) {
-                        cleanedJSON += '\\0';
+                    if (digits === "0" && j === i + 2) {
+                        cleanedJSON += "\\0";
                         i++; // 跳过 0
                         escaped = false;
                         continue;
                     } else {
                         // \1 到 \9 或多位数字序列，需要转义为 \\1, \\2, ..., \\123 等
-                        cleanedJSON += '\\\\' + digits;
+                        cleanedJSON += "\\\\" + digits;
                         i += digits.length; // 跳过所有数字
                         escaped = false;
                         continue;
@@ -3324,17 +3612,17 @@ const preprocessJSON = (jsonString: string): { data: any, originalString: string
                     continue;
                 } else if (nextChar) {
                     // 无效的转义序列（如\a, \c等），将\转义为\\
-                    cleanedJSON += '\\\\' + nextChar;
+                    cleanedJSON += "\\\\" + nextChar;
                     i++; // 跳过无效字符
                     escaped = false;
                     continue;
                 } else {
                     // 反斜杠在字符串末尾，转义它
-                    cleanedJSON += '\\\\';
+                    cleanedJSON += "\\\\";
                     escaped = false;
                     continue;
                 }
-            } else if (char === '\\' && !escaped) {
+            } else if (char === "\\" && !escaped) {
                 // 不在字符串内的反斜杠，保留原样
                 escaped = true;
                 if (!inSingleLineComment && !inMultiLineComment) {
@@ -3345,7 +3633,12 @@ const preprocessJSON = (jsonString: string): { data: any, originalString: string
 
             // 处理字符串边界 - 双引号和单引号（JSON5支持单引号）
             // 注意：只有在非注释状态下才处理字符串边界
-            if ((char === '"' || char === "'") && !escaped && !inSingleLineComment && !inMultiLineComment) {
+            if (
+                (char === '"' || char === "'") &&
+                !escaped &&
+                !inSingleLineComment &&
+                !inMultiLineComment
+            ) {
                 // 如果在字符串内，需要检查：
                 // 1. 引号类型是否匹配（只有相同类型的引号才能结束字符串）
                 // 2. 前一个字符是否是反斜杠（转义引号）
@@ -3367,7 +3660,7 @@ const preprocessJSON = (jsonString: string): { data: any, originalString: string
                     if (cleanedJSON.length > 0) {
                         let cleanedBackslashCount = 0;
                         let k = cleanedJSON.length - 1;
-                        while (k >= 0 && cleanedJSON[k] === '\\') {
+                        while (k >= 0 && cleanedJSON[k] === "\\") {
                             cleanedBackslashCount++;
                             k--;
                         }
@@ -3384,12 +3677,12 @@ const preprocessJSON = (jsonString: string): { data: any, originalString: string
                     if (!isEscapedQuote && i > 0) {
                         let j = i - 1;
                         // 检查原始字符串中连续的转义符
-                        while (j >= 0 && jsonString[j] === '\\') {
+                        while (j >= 0 && jsonString[j] === "\\") {
                             backslashCount++;
                             j--;
                         }
                         // 如果反斜杠数量是奇数，说明引号被转义了
-                        isEscapedQuote = (backslashCount % 2 === 1);
+                        isEscapedQuote = backslashCount % 2 === 1;
                     }
                 }
 
@@ -3411,14 +3704,20 @@ const preprocessJSON = (jsonString: string): { data: any, originalString: string
             }
 
             // 处理多行注释开始
-            if (!inString && !inSingleLineComment && !inMultiLineComment && char === '/' && nextChar === '*') {
+            if (
+                !inString &&
+                !inSingleLineComment &&
+                !inMultiLineComment &&
+                char === "/" &&
+                nextChar === "*"
+            ) {
                 inMultiLineComment = true;
                 i++; // 跳过 '*'
                 continue;
             }
 
             // 处理多行注释结束
-            if (!inString && inMultiLineComment && char === '*' && nextChar === '/') {
+            if (!inString && inMultiLineComment && char === "*" && nextChar === "/") {
                 inMultiLineComment = false;
                 i++; // 跳过 '/'
                 continue;
@@ -3426,12 +3725,12 @@ const preprocessJSON = (jsonString: string): { data: any, originalString: string
 
             // 处理单行注释开始
             if (!inString && !inMultiLineComment && !inSingleLineComment) {
-                if (char === '/' && nextChar === '/') {
+                if (char === "/" && nextChar === "/") {
                     inSingleLineComment = true;
                     i++; // 跳过第二个 '/'
                     continue;
                 }
-                if (char === '#') {
+                if (char === "#") {
                     // 支持脚本级别的井号注释符号
                     inSingleLineComment = true;
                     continue;
@@ -3439,7 +3738,7 @@ const preprocessJSON = (jsonString: string): { data: any, originalString: string
             }
 
             // 处理单行注释结束
-            if (inSingleLineComment && (char === '\n' || char === '\r')) {
+            if (inSingleLineComment && (char === "\n" || char === "\r")) {
                 inSingleLineComment = false;
             }
 
@@ -3451,7 +3750,7 @@ const preprocessJSON = (jsonString: string): { data: any, originalString: string
             // 更新转义状态
             // 如果当前字符是反斜杠且不在转义状态，设置 escaped = true 以便下一次循环处理转义序列
             // 否则重置转义状态
-            if (char === '\\' && !escaped) {
+            if (char === "\\" && !escaped) {
                 escaped = true;
             } else {
                 escaped = false;
@@ -3459,7 +3758,7 @@ const preprocessJSON = (jsonString: string): { data: any, originalString: string
         }
 
         // 移除多余的逗号（尾逗号）
-        cleanedJSON = cleanedJSON.replace(/,(\s*[}\]])/g, '$1');
+        cleanedJSON = cleanedJSON.replace(/,(\s*[}\]])/g, "$1");
 
         // 步骤2：将处理好的数据交给JSON5的官方API进行处理
         const data = JSON5.parse(cleanedJSON);
@@ -3479,7 +3778,7 @@ const preprocessJSON = (jsonString: string): { data: any, originalString: string
         lastError = error;
     }
 
-    throw lastError ?? new Error('Unable to parse JSON input');
+    throw lastError ?? new Error("Unable to parse JSON input");
 };
 
 // 层级收缩-使用缩进级别进行折叠的方法
@@ -3498,12 +3797,12 @@ const foldByIndentation = () => {
         // 特殊处理第1层：折叠整个JSON对象
         if (selectedLevel.value === 1) {
             const firstLine = model.getLineContent(1).trim();
-            if (firstLine === '{' || firstLine === '[') {
+            if (firstLine === "{" || firstLine === "[") {
                 // 找到最后一行（闭合括号）
                 let lastLine = lineCount;
                 for (let j = lastLine; j > 1; j--) {
                     const lineContent = model.getLineContent(j).trim();
-                    if (lineContent === '}' || lineContent === ']') {
+                    if (lineContent === "}" || lineContent === "]") {
                         lastLine = j;
                         break;
                     }
@@ -3511,13 +3810,14 @@ const foldByIndentation = () => {
 
                 if (lastLine > 1) {
                     // 禁用折叠信息更新（性能优化）
-                    const disableUpdate = (outputEditor as any).__disableFoldingInfoUpdate;
-                    if (disableUpdate && typeof disableUpdate === 'function') {
+                    const disableUpdate = (outputEditor as any)
+                        .__disableFoldingInfoUpdate;
+                    if (disableUpdate && typeof disableUpdate === "function") {
                         disableUpdate(2000); // 第1层折叠通常很快，禁用2秒即可
                     }
 
                     // 先展开所有
-                    outputEditor.trigger('unfold', 'editor.unfoldAll', null);
+                    outputEditor.trigger("unfold", "editor.unfoldAll", null);
 
                     // 延迟执行折叠，确保展开完成
                     setTimeout(() => {
@@ -3530,9 +3830,9 @@ const foldByIndentation = () => {
                                 startLineNumber: 1,
                                 startColumn: 1,
                                 endLineNumber: lastLine,
-                                endColumn: 1
+                                endColumn: 1,
                             });
-                            outputEditor.trigger('fold', 'editor.fold', null);
+                            outputEditor.trigger("fold", "editor.fold", null);
 
                             // 清除选择
                             setTimeout(() => {
@@ -3541,7 +3841,7 @@ const foldByIndentation = () => {
                                         startLineNumber: 1,
                                         startColumn: 1,
                                         endLineNumber: 1,
-                                        endColumn: 1
+                                        endColumn: 1,
                                     });
 
                                     // 清除折叠状态标志
@@ -3550,8 +3850,12 @@ const foldByIndentation = () => {
                                     updateEditorStatus(outputEditor, outputEditorStatus, false);
 
                                     // 立即启用更新并触发displayText更新（折叠操作完成后）
-                                    const enableUpdateAndRefresh = (outputEditor as any).__enableFoldingInfoUpdateAndRefresh;
-                                    if (enableUpdateAndRefresh && typeof enableUpdateAndRefresh === 'function') {
+                                    const enableUpdateAndRefresh = (outputEditor as any)
+                                        .__enableFoldingInfoUpdateAndRefresh;
+                                    if (
+                                        enableUpdateAndRefresh &&
+                                        typeof enableUpdateAndRefresh === "function"
+                                    ) {
                                         enableUpdateAndRefresh();
                                     }
                                 }
@@ -3564,7 +3868,7 @@ const foldByIndentation = () => {
                             if (outputEditor) {
                                 updateEditorStatus(outputEditor, outputEditorStatus, false);
                             }
-                            showWarning('折叠操作失败, 请尝试手动折叠');
+                            showWarning("折叠操作失败, 请尝试手动折叠");
                         }
                     }, 100);
                 }
@@ -3575,13 +3879,13 @@ const foldByIndentation = () => {
         // 对于其他层级，使用基于括号嵌套深度的算法
         const targetLevel = selectedLevel.value; // 目标层级（从1开始）
 
-        let foldingRanges: Array<{ start: number, end: number }> = [];
+        let foldingRanges: Array<{ start: number; end: number }> = [];
 
         // 使用栈来跟踪括号和嵌套深度
         interface StackItem {
             line: number;
             depth: number; // 括号嵌套深度（从1开始，根层为1）
-            bracketType: '{' | '[';
+            bracketType: "{" | "[";
         }
         const stack: StackItem[] = [];
 
@@ -3609,7 +3913,7 @@ const foldByIndentation = () => {
                     continue;
                 }
 
-                if (char === '\\') {
+                if (char === "\\") {
                     escapeNext = true;
                     continue;
                 }
@@ -3622,21 +3926,21 @@ const foldByIndentation = () => {
 
                 // 只在非字符串区域处理括号
                 if (!inString) {
-                    if (char === '{' || char === '[') {
+                    if (char === "{" || char === "[") {
                         // 进入新层级，深度+1
                         currentDepth++;
-                        const bracketType = char === '{' ? '{' : '[' as '{' | '[';
+                        const bracketType = char === "{" ? "{" : ("[" as "{" | "[");
 
                         // 如果当前深度等于目标层级，记录开始位置（这是目标层级本身）
                         if (currentDepth === targetLevel) {
                             stack.push({
                                 line: lineNum,
                                 depth: currentDepth,
-                                bracketType: bracketType
+                                bracketType: bracketType,
                             });
                         }
-                    } else if (char === '}' || char === ']') {
-                        const matchingBracket = (char === '}') ? '{' : '[';
+                    } else if (char === "}" || char === "]") {
+                        const matchingBracket = char === "}" ? "{" : "[";
 
                         // 如果当前深度等于目标层级，说明即将退出目标层级，尝试匹配栈中的开始括号
                         if (currentDepth === targetLevel && stack.length > 0) {
@@ -3648,7 +3952,7 @@ const foldByIndentation = () => {
                                     if (item.line < lineNum) {
                                         foldingRanges.push({
                                             start: item.line,
-                                            end: lineNum
+                                            end: lineNum,
                                         });
                                     }
                                     // 移除已匹配的项
@@ -3676,7 +3980,7 @@ const foldByIndentation = () => {
             return b.end - a.end;
         });
 
-        const filteredRanges: Array<{ start: number, end: number }> = [];
+        const filteredRanges: Array<{ start: number; end: number }> = [];
         for (let i = 0; i < foldingRanges.length; i++) {
             const current = foldingRanges[i];
             let isContained = false;
@@ -3686,8 +3990,11 @@ const foldByIndentation = () => {
                 if (i === j) continue;
                 const other = foldingRanges[j];
                 // 如果other完全包含current（开始更早或相同，结束更晚或相同，且至少有一个更严格）
-                if (other.start <= current.start && other.end >= current.end &&
-                    (other.start < current.start || other.end > current.end)) {
+                if (
+                    other.start <= current.start &&
+                    other.end >= current.end &&
+                    (other.start < current.start || other.end > current.end)
+                ) {
                     isContained = true;
                     break;
                 }
@@ -3703,7 +4010,7 @@ const foldByIndentation = () => {
         // 执行折叠操作
         if (foldingRanges.length > 0 && outputEditor) {
             // 先展开所有折叠，确保从干净的状态开始
-            outputEditor.trigger('unfold', 'editor.unfoldAll', null);
+            outputEditor.trigger("unfold", "editor.unfoldAll", null);
 
             // 使用并发优化的批量折叠：使用 Promise.all 同时处理多个折叠操作
             const concurrentBatchFold = async () => {
@@ -3714,9 +4021,12 @@ const foldByIndentation = () => {
 
                 // 禁用折叠信息更新（性能优化：避免在批量折叠时频繁更新）
                 const disableUpdate = (outputEditor as any).__disableFoldingInfoUpdate;
-                if (disableUpdate && typeof disableUpdate === 'function') {
+                if (disableUpdate && typeof disableUpdate === "function") {
                     // 根据折叠范围数量动态调整禁用时间
-                    const estimatedDuration = Math.min(10000, Math.max(3000, foldingRanges.length * 2));
+                    const estimatedDuration = Math.min(
+                        10000,
+                        Math.max(3000, foldingRanges.length * 2)
+                    );
                     disableUpdate(estimatedDuration);
                 }
 
@@ -3769,7 +4079,7 @@ const foldByIndentation = () => {
                                 start: range.start,
                                 end: range.end,
                                 startCol,
-                                endCol
+                                endCol,
                             } as PreparedRange;
                         } catch (err) {
                             return null;
@@ -3777,7 +4087,9 @@ const foldByIndentation = () => {
                     });
 
                     const results = await Promise.all(preparePromises);
-                    preparedRanges.push(...results.filter(r => r !== null) as PreparedRange[]);
+                    preparedRanges.push(
+                        ...(results.filter((r) => r !== null) as PreparedRange[])
+                    );
                 } else {
                     // 顺序预处理（小数据量或禁用并发时）
                     for (const range of foldingRanges) {
@@ -3800,7 +4112,7 @@ const foldByIndentation = () => {
                                 start: range.start,
                                 end: range.end,
                                 startCol,
-                                endCol
+                                endCol,
                             });
                         } catch (err) {
                             // 忽略预处理错误
@@ -3813,9 +4125,15 @@ const foldByIndentation = () => {
 
                 // 从后向前分批处理（避免行号变化影响）
                 // 注意：折叠操作必须顺序执行，因为 Monaco Editor 的状态操作不是线程安全的
-                for (let batchStart = preparedRanges.length - 1; batchStart >= 0; batchStart -= BATCH_SIZE) {
+                for (
+                    let batchStart = preparedRanges.length - 1;
+                    batchStart >= 0;
+                    batchStart -= BATCH_SIZE
+                ) {
                     const batchEnd = Math.max(0, batchStart - BATCH_SIZE + 1);
-                    const batchRanges = preparedRanges.slice(batchEnd, batchStart + 1).reverse(); // 反转以保持从后向前的顺序
+                    const batchRanges = preparedRanges
+                        .slice(batchEnd, batchStart + 1)
+                        .reverse(); // 反转以保持从后向前的顺序
 
                     // 顺序执行折叠操作（避免状态冲突）
                     for (const range of batchRanges) {
@@ -3827,15 +4145,17 @@ const foldByIndentation = () => {
                             // 定位到目标层级的开始括号位置
                             outputEditor.setPosition({
                                 lineNumber: range.start,
-                                column: range.startCol
+                                column: range.startCol,
                             });
 
                             // 展开当前光标位置的折叠（如果存在，可能是之前折叠操作留下的）
                             // 这确保目标位置是可见的，不会被外层折叠影响
-                            outputEditor.trigger('unfold', 'editor.unfold', null);
+                            outputEditor.trigger("unfold", "editor.unfold", null);
 
                             // 小延迟，确保展开完成
-                            await new Promise(resolve => setTimeout(resolve, DELAY_BETWEEN_FOLDS));
+                            await new Promise((resolve) =>
+                                setTimeout(resolve, DELAY_BETWEEN_FOLDS)
+                            );
 
                             // 关键：Monaco Editor 的 fold 命令会折叠光标所在的最小代码块
                             // 问题：如果光标位置在外层块内，会折叠外层块
@@ -3843,7 +4163,7 @@ const foldByIndentation = () => {
                             // 并且该位置不在任何外层块内（通过展开所有外层折叠来保证）
 
                             // 使用 getAction 获取折叠操作
-                            const foldAction = outputEditor.getAction('editor.fold');
+                            const foldAction = outputEditor.getAction("editor.fold");
                             if (foldAction && foldAction.isSupported()) {
                                 // 执行折叠操作
                                 // 注意：由于我们已经展开了所有折叠（在开始时执行了 unfoldAll），
@@ -3852,10 +4172,9 @@ const foldByIndentation = () => {
                                 foldedCount++;
                             } else {
                                 // 备用方案：使用 trigger 命令
-                                outputEditor.trigger('fold', 'editor.fold', null);
+                                outputEditor.trigger("fold", "editor.fold", null);
                                 foldedCount++;
                             }
-
                         } catch (err) {
                             failedCount++;
                             // 继续处理下一个范围
@@ -3863,13 +4182,15 @@ const foldByIndentation = () => {
 
                         // 每处理一定数量后，让浏览器有机会渲染
                         if (foldedCount % 50 === 0) {
-                            await new Promise(resolve => setTimeout(resolve, 5));
+                            await new Promise((resolve) => setTimeout(resolve, 5));
                         }
                     }
 
                     // 批次之间的延迟，让浏览器有机会渲染
                     if (batchStart > BATCH_SIZE) {
-                        await new Promise(resolve => setTimeout(resolve, DELAY_BETWEEN_BATCHES));
+                        await new Promise((resolve) =>
+                            setTimeout(resolve, DELAY_BETWEEN_BATCHES)
+                        );
                     }
                 }
 
@@ -3879,12 +4200,13 @@ const foldByIndentation = () => {
                         startLineNumber: 1,
                         startColumn: 1,
                         endLineNumber: 1,
-                        endColumn: 1
+                        endColumn: 1,
                     });
 
-                    const message = failedCount > 0
-                        ? `收缩到第 ${selectedLevel.value} 层完成，成功 ${foldedCount} 个元素，失败 ${failedCount} 个元素`
-                        : `收缩到第 ${selectedLevel.value} 层成功，共折叠 ${foldedCount} 个元素`;
+                    const message =
+                        failedCount > 0
+                            ? `收缩到第 ${selectedLevel.value} 层完成，成功 ${foldedCount} 个元素，失败 ${failedCount} 个元素`
+                            : `收缩到第 ${selectedLevel.value} 层成功，共折叠 ${foldedCount} 个元素`;
                     showSuccess(message);
 
                     // 清除折叠状态标志
@@ -3895,8 +4217,12 @@ const foldByIndentation = () => {
                     }
 
                     // 立即启用更新并触发displayText更新（折叠操作完成后）
-                    const enableUpdateAndRefresh = (outputEditor as any).__enableFoldingInfoUpdateAndRefresh;
-                    if (enableUpdateAndRefresh && typeof enableUpdateAndRefresh === 'function') {
+                    const enableUpdateAndRefresh = (outputEditor as any)
+                        .__enableFoldingInfoUpdateAndRefresh;
+                    if (
+                        enableUpdateAndRefresh &&
+                        typeof enableUpdateAndRefresh === "function"
+                    ) {
                         enableUpdateAndRefresh();
                     }
                 }
@@ -3915,64 +4241,64 @@ const foldByIndentation = () => {
         if (outputEditor) {
             updateEditorStatus(outputEditor, outputEditorStatus, false);
         }
-        showWarning('折叠操作失败: ' + (e.message || '未知错误'));
+        showWarning("折叠操作失败: " + (e.message || "未知错误"));
     }
 };
 
 // 处理转换
 const handleConvert = (command: string) => {
     try {
-        const value = inputEditor?.getValue() || '';
+        const value = inputEditor?.getValue() || "";
         if (!value.trim()) {
-            showError('请先输入内容');
+            showError("请先输入内容");
             return;
         }
 
         // 处理 Cookie 转换
-        if (command === 'cookie') {
+        if (command === "cookie") {
             const jsonStr = cookieToJSON(value);
             outputEditor?.setValue(jsonStr);
             updateLineNumberWidth(outputEditor);
             updateEditorHeight(outputEditor);
-            showSuccess('Cookie 转换成功');
+            showSuccess("Cookie 转换成功");
             return;
         }
 
         // 处理其他格式转换
-        let parsed
+        let parsed;
         try {
             const result = preprocessJSON(value);
             parsed = result.data;
         } catch (error) {
-            showError('请输入有效的 JSON 数据');
+            showError("请输入有效的 JSON 数据");
             return;
         }
 
-        let result = '';
-        let editorLanguage = 'json';
+        let result = "";
+        let editorLanguage = "json";
         switch (command) {
-            case 'yaml':
-                outputType.value = 'yaml';
-                editorLanguage = 'yaml';
+            case "yaml":
+                outputType.value = "yaml";
+                editorLanguage = "yaml";
                 result = convertToYAML(parsed);
                 break;
-            case 'toml':
-                outputType.value = 'toml';
-                editorLanguage = 'plaintext';
+            case "toml":
+                outputType.value = "toml";
+                editorLanguage = "plaintext";
                 result = convertToTOML(parsed);
                 break;
-            case 'xml':
-                outputType.value = 'xml';
-                editorLanguage = 'xml';
+            case "xml":
+                outputType.value = "xml";
+                editorLanguage = "xml";
                 result = convertToXML(parsed);
                 break;
-            case 'go':
-                outputType.value = 'go';
-                editorLanguage = 'go';
+            case "go":
+                outputType.value = "go";
+                editorLanguage = "go";
                 result = convertToGo(parsed);
                 break;
             default:
-                throw new Error('不支持的转换类型');
+                throw new Error("不支持的转换类型");
         }
 
         if (outputEditor) {
@@ -3985,18 +4311,18 @@ const handleConvert = (command: string) => {
             showSuccess(`转换为 ${command.toUpperCase()} 成功`);
         }
     } catch (error: any) {
-        showError('转换失败: ' + error.message);
+        showError("转换失败: " + error.message);
     }
 };
 
 // 格式化 JSON
 const formatJSON = () => {
     try {
-        outputType.value = 'json'
-        const value = inputEditor?.getValue() || ''
+        outputType.value = "json";
+        const value = inputEditor?.getValue() || "";
 
         if (!value.trim()) {
-            showError('请先输入 JSON 数据');
+            showError("请先输入 JSON 数据");
             return;
         }
 
@@ -4013,12 +4339,17 @@ const formatJSON = () => {
             // 对于其他模式，也使用原始输入字符串，让customStringify根据编码模式处理
             originalString = value;
         } catch (error) {
-            showError('请输入有效的 JSON 数据');
+            showError("请输入有效的 JSON 数据");
             return;
         }
 
         // 使用标准格式化，传递原始字符串
-        const formatted = customStringify(parsed, null, indentSize.value, originalString);
+        const formatted = customStringify(
+            parsed,
+            null,
+            indentSize.value,
+            originalString
+        );
 
         // 异步计算所有折叠区域的信息（不阻塞，立即返回）
         // 这样可以避免实时计算的高成本，特别是对于大数据量（7-10万行）
@@ -4030,21 +4361,21 @@ const formatJSON = () => {
 
         // 更新编辑器配置（包括模型选项，确保缩进指南线正确显示）
         // 对于JSON输出，总是启用大文件折叠优化
-        updateOutputEditorConfig('json', true);
+        updateOutputEditorConfig("json", true);
 
-        showSuccess('格式化成功');
+        showSuccess("格式化成功");
     } catch (error: any) {
-        showError('格式化失败: ' + error.message);
+        showError("格式化失败: " + error.message);
     }
 };
 
 // 压缩 JSON
 const compressJSON = () => {
     try {
-        outputType.value = 'json';
-        const value = inputEditor?.getValue() || '';
+        outputType.value = "json";
+        const value = inputEditor?.getValue() || "";
         if (!value.trim()) {
-            showError('请先输入 JSON 数据');
+            showError("请先输入 JSON 数据");
             return;
         }
 
@@ -4054,7 +4385,7 @@ const compressJSON = () => {
             const result = preprocessJSON(value);
             parsed = result.data;
         } catch (error) {
-            showError('请输入有效的 JSON 数据');
+            showError("请输入有效的 JSON 数据");
             return;
         }
 
@@ -4064,21 +4395,21 @@ const compressJSON = () => {
 
         // 更新编辑器配置（包括模型选项，确保缩进指南线正确显示）
         // 对于JSON输出，总是启用大文件折叠优化
-        updateOutputEditorConfig('json', true);
+        updateOutputEditorConfig("json", true);
 
-        showSuccess('压缩成功')
+        showSuccess("压缩成功");
     } catch (error: any) {
-        showError('压缩失败: ' + error.message)
+        showError("压缩失败: " + error.message);
     }
 };
 
 // 转义 JSON
 const escapeJSON = () => {
     try {
-        outputType.value = 'json';
-        const value = inputEditor?.getValue() || '';
+        outputType.value = "json";
+        const value = inputEditor?.getValue() || "";
         if (!value.trim()) {
-            showError('请先输入 JSON 数据');
+            showError("请先输入 JSON 数据");
             return;
         }
 
@@ -4088,7 +4419,7 @@ const escapeJSON = () => {
             const result = preprocessJSON(value);
             parsed = result.data;
         } catch (error) {
-            showError('请输入有效的 JSON 数据');
+            showError("请输入有效的 JSON 数据");
             return;
         }
 
@@ -4096,21 +4427,21 @@ const escapeJSON = () => {
         const formatted = JSON.stringify(parsed, null, 2);
 
         // 有效的JSON转义序列
-        const validEscapes = ['"', '\\', '/', 'b', 'f', 'n', 'r', 't', 'u'];
+        const validEscapes = ['"', "\\", "/", "b", "f", "n", "r", "t", "u"];
 
         // 智能转义：保留原始JSON中的转义序列（包括非法转义序列）
         // 需要特别处理字符串值内部的转义序列，支持任意深度的嵌套
         // 核心思想：在字符串值内部，每个反斜杠都需要被转义（\ -> \\），每个引号都需要被转义（" -> \"）
-        let escaped = '';
+        let escaped = "";
         let i = 0;
         let inString = false; // 跟踪是否在字符串值内部
 
         while (i < formatted.length) {
             const char = formatted[i];
-            const nextChar = formatted[i + 1] || '';
-            const nextNextChar = formatted[i + 2] || '';
+            const nextChar = formatted[i + 1] || "";
+            const nextNextChar = formatted[i + 2] || "";
 
-            if (char === '\\') {
+            if (char === "\\") {
                 // 优先处理反斜杠（避免与引号处理冲突）
                 if (inString) {
                     // 在字符串值内部，所有反斜杠都需要被转义
@@ -4119,35 +4450,41 @@ const escapeJSON = () => {
                         // 因为我们要转义整个JSON字符串，所以 \" 需要变成 \\\"
                         escaped += '\\\\\\"';
                         i += 2;
-                    } else if (nextChar === '\\') {
+                    } else if (nextChar === "\\") {
                         // 连续的反斜杠 \\，需要转义为 \\\\
                         // 检查是否是无效转义序列（如 \\a）
                         if (nextNextChar && !validEscapes.includes(nextNextChar)) {
                             // JSON.stringify 将无效转义序列 \a 转义成了 \\a
                             // 我们需要将其还原为 \a（转义后变成 \\a）
-                            escaped += '\\' + nextNextChar;
+                            escaped += "\\" + nextNextChar;
                             i += 3;
                         } else {
                             // 标准的 \\，转义为 \\\\
-                            escaped += '\\\\\\\\';
+                            escaped += "\\\\\\\\";
                             i += 2;
                         }
-                    } else if (nextChar === 'u' && /^[0-9a-fA-F]{4}$/i.test(formatted.substring(i + 2, i + 6))) {
+                    } else if (
+                        nextChar === "u" &&
+                        /^[0-9a-fA-F]{4}$/i.test(formatted.substring(i + 2, i + 6))
+                    ) {
                         // Unicode转义序列 \uXXXX，在字符串值内部需要转义反斜杠
-                        escaped += '\\\\u' + formatted.substring(i + 2, i + 6);
+                        escaped += "\\\\u" + formatted.substring(i + 2, i + 6);
                         i += 6;
                     } else if (nextChar) {
                         // 标准转义序列（\n, \t等），在字符串值内部需要转义反斜杠
-                        escaped += '\\\\' + nextChar;
+                        escaped += "\\\\" + nextChar;
                         i += 2;
                     } else {
                         // 单独的反斜杠（字符串末尾），转义它
-                        escaped += '\\\\';
+                        escaped += "\\\\";
                         i++;
                     }
                 } else {
                     // 不在字符串值内部，保持原样（这些是JSON结构中的转义序列）
-                    if (nextChar === 'u' && /^[0-9a-fA-F]{4}$/i.test(formatted.substring(i + 2, i + 6))) {
+                    if (
+                        nextChar === "u" &&
+                        /^[0-9a-fA-F]{4}$/i.test(formatted.substring(i + 2, i + 6))
+                    ) {
                         // Unicode转义序列 \uXXXX，保持原样
                         escaped += formatted.substring(i, i + 6);
                         i += 6;
@@ -4157,7 +4494,7 @@ const escapeJSON = () => {
                         i += 2;
                     } else {
                         // 单独的反斜杠，转义它
-                        escaped += '\\\\';
+                        escaped += "\\\\";
                         i++;
                     }
                 }
@@ -4177,23 +4514,23 @@ const escapeJSON = () => {
 
         // 更新编辑器配置（包括模型选项，确保缩进指南线正确显示）
         // 对于JSON输出，总是启用大文件折叠优化
-        updateOutputEditorConfig('json', true);
+        updateOutputEditorConfig("json", true);
 
-        showSuccess('转义成功');
+        showSuccess("转义成功");
     } catch (error: any) {
-        showError('转义失败: ' + error.message);
+        showError("转义失败: " + error.message);
     }
 };
 
 // 去除JSON转义字符
 const unescapeJSON = () => {
     try {
-        const value = inputEditor?.getValue() || ''
+        const value = inputEditor?.getValue() || "";
         if (!value.trim()) {
-            showError('请先输入内容');
+            showError("请先输入内容");
             return;
         }
-        outputType.value = 'json';
+        outputType.value = "json";
 
         // 获取原始输入
         const originalInput = value;
@@ -4211,9 +4548,13 @@ const unescapeJSON = () => {
         // 简单检测：查找单数反斜杠后跟 n/t/r/b/f（前面没有另一个反斜杠）
         let hasEscapeToPreserve = false;
         for (let i = 0; i < value.length - 1; i++) {
-            if (value[i] === '\\' && value[i + 1] && ['n', 't', 'r', 'b', 'f'].includes(value[i + 1])) {
+            if (
+                value[i] === "\\" &&
+                value[i + 1] &&
+                ["n", "t", "r", "b", "f"].includes(value[i + 1])
+            ) {
                 // 检查前面是否还有反斜杠（即是否是 \\n 这种情况）
-                if (i === 0 || value[i - 1] !== '\\') {
+                if (i === 0 || value[i - 1] !== "\\") {
                     hasEscapeToPreserve = true;
                     break;
                 }
@@ -4246,7 +4587,7 @@ const unescapeJSON = () => {
         }
 
         // 如果成功解析为对象或数组，进行递归处理
-        if (parsedInput !== null && typeof parsedInput === 'object') {
+        if (parsedInput !== null && typeof parsedInput === "object") {
             try {
                 // 全局 Unicode 映射收集器（在处理开始前创建，用于收集所有需要保留的 Unicode 转义序列）
                 const globalUnicodeMap = new Map<string, string>();
@@ -4256,7 +4597,7 @@ const unescapeJSON = () => {
                     if (obj === null || obj === undefined) return obj;
 
                     // 处理对象
-                    if (typeof obj === 'object' && !Array.isArray(obj)) {
+                    if (typeof obj === "object" && !Array.isArray(obj)) {
                         const result: Record<string, any> = {};
                         for (const key in obj) {
                             if (Object.prototype.hasOwnProperty.call(obj, key)) {
@@ -4269,17 +4610,19 @@ const unescapeJSON = () => {
 
                     // 处理数组
                     if (Array.isArray(obj)) {
-                        return obj.map(item => processObject(item));
+                        return obj.map((item) => processObject(item));
                     }
 
                     // 处理字符串 - 尝试解析可能的JSON字符串
-                    if (typeof obj === 'string') {
+                    if (typeof obj === "string") {
                         // 检查字符串是否像转义后的JSON
                         // 注意：obj 是已经解析过的 JavaScript 字符串
                         // 如果原始JSON字符串值是 "{\"key\": \"value\"}"，解析后的obj是 {"key": "value"}
                         // 我们需要检查obj中是否包含转义的引号（即字符串中包含反斜杠+引号的序列）
-                        if ((obj.includes('\\"') || obj.includes('\\\\')) &&
-                            (obj.includes('{') || obj.includes('['))) {
+                        if (
+                            (obj.includes('\\"') || obj.includes("\\\\")) &&
+                            (obj.includes("{") || obj.includes("["))
+                        ) {
                             try {
                                 // 先保存 Unicode 转义序列，避免被 JSON.parse 解码
                                 // 使用 Map 来记录字符到 Unicode 转义序列的映射
@@ -4287,25 +4630,28 @@ const unescapeJSON = () => {
                                 let tempStr = obj;
 
                                 // 查找并替换所有 Unicode 转义序列（\uXXXX）为占位符
-                                tempStr = tempStr.replace(/\\u([0-9a-fA-F]{4})/g, (match, hex) => {
-                                    const codePoint = parseInt(hex, 16);
-                                    const char = String.fromCharCode(codePoint);
-                                    const placeholder = `__UNI_HEX_${hex}__`;
-                                    // 记录字符到 Unicode 转义序列的映射
-                                    unicodeMap.set(char, match);
-                                    return placeholder;
-                                });
+                                tempStr = tempStr.replace(
+                                    /\\u([0-9a-fA-F]{4})/g,
+                                    (match, hex) => {
+                                        const codePoint = parseInt(hex, 16);
+                                        const char = String.fromCharCode(codePoint);
+                                        const placeholder = `__UNI_HEX_${hex}__`;
+                                        // 记录字符到 Unicode 转义序列的映射
+                                        unicodeMap.set(char, match);
+                                        return placeholder;
+                                    }
+                                );
 
                                 // 去除转义：使用逐字符处理，避免替换顺序问题
                                 // 这样可以正确处理多层嵌套的情况（如 \\\\\"）
-                                let unescaped = '';
+                                let unescaped = "";
                                 let j = 0;
                                 while (j < tempStr.length) {
-                                    if (tempStr[j] === '\\' && j + 1 < tempStr.length) {
+                                    if (tempStr[j] === "\\" && j + 1 < tempStr.length) {
                                         const next = tempStr[j + 1];
-                                        if (next === '\\') {
+                                        if (next === "\\") {
                                             // 遇到 \\，还原为一个反斜杠
-                                            unescaped += '\\';
+                                            unescaped += "\\";
                                             j += 2;
                                         } else if (next === '"') {
                                             // 遇到 \"，还原为一个引号
@@ -4332,11 +4678,11 @@ const unescapeJSON = () => {
                                     // 将已解析的控制字符转义回JSON转义序列
                                     // 这样 JSON.parse 才能正确解析
                                     unescaped = unescaped
-                                        .replace(/\n/g, '\\n')
-                                        .replace(/\t/g, '\\t')
-                                        .replace(/\r/g, '\\r')
-                                        .replace(/\b/g, '\\b')
-                                        .replace(/\f/g, '\\f');
+                                        .replace(/\n/g, "\\n")
+                                        .replace(/\t/g, "\\t")
+                                        .replace(/\r/g, "\\r")
+                                        .replace(/\b/g, "\\b")
+                                        .replace(/\f/g, "\\f");
                                 }
 
                                 // 验证去除转义后的字符串是否是有效的JSON
@@ -4353,23 +4699,37 @@ const unescapeJSON = () => {
 
                                     // 恢复 Unicode 占位符：将占位符替换为对应的字符
                                     // 同时将 unicodeMap 附加到对象上，以便后续 stringify 时使用
-                                    const restoreUnicodePlaceholders = (val: any, map: Map<string, string>): any => {
-                                        if (typeof val === 'string') {
+                                    const restoreUnicodePlaceholders = (
+                                        val: any,
+                                        map: Map<string, string>
+                                    ): any => {
+                                        if (typeof val === "string") {
                                             // 将占位符替换为对应的字符
                                             let restored = val;
                                             map.forEach((unicode, char) => {
-                                                const hex = unicode.replace(/\\u/, '');
+                                                const hex = unicode.replace(/\\u/, "");
                                                 const placeholder = `__UNI_HEX_${hex}__`;
-                                                restored = restored.replace(new RegExp(placeholder.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g'), char);
+                                                restored = restored.replace(
+                                                    new RegExp(
+                                                        placeholder.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"),
+                                                        "g"
+                                                    ),
+                                                    char
+                                                );
                                             });
                                             return restored;
                                         } else if (Array.isArray(val)) {
-                                            return val.map(item => restoreUnicodePlaceholders(item, map));
-                                        } else if (val && typeof val === 'object') {
+                                            return val.map((item) =>
+                                                restoreUnicodePlaceholders(item, map)
+                                            );
+                                        } else if (val && typeof val === "object") {
                                             const result: Record<string, any> = {};
                                             for (const key in val) {
                                                 if (Object.prototype.hasOwnProperty.call(val, key)) {
-                                                    result[key] = restoreUnicodePlaceholders(val[key], map);
+                                                    result[key] = restoreUnicodePlaceholders(
+                                                        val[key],
+                                                        map
+                                                    );
                                                 }
                                             }
                                             return result;
@@ -4377,7 +4737,10 @@ const unescapeJSON = () => {
                                         return val;
                                     };
 
-                                    parsedValue = restoreUnicodePlaceholders(parsedValue, unicodeMap);
+                                    parsedValue = restoreUnicodePlaceholders(
+                                        parsedValue,
+                                        unicodeMap
+                                    );
                                     // 将 unicodeMap 合并到全局映射中
                                     unicodeMap.forEach((unicode, char) => {
                                         globalUnicodeMap.set(char, unicode);
@@ -4392,7 +4755,7 @@ const unescapeJSON = () => {
                                 if (isValidJson) {
                                     // 如果是有效的JSON，递归处理它（展开嵌套结构）
                                     // 这样可以处理多层嵌套的情况，包括包含转义字符的情况
-                                    if (typeof parsedValue === 'object' && parsedValue !== null) {
+                                    if (typeof parsedValue === "object" && parsedValue !== null) {
                                         // 递归处理嵌套的对象/数组，完全展开嵌套结构
                                         return processObject(parsedValue);
                                     } else {
@@ -4412,19 +4775,19 @@ const unescapeJSON = () => {
 
                     // 其他类型直接返回
                     return obj;
-                }
+                };
 
                 // 递归清理所有的临时 __unicodeMap__ 属性
                 const cleanUnicodeMaps = (obj: any): void => {
-                    if (obj && typeof obj === 'object') {
+                    if (obj && typeof obj === "object") {
                         if ((obj as any).__unicodeMap__) {
                             // 删除临时属性（映射已经合并到全局映射中了）
                             delete (obj as any).__unicodeMap__;
                         }
                         if (Array.isArray(obj)) {
-                            obj.forEach(item => cleanUnicodeMaps(item));
+                            obj.forEach((item) => cleanUnicodeMaps(item));
                         } else {
-                            Object.values(obj).forEach(val => cleanUnicodeMaps(val));
+                            Object.values(obj).forEach((val) => cleanUnicodeMaps(val));
                         }
                     }
                 };
@@ -4435,14 +4798,18 @@ const unescapeJSON = () => {
                 cleanUnicodeMaps(processedJson);
 
                 // 自定义 stringify，保留 Unicode 转义序列
-                const stringifyWithUnicode = (obj: any, indent: string = '', unicodeMap: Map<string, string> = globalUnicodeMap): string => {
-                    if (obj === null) return 'null';
-                    if (typeof obj === 'boolean') return obj.toString();
-                    if (typeof obj === 'number') return obj.toString();
+                const stringifyWithUnicode = (
+                    obj: any,
+                    indent: string = "",
+                    unicodeMap: Map<string, string> = globalUnicodeMap
+                ): string => {
+                    if (obj === null) return "null";
+                    if (typeof obj === "boolean") return obj.toString();
+                    if (typeof obj === "number") return obj.toString();
 
-                    if (typeof obj === 'string') {
+                    if (typeof obj === "string") {
                         // 处理字符串转义，优先使用 unicodeMap 中的映射（保留原始 Unicode 转义序列）
-                        let escaped = '';
+                        let escaped = "";
                         for (let i = 0; i < obj.length; i++) {
                             const char = obj[i];
                             const code = char.charCodeAt(0);
@@ -4454,15 +4821,29 @@ const unescapeJSON = () => {
                             // 对于控制字符和需要转义的字符，使用标准JSON转义
                             else if (code < 32 || code === 34 || code === 92) {
                                 switch (char) {
-                                    case '"': escaped += '\\"'; break;
-                                    case '\\': escaped += '\\\\'; break;
-                                    case '\b': escaped += '\\b'; break;
-                                    case '\f': escaped += '\\f'; break;
-                                    case '\n': escaped += '\\n'; break;
-                                    case '\r': escaped += '\\r'; break;
-                                    case '\t': escaped += '\\t'; break;
+                                    case '"':
+                                        escaped += '\\"';
+                                        break;
+                                    case "\\":
+                                        escaped += "\\\\";
+                                        break;
+                                    case "\b":
+                                        escaped += "\\b";
+                                        break;
+                                    case "\f":
+                                        escaped += "\\f";
+                                        break;
+                                    case "\n":
+                                        escaped += "\\n";
+                                        break;
+                                    case "\r":
+                                        escaped += "\\r";
+                                        break;
+                                    case "\t":
+                                        escaped += "\\t";
+                                        break;
                                     default:
-                                        escaped += '\\u' + ('0000' + code.toString(16)).slice(-4);
+                                        escaped += "\\u" + ("0000" + code.toString(16)).slice(-4);
                                 }
                             } else {
                                 // 其他字符（包括中文字符），如果不是在 unicodeMap 中，直接输出
@@ -4474,23 +4855,35 @@ const unescapeJSON = () => {
                     }
 
                     if (Array.isArray(obj)) {
-                        if (obj.length === 0) return '[]';
-                        const items = obj.map(item => {
-                            const itemStr = stringifyWithUnicode(item, indent + '  ', unicodeMap);
-                            return indent + '  ' + itemStr;
+                        if (obj.length === 0) return "[]";
+                        const items = obj.map((item) => {
+                            const itemStr = stringifyWithUnicode(
+                                item,
+                                indent + "  ",
+                                unicodeMap
+                            );
+                            return indent + "  " + itemStr;
                         });
-                        return '[\n' + items.join(',\n') + '\n' + indent + ']';
+                        return "[\n" + items.join(",\n") + "\n" + indent + "]";
                     }
 
-                    if (typeof obj === 'object') {
+                    if (typeof obj === "object") {
                         const keys = Object.keys(obj);
-                        if (keys.length === 0) return '{}';
-                        const pairs = keys.map(key => {
-                            const keyStr = stringifyWithUnicode(key, indent + '  ', unicodeMap);
-                            const valueStr = stringifyWithUnicode(obj[key], indent + '  ', unicodeMap);
-                            return indent + '  ' + keyStr + ': ' + valueStr;
+                        if (keys.length === 0) return "{}";
+                        const pairs = keys.map((key) => {
+                            const keyStr = stringifyWithUnicode(
+                                key,
+                                indent + "  ",
+                                unicodeMap
+                            );
+                            const valueStr = stringifyWithUnicode(
+                                obj[key],
+                                indent + "  ",
+                                unicodeMap
+                            );
+                            return indent + "  " + keyStr + ": " + valueStr;
                         });
-                        return '{\n' + pairs.join(',\n') + '\n' + indent + '}';
+                        return "{\n" + pairs.join(",\n") + "\n" + indent + "}";
                     }
 
                     return JSON.stringify(obj);
@@ -4505,17 +4898,19 @@ const unescapeJSON = () => {
                     // 更新编辑器语言
                     const model = outputEditor.getModel();
                     if (model) {
-                        monaco.editor.setModelLanguage(model, 'json');
+                        monaco.editor.setModelLanguage(model, "json");
                     }
 
                     // 更新其他配置
                     // 对于JSON输出，总是启用大文件折叠优化
-                    outputEditor.updateOptions(getEditorOptions(indentSize.value, true, 'json', true));
+                    outputEditor.updateOptions(
+                        getEditorOptions(indentSize.value, true, "json", true)
+                    );
                     updateLineNumberWidth(outputEditor);
                     updateEditorHeight(outputEditor);
                 }
 
-                showSuccess('去除转义成功');
+                showSuccess("去除转义成功");
                 return;
             } catch (processError) {
                 // 处理过程出错，尝试其他方式
@@ -4523,12 +4918,16 @@ const unescapeJSON = () => {
         }
 
         // 处理双重转义的特殊情况（如压缩并转义的结果）
-        if (typeof value === 'string' && value.trim().startsWith('"') && value.trim().endsWith('"')) {
+        if (
+            typeof value === "string" &&
+            value.trim().startsWith('"') &&
+            value.trim().endsWith('"')
+        ) {
             try {
                 // 尝试解析为JSON字符串
                 const firstUnescaped = JSON.parse(value.trim());
 
-                if (typeof firstUnescaped === 'string') {
+                if (typeof firstUnescaped === "string") {
                     // 检查解析出的字符串是否是有效的JSON
                     let isValidJson = false;
                     try {
@@ -4543,7 +4942,10 @@ const unescapeJSON = () => {
                         try {
                             // 尝试解析第二层
                             const secondUnescaped = JSON.parse(firstUnescaped);
-                            if (typeof secondUnescaped === 'object' && secondUnescaped !== null) {
+                            if (
+                                typeof secondUnescaped === "object" &&
+                                secondUnescaped !== null
+                            ) {
                                 const formatted = JSON.stringify(secondUnescaped, null, 2);
                                 outputEditor?.setValue(formatted);
 
@@ -4552,17 +4954,19 @@ const unescapeJSON = () => {
                                     // 更新编辑器语言
                                     const model = outputEditor.getModel();
                                     if (model) {
-                                        monaco.editor.setModelLanguage(model, 'json');
+                                        monaco.editor.setModelLanguage(model, "json");
                                     }
 
                                     // 更新其他配置
                                     // 对于JSON输出，总是启用大文件折叠优化
-                                    outputEditor.updateOptions(getEditorOptions(indentSize.value, true, 'json', true));
+                                    outputEditor.updateOptions(
+                                        getEditorOptions(indentSize.value, true, "json", true)
+                                    );
                                     updateLineNumberWidth(outputEditor);
                                     updateEditorHeight(outputEditor);
                                 }
 
-                                showSuccess('去除双重转义成功');
+                                showSuccess("去除双重转义成功");
                                 return;
                             }
                         } catch {
@@ -4574,17 +4978,19 @@ const unescapeJSON = () => {
                                 // 更新编辑器语言
                                 const model = outputEditor.getModel();
                                 if (model) {
-                                    monaco.editor.setModelLanguage(model, 'json');
+                                    monaco.editor.setModelLanguage(model, "json");
                                 }
 
                                 // 更新其他配置
                                 // 对于JSON输出，总是启用大文件折叠优化
-                                outputEditor.updateOptions(getEditorOptions(indentSize.value, true, 'json', true));
+                                outputEditor.updateOptions(
+                                    getEditorOptions(indentSize.value, true, "json", true)
+                                );
                                 updateLineNumberWidth(outputEditor);
                                 updateEditorHeight(outputEditor);
                             }
 
-                            showSuccess('去除转义成功');
+                            showSuccess("去除转义成功");
                             return;
                         }
                     } else {
@@ -4601,7 +5007,7 @@ const unescapeJSON = () => {
         let result = originalInput;
 
         // 只有当确实有转义字符时才进行处理
-        if (originalInput.includes('\\')) {
+        if (originalInput.includes("\\")) {
             // 检查内容是否有明显的JSON转义特征
             const hasJsonEscapes = /\\["\\\/bfnrtu]/.test(originalInput);
             const hasUnicodeEscapes = /\\u[\da-fA-F]{4}/.test(originalInput);
@@ -4610,9 +5016,7 @@ const unescapeJSON = () => {
                 try {
                     // 只处理最外层的转义：\" -> " 和 \\ -> \
                     // 不处理其他转义序列（\n, \t等），保持它们为字面形式
-                    result = originalInput
-                        .replace(/\\"/g, '"')
-                        .replace(/\\\\/g, '\\');
+                    result = originalInput.replace(/\\"/g, '"').replace(/\\\\/g, "\\");
                     // 注意：移除了将 \n, \t 等转换为实际字符的代码
                     // 这样转义序列会保持为字面形式（\n 而不是换行符）
                 } catch (e) {
@@ -4627,17 +5031,19 @@ const unescapeJSON = () => {
                     // 更新编辑器语言
                     const model = outputEditor.getModel();
                     if (model) {
-                        monaco.editor.setModelLanguage(model, 'json');
+                        monaco.editor.setModelLanguage(model, "json");
                     }
 
                     // 更新其他配置
                     // 对于JSON输出，总是启用大文件折叠优化
-                    outputEditor.updateOptions(getEditorOptions(indentSize.value, true, 'json', true));
+                    outputEditor.updateOptions(
+                        getEditorOptions(indentSize.value, true, "json", true)
+                    );
                     updateLineNumberWidth(outputEditor);
                     updateEditorHeight(outputEditor);
                 }
 
-                showSuccess('去除转义成功');
+                showSuccess("去除转义成功");
             } else {
                 // 没有标准JSON转义特征，提示用户
                 outputEditor?.setValue(originalInput);
@@ -4647,17 +5053,19 @@ const unescapeJSON = () => {
                     // 更新编辑器语言
                     const model = outputEditor.getModel();
                     if (model) {
-                        monaco.editor.setModelLanguage(model, 'json');
+                        monaco.editor.setModelLanguage(model, "json");
                     }
 
                     // 更新其他配置
                     // 对于JSON输出，总是启用大文件折叠优化
-                    outputEditor.updateOptions(getEditorOptions(indentSize.value, true, 'json', true));
+                    outputEditor.updateOptions(
+                        getEditorOptions(indentSize.value, true, "json", true)
+                    );
                     updateLineNumberWidth(outputEditor);
                     updateEditorHeight(outputEditor);
                 }
 
-                showWarning('未检测到标准JSON转义, 内容保持不变');
+                showWarning("未检测到标准JSON转义, 内容保持不变");
             }
         } else {
             outputEditor?.setValue(originalInput);
@@ -4667,34 +5075,36 @@ const unescapeJSON = () => {
                 // 更新编辑器语言
                 const model = outputEditor.getModel();
                 if (model) {
-                    monaco.editor.setModelLanguage(model, 'json');
+                    monaco.editor.setModelLanguage(model, "json");
                 }
 
                 // 更新其他配置
                 // 对于JSON输出，总是启用大文件折叠优化
-                outputEditor.updateOptions(getEditorOptions(indentSize.value, true, 'json', true));
+                outputEditor.updateOptions(
+                    getEditorOptions(indentSize.value, true, "json", true)
+                );
                 updateLineNumberWidth(outputEditor);
                 updateEditorHeight(outputEditor);
             }
 
-            showSuccess('去除转义成功');
+            showSuccess("去除转义成功");
         }
 
         return;
     } catch (error: any) {
-        showError('去除转义失败: ' + error.message);
+        showError("去除转义失败: " + error.message);
     }
 };
 
 // 压缩并转义功能
 const compressAndEscapeJSON = () => {
     try {
-        const value = inputEditor?.getValue() || ''
+        const value = inputEditor?.getValue() || "";
         if (!value.trim()) {
-            showError('请先输入 JSON 数据');
+            showError("请先输入 JSON 数据");
             return;
         }
-        outputType.value = 'json';
+        outputType.value = "json";
 
         // 预处理 JSON 字符串
         let parsed;
@@ -4702,7 +5112,7 @@ const compressAndEscapeJSON = () => {
             const result = preprocessJSON(value);
             parsed = result.data;
         } catch (error) {
-            showError('请输入有效的 JSON 数据');
+            showError("请输入有效的 JSON 数据");
             return;
         }
 
@@ -4720,19 +5130,21 @@ const compressAndEscapeJSON = () => {
             // 更新编辑器语言
             const model = outputEditor.getModel();
             if (model) {
-                monaco.editor.setModelLanguage(model, 'json');
+                monaco.editor.setModelLanguage(model, "json");
             }
 
             // 更新其他配置
             // 对于JSON输出，总是启用大文件折叠优化
-            outputEditor.updateOptions(getEditorOptions(indentSize.value, true, 'json', true));
+            outputEditor.updateOptions(
+                getEditorOptions(indentSize.value, true, "json", true)
+            );
             updateLineNumberWidth(outputEditor);
             updateEditorHeight(outputEditor);
         }
 
-        showSuccess('压缩并转义成功');
+        showSuccess("压缩并转义成功");
     } catch (error: any) {
-        showError('压缩并转义失败: ' + error.message);
+        showError("压缩并转义失败: " + error.message);
     }
 };
 
@@ -4740,13 +5152,13 @@ const compressAndEscapeJSON = () => {
 const handleLevelAction = () => {
     try {
         if (!outputEditor) {
-            showError('编辑器未初始化');
+            showError("编辑器未初始化");
             return;
         }
 
-        const value = inputEditor?.getValue() || '';
+        const value = inputEditor?.getValue() || "";
         if (!value.trim()) {
-            showError('请先输入 JSON 数据');
+            showError("请先输入 JSON 数据");
             selectedLevel.value = 1;
             return;
         }
@@ -4757,7 +5169,7 @@ const handleLevelAction = () => {
             const result = preprocessJSON(value);
             parsedData = result.data; // 提取实际的JSON数据
         } catch (error) {
-            showError('请输入有效的 JSON 数据');
+            showError("请输入有效的 JSON 数据");
             return;
         }
 
@@ -4778,12 +5190,12 @@ const handleLevelAction = () => {
             // 更新编辑器语言
             const model = outputEditor.getModel();
             if (model) {
-                monaco.editor.setModelLanguage(model, 'json');
+                monaco.editor.setModelLanguage(model, "json");
             }
 
             // 更新其他配置
             // 对于10万行以内的JSON文件，总是启用大文件折叠优化
-            const updateOptions = getEditorOptions(2, true, 'json', true);
+            const updateOptions = getEditorOptions(2, true, "json", true);
             outputEditor.updateOptions(updateOptions);
             updateLineNumberWidth(outputEditor);
             updateEditorHeight(outputEditor);
@@ -4812,7 +5224,7 @@ const handleLevelAction = () => {
 
         setTimeout(() => {
             if (!outputEditor) return;
-            outputEditor.trigger('unfold', 'editor.unfoldAll', null);
+            outputEditor.trigger("unfold", "editor.unfoldAll", null);
             // 等待展开完成后再执行折叠
             setTimeout(() => {
                 foldByIndentation();
@@ -4826,9 +5238,11 @@ const handleLevelAction = () => {
                         if (visibleRanges && visibleRanges.length > 0) {
                             let minLine = Infinity;
                             let maxLine = 0;
-                            visibleRanges.forEach(range => {
-                                if (range.startLineNumber < minLine) minLine = range.startLineNumber;
-                                if (range.endLineNumber > maxLine) maxLine = range.endLineNumber;
+                            visibleRanges.forEach((range) => {
+                                if (range.startLineNumber < minLine)
+                                    minLine = range.startLineNumber;
+                                if (range.endLineNumber > maxLine)
+                                    maxLine = range.endLineNumber;
                             });
                             if (minLine !== Infinity && maxLine > 0) {
                                 // 扩展可见区域范围（上下各扩展100行）
@@ -4841,7 +5255,7 @@ const handleLevelAction = () => {
                                     // 重新触发计算，优先计算可见区域
                                     precomputeFoldingInfo(formatted, {
                                         start: priorityStart,
-                                        end: priorityEnd
+                                        end: priorityEnd,
                                     }).catch(() => {
                                         // 静默处理错误
                                     });
@@ -4858,7 +5272,7 @@ const handleLevelAction = () => {
             }, unfoldDelay);
         }, delayTime);
     } catch (error: any) {
-        showError('操作失败: ' + error.message);
+        showError("操作失败: " + error.message);
     }
 };
 
@@ -4876,13 +5290,13 @@ const openShareDialog = () => {
 const openDataMaskingDialog = () => {
     // 检查输入编辑器是否有内容
     if (!inputEditor) {
-        showWarning('编辑器未初始化，请稍候再试');
+        showWarning("编辑器未初始化，请稍候再试");
         return;
     }
 
     const jsonData = inputEditor.getValue();
     if (!jsonData || !jsonData.trim()) {
-        showError('请先输入 JSON 数据');
+        showError("请先输入 JSON 数据");
         return;
     }
 
@@ -4890,7 +5304,7 @@ const openDataMaskingDialog = () => {
     try {
         JSON.parse(jsonData);
     } catch (error) {
-        showError('JSON 数据格式不正确，请先格式化 JSON 数据');
+        showError("JSON 数据格式不正确，请先格式化 JSON 数据");
         return;
     }
 
@@ -4907,14 +5321,16 @@ const handleDataMaskingApply = (maskedJson: string) => {
                 // 使用 executeEdits 来应用脱敏结果，这样可以保留撤销历史
                 const fullRange = model.getFullModelRange();
                 inputEditor.pushUndoStop();
-                inputEditor.executeEdits('apply-masking', [{
-                    range: fullRange,
-                    text: maskedJson
-                }]);
+                inputEditor.executeEdits("apply-masking", [
+                    {
+                        range: fullRange,
+                        text: maskedJson,
+                    },
+                ]);
                 inputEditor.pushUndoStop();
 
                 // 更新编辑器配置
-                monaco.editor.setModelLanguage(model, 'json');
+                monaco.editor.setModelLanguage(model, "json");
                 // 确保使用2空格缩进
                 model.updateOptions({ tabSize: 2, indentSize: 2, insertSpaces: true });
             }
@@ -4940,35 +5356,89 @@ const handleDataMaskingApply = (maskedJson: string) => {
 
         // 清空预览区域
         if (outputEditor) {
-            outputEditor.setValue('');
+            outputEditor.setValue("");
             updateLineNumberWidth(outputEditor);
             updateEditorHeight(outputEditor);
         }
 
-        outputType.value = 'json';
+        outputType.value = "json";
     } catch (error: any) {
-        showError('应用脱敏结果失败: ' + (error.message || '未知错误'));
+        showError("应用脱敏结果失败: " + (error.message || "未知错误"));
     }
 };
 
 // 获取 JSON 数据后清空预览区域
 const handleFetchJsonLoaded = () => {
     if (outputEditor) {
-        outputEditor.setValue('');
+        outputEditor.setValue("");
         updateLineNumberWidth(outputEditor);
         updateEditorHeight(outputEditor);
     }
-    outputType.value = 'json';
-    outputEditorStatus.value = '';
+    outputType.value = "json";
+    outputEditorStatus.value = "";
 };
 
 // 获取输入编辑器内容
 const getInputEditorValue = (): string => {
-    if (!inputEditor) return '';
+    if (!inputEditor) return "";
     return inputEditor.getValue();
 };
 
 // ==================== 存档相关逻辑 ====================
+
+// 归一化存档名称：只保留允许字符，并限制为最多 30 个字符
+const normalizeArchiveName = (rawName: string): string => {
+    // 允许：英文、数字、中文，以及部分常见符号 - _ + * / = . : @ #
+    const allowedCharPattern = /[A-Za-z0-9\u4e00-\u9fa5\-\_\+\*\/=\.\:\@\#]/g;
+    const matches = rawName.match(allowedCharPattern);
+    if (!matches) return "";
+    const normalized = matches.join("");
+    return normalized.slice(0, 30);
+};
+
+// 检查存档名称是否已存在
+const isArchiveNameExists = (name: string, excludeId?: string): boolean => {
+    return archives.value.some(
+        (archive) => archive.name === name && archive.id !== excludeId
+    );
+};
+
+// 找到最小的未使用的数字（用于自动命名）
+const findNextAvailableNumber = (): number => {
+    // 获取所有已使用的数字
+    const usedNumbers = new Set<number>();
+    archives.value.forEach((archive) => {
+        const name = archive.name.trim();
+        // 检查是否是纯数字
+        if (/^\d+$/.test(name)) {
+            const num = parseInt(name, 10);
+            if (!isNaN(num)) {
+                usedNumbers.add(num);
+            }
+        }
+    });
+
+    // 从1开始找到第一个未使用的数字
+    let nextNum = 1;
+    while (usedNumbers.has(nextNum) && nextNum <= MAX_ARCHIVE_COUNT) {
+        nextNum++;
+    }
+
+    return nextNum;
+};
+
+// 处理存档名称确认
+const handleArchiveNameConfirm = (name: string) => {
+    if (archiveNameDialogCallback.value) {
+        archiveNameDialogCallback.value(name);
+        archiveNameDialogCallback.value = null;
+    }
+};
+
+// 处理存档名称取消
+const handleArchiveNameCancel = () => {
+    archiveNameDialogCallback.value = null;
+};
 
 const calculateArchiveSize = (content: string): number => {
     try {
@@ -4981,15 +5451,21 @@ const calculateArchiveSize = (content: string): number => {
     }
 };
 
-const handleSaveArchive = async () => {
+const handleSaveArchive = () => {
     if (!inputEditor) {
-        showError('编辑器未初始化，请稍候再试');
+        showError("编辑器未初始化，请稍候再试");
         return;
     }
 
-    const content = inputEditor.getValue() || '';
+    const content = inputEditor.getValue() || "";
     if (!content.trim()) {
-        showError('当前没有可存档的内容');
+        showError("当前没有可存档的内容");
+        return;
+    }
+
+    // 检查存档数量上限
+    if (archives.value.length >= MAX_ARCHIVE_COUNT) {
+        showError(`存档数量已达到上限（${MAX_ARCHIVE_COUNT}个），请先删除部分存档`);
         return;
     }
 
@@ -4997,75 +5473,90 @@ const handleSaveArchive = async () => {
     const totalSize = archives.value.reduce((sum, item) => sum + item.size, 0);
 
     if (totalSize + size > MAX_ARCHIVE_TOTAL_SIZE) {
-        showError('存档失败：所有存档总大小超过限制，请先清理部分存档');
+        showError("存档失败：所有存档总大小超过限制，请先清理部分存档");
         return;
     }
-
-    let name = '';
 
     if (customArchiveName.value) {
-        try {
-            const { value } = await ElMessageBox.prompt(
-                '请输入存档名称（1-10 个字符，仅限英文、数字、中文及 -/_）',
-                '保存存档',
-                {
-                    inputValue: `存档${archives.value.length + 1}`,
-                    inputPlaceholder: '例如：测试数据1',
-                    confirmButtonText: '保存',
-                    cancelButtonText: '取消'
-                }
-            );
-
-            name = String(value || '').trim();
-            if (!name) {
-                showError('存档名称不能为空');
+        // 使用自定义弹窗
+        archiveNameDialogTitle.value = "保存存档";
+        // 使用最小的未使用数字作为默认值
+        archiveNameDialogInputValue.value = `${findNextAvailableNumber()}`;
+        archiveNameDialogPlaceholder.value = "请输入存档名称";
+        archiveNameDialogExcludeId.value = ""; // 新增时不需要排除
+        archiveNameDialogCallback.value = (name: string) => {
+            // 再次检查存档数量上限（防止在弹窗打开期间存档数量达到上限）
+            if (archives.value.length >= MAX_ARCHIVE_COUNT) {
+                showError(
+                    `存档数量已达到上限（${MAX_ARCHIVE_COUNT}个），请先删除部分存档`
+                );
                 return;
             }
-        } catch {
-            // 用户取消输入
-            return;
-        }
+
+            const normalizedName = normalizeArchiveName(name);
+            if (!normalizedName) {
+                showError("存档名称不能为空");
+                return;
+            }
+
+            // 名称重复检查已在弹窗组件内完成，这里不再检查
+
+            const id = `${Date.now()}-${archives.value.length + 1}`;
+            const archive: JsonArchive = {
+                id,
+                name: normalizedName,
+                size,
+                content,
+            };
+
+            // 新存档放在最前面
+            archives.value.unshift(archive);
+            saveArchives();
+
+            ElMessage.success({
+                message: "已保存到本地存档（当前会话有效）",
+                offset: getMessageOffset(),
+            });
+        };
+        archiveNameDialogVisible.value = true;
     } else {
-        name = `存档${archives.value.length + 1}`;
+        // 自动命名：使用最小的未使用数字
+        const nextNum = findNextAvailableNumber();
+        let name = normalizeArchiveName(`${nextNum}`);
+        if (!name) {
+            name = "1";
+        }
+
+        const id = `${Date.now()}-${archives.value.length + 1}`;
+        const archive: JsonArchive = {
+            id,
+            name,
+            size,
+            content,
+        };
+
+        // 新存档放在最前面
+        archives.value.unshift(archive);
+        saveArchives();
+
+        ElMessage.success({
+            message: "已保存到本地存档（当前会话有效）",
+            offset: getMessageOffset(),
+        });
     }
-
-    // 名称校验：1-10 个字符，只允许英文、数字、中文和常见连字符(-、_)
-    const namePattern = /^[A-Za-z0-9\u4e00-\u9fa5\-_]{1,10}$/;
-    if (!namePattern.test(name)) {
-        showError('存档名称不合法');
-        return;
-    }
-
-    const id = `${Date.now()}-${archives.value.length + 1}`;
-
-    const archive: JsonArchive = {
-        id,
-        name,
-        size,
-        content
-    };
-
-    // 新存档放在最前面
-    archives.value.unshift(archive);
-    saveArchives();
-
-    ElMessage.success({
-        message: '已保存到本地存档（当前会话有效）',
-        offset: getMessageOffset()
-    });
 };
 
 const handleArchiveCommand = async (command: string) => {
-    if (command === '__clear_all') {
+    if (command === "__clear_all") {
         try {
             await ElMessageBox.confirm(
-                '确定要清空所有存档吗？此操作不可恢复。',
-                '清空存档',
+                "确定要清空所有存档吗？此操作不可恢复。",
+                "清空存档",
                 {
-                    confirmButtonText: '清空',
-                    cancelButtonText: '取消',
+                    confirmButtonText: "清空",
+                    cancelButtonText: "取消",
                     dangerouslyUseHTMLString: false,
-                    customClass: 'clear-archive-dialog'
+                    customClass: "clear-archive-dialog",
                 }
             );
         } catch {
@@ -5076,28 +5567,33 @@ const handleArchiveCommand = async (command: string) => {
         archives.value = [];
         saveArchives();
         ElMessage.success({
-            message: '已清空所有存档',
-            offset: getMessageOffset()
+            message: "已清空所有存档",
+            offset: getMessageOffset(),
         });
         return;
     }
 
-    const archive = archives.value.find(item => item.id === command);
+    const archive = archives.value.find((item) => item.id === command);
     if (!archive) {
-        showError('未找到对应的存档');
+        showError("未找到对应的存档");
         return;
     }
 
     if (!inputEditor) {
-        showError('编辑器未初始化，请稍候再试');
+        showError("编辑器未初始化，请稍候再试");
         return;
     }
 
     inputEditor.setValue(archive.content);
 
+    // 清空outputEditor的内容
+    outputEditor?.setValue("");
+    updateLineNumberWidth(outputEditor);
+    updateEditorHeight(outputEditor);
+
     ElMessage.success({
         message: `已加载存档：${archive.name}`,
-        offset: getMessageOffset()
+        offset: getMessageOffset(),
     });
 };
 
@@ -5105,12 +5601,12 @@ const handleArchiveCommand = async (command: string) => {
 const handleLoadSharedJson = (jsonData: string) => {
     try {
         if (!inputEditor) {
-            showError('编辑器未初始化，请稍候再试');
+            showError("编辑器未初始化，请稍候再试");
             return;
         }
 
         if (!jsonData || !jsonData.trim()) {
-            showError('分享数据为空');
+            showError("分享数据为空");
             return;
         }
 
@@ -5126,7 +5622,7 @@ const handleLoadSharedJson = (jsonData: string) => {
             // 更新编辑器配置
             const model = inputEditor.getModel();
             if (model) {
-                monaco.editor.setModelLanguage(model, 'json');
+                monaco.editor.setModelLanguage(model, "json");
                 // 确保使用2空格缩进
                 model.updateOptions({ tabSize: 2, indentSize: 2, insertSpaces: true });
             }
@@ -5145,32 +5641,283 @@ const handleLoadSharedJson = (jsonData: string) => {
 
             // 清空预览区域
             if (outputEditor) {
-                outputEditor.setValue('');
+                outputEditor.setValue("");
                 updateLineNumberWidth(outputEditor);
                 updateEditorHeight(outputEditor);
             }
 
-            outputType.value = 'json';
+            outputType.value = "json";
         } catch (error: any) {
-            showError('JSON格式不正确: ' + (error.message || '解析失败'));
+            showError("JSON格式不正确: " + (error.message || "解析失败"));
         }
     } catch (error: any) {
-        showError('加载分享数据失败: ' + (error.message || '未知错误'));
+        showError("加载分享数据失败: " + (error.message || "未知错误"));
     }
+};
+
+// 侧边栏展开/收起状态
+// 存档侧边栏宽度（可拖动调整）
+const archiveSidebarWidth = ref(150);
+const isArchiveResizing = ref(false);
+let archiveResizeState: {
+    initialX: number;
+    initialWidth: number;
+    minWidth: number;
+    maxWidth: number;
+} | null = null;
+
+// 使用 DOM 实际测量文本宽度（更准确）
+const measureTextWidth = (text: string): number => {
+    if (typeof document === "undefined") {
+        // SSR 环境，使用估算
+        let width = 0;
+        for (let i = 0; i < text.length; i++) {
+            const char = text[i];
+            if (/[\u4e00-\u9fa5\u3000-\u303f\uff00-\uffef]/.test(char)) {
+                width += 12 * 1.2;
+            } else {
+                width += 12 * 0.6;
+            }
+        }
+        return width;
+    }
+
+    // 创建临时元素测量
+    const measureEl = document.createElement("span");
+    measureEl.style.cssText = `
+        position: absolute;
+        visibility: hidden;
+        white-space: nowrap;
+        font-size: 12px;
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+    `;
+    measureEl.textContent = text;
+    document.body.appendChild(measureEl);
+    const width = measureEl.offsetWidth;
+    document.body.removeChild(measureEl);
+    return width;
+};
+
+// 动态计算存档侧边栏的最大宽度（使用 DOM 实际测量）
+const calculateArchiveMaxWidth = (): number => {
+    if (archives.value.length === 0) {
+        return 100;
+    }
+
+    // 侧边栏内边距：左右各 6px = 12px
+    const padding = 12;
+    // 存档项内边距：左右各 4px = 8px
+    const itemPadding = 8;
+    // 编辑和删除按钮宽度：每个图标约 14px，两个图标 + 间距 = 约 32px
+    const actionsWidth = 32;
+    // 存档项之间的间距和额外空间：约 4px
+    const itemMargin = 4;
+
+    // 遍历所有存档，找到最长的
+    let maxWidth = 0;
+    archives.value.forEach((item) => {
+        const name = item.name || "";
+        // 使用 DOM 实际测量文本宽度
+        const textWidth = measureTextWidth(name);
+        // 总宽度 = 内边距 + 项内边距 + 文本宽度 + 按钮宽度 + 间距
+        const totalWidth =
+            padding + itemPadding + textWidth + actionsWidth + itemMargin;
+        maxWidth = Math.max(maxWidth, totalWidth);
+    });
+
+    // 加上一些缓冲，确保不会截断
+    return Math.ceil(maxWidth) + 8;
+};
+
+// 计算最小宽度（收缩状态，只显示前面两个字符）
+const calculateArchiveMinWidth = (): number => {
+    return 48;
+};
+
+// 初始化存档侧边栏宽度（根据存档名称计算）
+const initArchiveSidebarWidth = () => {
+    if (archives.value.length === 0) {
+        archiveSidebarWidth.value = 100;
+        return;
+    }
+    const maxWidth = calculateArchiveMaxWidth();
+    // 初始宽度设为最大宽度的 80%，但不少于最小宽度
+    archiveSidebarWidth.value = Math.max(
+        Math.floor(maxWidth * 0.8),
+        calculateArchiveMinWidth()
+    );
+};
+
+// 监听存档列表变化，更新初始宽度和最大宽度限制
+watch(
+    () => archives.value.length,
+    () => {
+        if (archives.value.length > 0) {
+            const currentMax = calculateArchiveMaxWidth();
+            // 如果当前宽度小于最小宽度，则设置为初始宽度
+            if (archiveSidebarWidth.value < calculateArchiveMinWidth()) {
+                initArchiveSidebarWidth();
+            }
+            // 如果当前宽度超过新的最大宽度，则限制为最大宽度
+            if (archiveSidebarWidth.value > currentMax) {
+                archiveSidebarWidth.value = currentMax;
+            }
+        }
+    },
+    { immediate: true }
+);
+
+// 监听存档名称变化，重新计算最大宽度
+watch(
+    () => archives.value.map((a) => a.name),
+    () => {
+        if (archives.value.length > 0) {
+            const currentMax = calculateArchiveMaxWidth();
+            // 如果当前宽度超过新的最大宽度，则限制为最大宽度
+            if (archiveSidebarWidth.value > currentMax) {
+                archiveSidebarWidth.value = currentMax;
+            }
+        }
+    },
+    { deep: true }
+);
+
+// 开始拖动存档侧边栏分割线
+const startArchiveResize = (e: MouseEvent | TouchEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+
+    isArchiveResizing.value = true;
+    document.body.style.userSelect = "none";
+    document.body.style.cursor = "col-resize";
+
+    // 禁用 transition，确保拖动时实时响应
+    const sidebar = document.querySelector(".archive-sidebar") as HTMLElement;
+    if (sidebar) {
+        sidebar.style.transition = "none";
+    }
+
+    const clientX = "touches" in e ? e.touches[0].clientX : e.clientX;
+
+    // 动态计算最小和最大宽度
+    const minWidth = calculateArchiveMinWidth();
+    const maxWidth = calculateArchiveMaxWidth();
+
+    archiveResizeState = {
+        initialX: clientX,
+        initialWidth: archiveSidebarWidth.value,
+        minWidth: minWidth,
+        maxWidth: maxWidth,
+    };
+
+    document.addEventListener("mousemove", handleArchiveResizeMove);
+    document.addEventListener("mouseup", stopArchiveResize);
+    document.addEventListener("touchmove", handleArchiveResizeMove);
+    document.addEventListener("touchend", stopArchiveResize);
+};
+
+// 处理存档侧边栏拖动移动
+const handleArchiveResizeMove = (e: MouseEvent | TouchEvent) => {
+    if (!isArchiveResizing.value || !archiveResizeState) return;
+
+    const clientX = "touches" in e ? e.touches[0].clientX : e.clientX;
+    const deltaX = clientX - archiveResizeState.initialX;
+    const newWidth = archiveResizeState.initialWidth + deltaX;
+
+    // 限制在最小和最大宽度之间
+    archiveSidebarWidth.value = Math.max(
+        archiveResizeState.minWidth,
+        Math.min(newWidth, archiveResizeState.maxWidth)
+    );
+};
+
+// 停止拖动存档侧边栏
+const stopArchiveResize = () => {
+    if (!isArchiveResizing.value) return;
+
+    isArchiveResizing.value = false;
+    document.body.style.userSelect = "";
+    document.body.style.cursor = "";
+    archiveResizeState = null;
+
+    // 恢复 transition
+    const sidebar = document.querySelector(".archive-sidebar") as HTMLElement;
+    if (sidebar) {
+        sidebar.style.transition = "";
+    }
+
+    document.removeEventListener("mousemove", handleArchiveResizeMove);
+    document.removeEventListener("mouseup", stopArchiveResize);
+    document.removeEventListener("touchmove", handleArchiveResizeMove);
+    document.removeEventListener("touchend", stopArchiveResize);
+};
+
+// 删除单个存档
+const handleDeleteArchive = async (item: JsonArchive) => {
+    try {
+        await ElMessageBox.confirm(
+            `确定要删除存档「${item.name}」吗？此操作不可恢复。`,
+            "删除存档",
+            {
+                confirmButtonText: "删除",
+                cancelButtonText: "取消",
+                dangerouslyUseHTMLString: false,
+            }
+        );
+    } catch {
+        // 用户取消
+        return;
+    }
+
+    const index = archives.value.findIndex((a) => a.id === item.id);
+    if (index !== -1) {
+        archives.value.splice(index, 1);
+        saveArchives();
+        ElMessage.success({
+            message: "已删除存档",
+            offset: getMessageOffset(),
+        });
+    }
+};
+
+// 重命名单个存档
+const handleRenameArchive = (item: JsonArchive) => {
+    archiveNameDialogTitle.value = "重命名存档";
+    archiveNameDialogInputValue.value = item.name;
+    archiveNameDialogPlaceholder.value = "请输入存档名称";
+    archiveNameDialogExcludeId.value = item.id; // 编辑时排除当前存档
+    archiveNameDialogCallback.value = (name: string) => {
+        const normalizedName = normalizeArchiveName(name);
+        if (!normalizedName) {
+            showError("存档名称不能为空");
+            return;
+        }
+
+        // 名称重复检查已在弹窗组件内完成，这里不再检查
+
+        item.name = normalizedName;
+        saveArchives();
+
+        ElMessage.success({
+            message: "已更新存档名称",
+            offset: getMessageOffset(),
+        });
+    };
+    archiveNameDialogVisible.value = true;
 };
 
 // 从URL参数加载分享数据
 const loadSharedDataFromUrl = async () => {
-    if (typeof window === 'undefined') return;
+    if (typeof window === "undefined") return;
 
     try {
         const urlParams = new URLSearchParams(window.location.search);
-        const shareId = urlParams.get('share');
+        const shareId = urlParams.get("share");
 
         if (!shareId) return;
 
         // 检查是否需要密码
-        const password = urlParams.get('password');
+        const password = urlParams.get("password");
 
         // 获取分享数据
         const queryParams: Record<string, string> = { id: shareId };
@@ -5187,8 +5934,8 @@ const loadSharedDataFromUrl = async () => {
             };
             error?: string;
             hasPassword?: boolean;
-        }>('/api/share-json', {
-            method: 'GET',
+        }>("/api/share-json", {
+            method: "GET",
             query: queryParams,
         });
 
@@ -5205,8 +5952,12 @@ const loadSharedDataFromUrl = async () => {
                     // 更新编辑器配置，确保使用2空格缩进
                     const model = inputEditor.getModel();
                     if (model) {
-                        monaco.editor.setModelLanguage(model, 'json');
-                        model.updateOptions({ tabSize: 2, indentSize: 2, insertSpaces: true });
+                        monaco.editor.setModelLanguage(model, "json");
+                        model.updateOptions({
+                            tabSize: 2,
+                            indentSize: 2,
+                            insertSpaces: true,
+                        });
                     }
                     // 同时更新编辑器选项
                     inputEditor.updateOptions({ tabSize: 2, indentSize: 2 } as any);
@@ -5225,16 +5976,16 @@ const loadSharedDataFromUrl = async () => {
                     if (response.data.description) {
                         showSuccess(`已加载分享数据：${response.data.description}`);
                     } else {
-                        showSuccess('已加载分享数据');
+                        showSuccess("已加载分享数据");
                     }
 
                     // 清除URL参数（可选，保持URL干净）
                     const cleanUrl = new URL(window.location.href);
-                    cleanUrl.searchParams.delete('share');
-                    cleanUrl.searchParams.delete('password');
-                    window.history.replaceState({}, '', cleanUrl.toString());
+                    cleanUrl.searchParams.delete("share");
+                    cleanUrl.searchParams.delete("password");
+                    window.history.replaceState({}, "", cleanUrl.toString());
                 } catch (error) {
-                    showError('分享数据格式不正确');
+                    showError("分享数据格式不正确");
                 }
             }
         } else {
@@ -5242,45 +5993,46 @@ const loadSharedDataFromUrl = async () => {
             if (response.hasPassword) {
                 // 需要密码或密码错误，显示密码输入对话框
                 const promptMessage = password
-                    ? '密码不正确，请重新输入'
-                    : '此分享链接需要密码才能访问';
+                    ? "密码不正确，请重新输入"
+                    : "此分享链接需要密码才能访问";
 
-                ElMessageBox.prompt(promptMessage, '输入密码', {
-                    confirmButtonText: '确定',
-                    cancelButtonText: '取消',
-                    inputType: 'password',
-                    inputPlaceholder: '请输入访问密码',
-                }).then(async ({ value }) => {
-                    if (value) {
-                        // 重新加载，带上密码
-                        const newUrl = new URL(window.location.href);
-                        newUrl.searchParams.set('password', value);
-                        window.history.replaceState({}, '', newUrl.toString());
-                        await loadSharedDataFromUrl();
-                    }
-                }).catch(() => {
-                    // 用户取消
-                });
+                ElMessageBox.prompt(promptMessage, "输入密码", {
+                    confirmButtonText: "确定",
+                    cancelButtonText: "取消",
+                    inputType: "password",
+                    inputPlaceholder: "请输入访问密码",
+                })
+                    .then(async ({ value }) => {
+                        if (value) {
+                            // 重新加载，带上密码
+                            const newUrl = new URL(window.location.href);
+                            newUrl.searchParams.set("password", value);
+                            window.history.replaceState({}, "", newUrl.toString());
+                            await loadSharedDataFromUrl();
+                        }
+                    })
+                    .catch(() => {
+                        // 用户取消
+                    });
             } else {
-                showError(response.error || '加载分享数据失败');
+                showError(response.error || "加载分享数据失败");
             }
         }
     } catch (error: any) {
-        showError('加载分享数据失败: ' + (error.message || '未知错误'));
+        showError("加载分享数据失败: " + (error.message || "未知错误"));
     }
 };
-
 
 // 处理转义相关命令
 const handleEscapeCommand = (command: string) => {
     switch (command) {
-        case 'escape':
+        case "escape":
             escapeJSON();
             break;
-        case 'unescape':
+        case "unescape":
             unescapeJSON();
             break;
-        case 'compress-escape':
+        case "compress-escape":
             compressAndEscapeJSON();
             break;
     }
@@ -5289,10 +6041,10 @@ const handleEscapeCommand = (command: string) => {
 // 处理高级功能命令
 const handleAdvancedCommand = (command: string) => {
     switch (command) {
-        case 'sort':
+        case "sort":
             applySort();
             break;
-        case 'collapse':
+        case "collapse":
             if (maxLevel.value > 0) {
                 handleLevelAction();
             }
@@ -5312,13 +6064,13 @@ const isNumericKey = (key: string): boolean => {
 };
 
 // 获取Key的类型（数字或字符串）
-const getKeyType = (key: string): 'number' | 'string' => {
-    return isNumericKey(key) ? 'number' : 'string';
+const getKeyType = (key: string): "number" | "string" => {
+    return isNumericKey(key) ? "number" : "string";
 };
 
 // 比较函数：字典序
 const compareDictionary = (a: string, b: string): number => {
-    return a.localeCompare(b, undefined, { numeric: false, sensitivity: 'base' });
+    return a.localeCompare(b, undefined, { numeric: false, sensitivity: "base" });
 };
 
 // 比较函数：按Key长度
@@ -5358,7 +6110,7 @@ const compareType = (a: string, b: string): number => {
 
     if (aType !== bType) {
         // 类型不同，数字在前
-        return aType === 'number' ? -1 : 1;
+        return aType === "number" ? -1 : 1;
     } else {
         // 类型相同，按字典序
         return compareDictionary(a, b);
@@ -5366,11 +6118,13 @@ const compareType = (a: string, b: string): number => {
 };
 
 // 获取比较函数
-const getCompareFunction = (method: 'dictionary' | 'length'): (a: string, b: string) => number => {
+const getCompareFunction = (
+    method: "dictionary" | "length"
+): ((a: string, b: string) => number) => {
     switch (method) {
-        case 'dictionary':
+        case "dictionary":
             return compareDictionary;
-        case 'length':
+        case "length":
             return compareLength;
         default:
             return compareDictionary;
@@ -5378,21 +6132,25 @@ const getCompareFunction = (method: 'dictionary' | 'length'): (a: string, b: str
 };
 
 // 递归排序JSON对象
-const sortJsonObject = (obj: any, method: 'dictionary' | 'length', order: 'asc' | 'desc'): any => {
-    if (obj === null || typeof obj !== 'object') {
+const sortJsonObject = (
+    obj: any,
+    method: "dictionary" | "length",
+    order: "asc" | "desc"
+): any => {
+    if (obj === null || typeof obj !== "object") {
         return obj;
     }
 
     if (Array.isArray(obj)) {
         // 数组：递归处理每个元素
-        return obj.map(item => sortJsonObject(item, method, order));
+        return obj.map((item) => sortJsonObject(item, method, order));
     }
 
     // 对象：对Key进行排序
     const compareFn = getCompareFunction(method);
     const sortedKeys = Object.keys(obj).sort((a, b) => {
         const result = compareFn(a, b);
-        return order === 'asc' ? result : -result;
+        return order === "asc" ? result : -result;
     });
 
     const sortedObj: any = {};
@@ -5407,11 +6165,11 @@ const sortJsonObject = (obj: any, method: 'dictionary' | 'length', order: 'asc' 
 // 应用排序
 const applySort = () => {
     try {
-        outputType.value = 'json';
-        const value = inputEditor?.getValue() || '';
+        outputType.value = "json";
+        const value = inputEditor?.getValue() || "";
 
         if (!value.trim()) {
-            showError('请先输入 JSON 数据');
+            showError("请先输入 JSON 数据");
             return;
         }
 
@@ -5423,7 +6181,7 @@ const applySort = () => {
             parsed = result.data;
             originalString = result.originalString;
         } catch (error) {
-            showError('请输入有效的 JSON 数据');
+            showError("请输入有效的 JSON 数据");
             return;
         }
 
@@ -5432,7 +6190,7 @@ const applySort = () => {
 
         // 格式化输出（排序功能固定使用2个空格缩进，编码模式保持原样，数组样式固定为换行）
         const formatted = customStringify(sorted, null, 2, originalString, 0, true);
-        const finalOutput = formatted.replace(/\\u([0-9a-fA-F]{4})/g, '\\u$1');
+        const finalOutput = formatted.replace(/\\u([0-9a-fA-F]{4})/g, "\\u$1");
 
         outputEditor?.setValue(finalOutput);
 
@@ -5440,48 +6198,53 @@ const applySort = () => {
         if (outputEditor) {
             const model = outputEditor.getModel();
             if (model) {
-                monaco.editor.setModelLanguage(model, 'json');
+                monaco.editor.setModelLanguage(model, "json");
             }
 
             const lineCount = outputEditor?.getModel()?.getLineCount() || 0;
-            outputEditor.updateOptions(getEditorOptions(2, true, 'json', true));
+            outputEditor.updateOptions(getEditorOptions(2, true, "json", true));
             updateLineNumberWidth(outputEditor);
             updateEditorHeight(outputEditor);
         }
 
         // 显示成功提示
         const methodNames: Record<string, string> = {
-            dictionary: '字典序',
-            length: '按Key长度'
+            dictionary: "字典序",
+            length: "按Key长度",
         };
         const orderNames: Record<string, string> = {
-            asc: '正序',
-            desc: '倒序'
+            asc: "正序",
+            desc: "倒序",
         };
         showSuccess(`排序成功`);
     } catch (error: any) {
-        showError('排序失败: ' + error.message);
+        showError("排序失败: " + error.message);
     }
 };
 
-
 // JSON 转 YAML
 const convertToYAML = (obj: any, indent: number = 0): string => {
-    const spaces = ' '.repeat(indent);
+    const spaces = " ".repeat(indent);
 
     // 检查字符串是否需要引号的函数
     const needsQuotes = (str: string): boolean => {
         // 1. 包含冒号+空格的情况
-        if (str.includes(': ')) return true;
+        if (str.includes(": ")) return true;
 
         // 2. 包含井号(#)的情况
-        if (str.includes('#')) return true;
+        if (str.includes("#")) return true;
 
         // 3. 包含连字符+空格的情况
-        if (str.includes('- ')) return true;
+        if (str.includes("- ")) return true;
 
         // 4. 包含方括号或花括号
-        if (str.includes('[') || str.includes(']') || str.includes('{') || str.includes('}')) return true;
+        if (
+            str.includes("[") ||
+            str.includes("]") ||
+            str.includes("{") ||
+            str.includes("}")
+        )
+            return true;
 
         // 5. 包含YAML保留字符
         if (/[~!&*|>@`%^]/.test(str)) return true;
@@ -5499,7 +6262,8 @@ const convertToYAML = (obj: any, indent: number = 0): string => {
         if (!str.trim()) return true;
 
         // 10. 以特殊字符开头或结尾
-        if (/^[- :?[{\]},#&*!|>'"%@`]|[- :?[{\]},#&*!|>'"%@`]$/.test(str)) return true;
+        if (/^[- :?[{\]},#&*!|>'"%@`]|[- :?[{\]},#&*!|>'"%@`]$/.test(str))
+            return true;
 
         // 11. 包含URL常见字符组合
         if (/https?:\/\//.test(str)) return true;
@@ -5508,14 +6272,16 @@ const convertToYAML = (obj: any, indent: number = 0): string => {
     };
 
     const formatValue = (value: any): string => {
-        if (value === null) return 'null';
-        if (typeof value === 'string') {
+        if (value === null) return "null";
+        if (typeof value === "string") {
             // 处理多行字符串
-            if (value.includes('\n') || value.includes('\r')) {
+            if (value.includes("\n") || value.includes("\r")) {
                 const lines = value.split(/\r?\n/);
                 // 使用|保留换行符和末尾换行
-                const contentIndent = ' '.repeat(indent + 2);
-                return `|\n${lines.map(line => `${contentIndent}${line}`).join('\n')}`;
+                const contentIndent = " ".repeat(indent + 2);
+                return `|\n${lines
+                    .map((line) => `${contentIndent}${line}`)
+                    .join("\n")}`;
             }
 
             // 检查是否需要引号
@@ -5531,14 +6297,14 @@ const convertToYAML = (obj: any, indent: number = 0): string => {
             return value;
         }
 
-        if (typeof value === 'number') {
+        if (typeof value === "number") {
             // 处理特殊数字
-            if (isNaN(value)) return '.nan';
-            if (!isFinite(value)) return value > 0 ? '.inf' : '-.inf';
+            if (isNaN(value)) return ".nan";
+            if (!isFinite(value)) return value > 0 ? ".inf" : "-.inf";
             return String(value);
         }
 
-        if (typeof value === 'boolean') {
+        if (typeof value === "boolean") {
             return String(value);
         }
 
@@ -5546,71 +6312,83 @@ const convertToYAML = (obj: any, indent: number = 0): string => {
     };
 
     if (Array.isArray(obj)) {
-        if (obj.length === 0) return '[]';
-        return obj.map(item => {
-            if (typeof item === 'object' && item !== null) {
-                return `${spaces}- ${convertToYAML(item, indent + 2).trimStart()}`;
-            }
-            return `${spaces}- ${formatValue(item)}`;
-        }).join('\n')
-    } else if (typeof obj === 'object' && obj !== null) {
+        if (obj.length === 0) return "[]";
+        return obj
+            .map((item) => {
+                if (typeof item === "object" && item !== null) {
+                    return `${spaces}- ${convertToYAML(item, indent + 2).trimStart()}`;
+                }
+                return `${spaces}- ${formatValue(item)}`;
+            })
+            .join("\n");
+    } else if (typeof obj === "object" && obj !== null) {
         return Object.entries(obj)
             .map(([key, value]) => {
                 // 处理键名中的特殊字符
-                const formattedKey = needsQuotes(key) ? `'${key.replace(/'/g, "''")}'` : key;
+                const formattedKey = needsQuotes(key)
+                    ? `'${key.replace(/'/g, "''")}'`
+                    : key;
 
-                if (typeof value === 'object' && value !== null) {
-                    return `${spaces}${formattedKey}:\n${convertToYAML(value, indent + 2)}`;
+                if (typeof value === "object" && value !== null) {
+                    return `${spaces}${formattedKey}:\n${convertToYAML(
+                        value,
+                        indent + 2
+                    )}`;
                 }
                 return `${spaces}${formattedKey}: ${formatValue(value)}`;
             })
-            .join('\n');
+            .join("\n");
     }
     return formatValue(obj);
 };
 
 // JSON 转 TOML
-const convertToTOML = (obj: any, prefix: string = '', processedObjects = new WeakSet()): string => {
+const convertToTOML = (
+    obj: any,
+    prefix: string = "",
+    processedObjects = new WeakSet()
+): string => {
     // 处理循环引用
-    if (typeof obj === 'object' && obj !== null) {
+    if (typeof obj === "object" && obj !== null) {
         if (processedObjects.has(obj)) {
-            return ''; // 如果对象已经处理过,返回空字符串避免循环引用
+            return ""; // 如果对象已经处理过,返回空字符串避免循环引用
         }
         processedObjects.add(obj);
     }
 
-    let result = '';
+    let result = "";
 
     // 判断是否为简单数组（只包含基本类型）
     const isSimpleArray = (arr: any[]): boolean => {
-        return arr.every(item =>
-            typeof item === 'string' ||
-            typeof item === 'number' ||
-            typeof item === 'boolean' ||
-            item === null ||
-            (Array.isArray(item) && isSimpleArray(item))
+        return arr.every(
+            (item) =>
+                typeof item === "string" ||
+                typeof item === "number" ||
+                typeof item === "boolean" ||
+                item === null ||
+                (Array.isArray(item) && isSimpleArray(item))
         );
     };
 
     // 格式化简单数组
     const formatSimpleArray = (arr: any[]): string => {
         return arr
-            .filter(item => item !== null) // 过滤掉 null 值
-            .map(item => {
-                if (typeof item === 'string') return `"${item}"`;
+            .filter((item) => item !== null) // 过滤掉 null 值
+            .map((item) => {
+                if (typeof item === "string") return `"${item}"`;
                 if (Array.isArray(item)) return `[${formatSimpleArray(item)}]`;
                 return String(item);
             })
-            .join(', ');
+            .join(", ");
     };
 
     // 处理基本属性
     const handleBasicProps = (obj: any): string => {
-        let props = '';
+        let props = "";
         for (const [key, value] of Object.entries(obj)) {
-            if (value === null || typeof value === 'object') continue;
+            if (value === null || typeof value === "object") continue;
 
-            if (typeof value === 'string') {
+            if (typeof value === "string") {
                 props += `${key} = "${value}"\n`;
             } else {
                 props += `${key} = ${value}\n`;
@@ -5621,12 +6399,12 @@ const convertToTOML = (obj: any, prefix: string = '', processedObjects = new Wea
 
     // 处理对象或数组
     const processObject = (obj: any, currentPrefix: string): string => {
-        let output = '';
+        let output = "";
 
         // 如果是数组
         if (Array.isArray(obj)) {
             for (const item of obj) {
-                if (typeof item === 'object' && item !== null) {
+                if (typeof item === "object" && item !== null) {
                     // 生成数组表头
                     output += `\n[[${currentPrefix}]]\n`;
                     // 添加基本属性
@@ -5634,7 +6412,7 @@ const convertToTOML = (obj: any, prefix: string = '', processedObjects = new Wea
 
                     // 处理嵌套属性
                     for (const [key, value] of Object.entries(item)) {
-                        if (value === null || typeof value !== 'object') continue;
+                        if (value === null || typeof value !== "object") continue;
 
                         const newPrefix = `${currentPrefix}.${key}`;
                         output += processObject(value, newPrefix);
@@ -5643,7 +6421,7 @@ const convertToTOML = (obj: any, prefix: string = '', processedObjects = new Wea
             }
         }
         // 如果是对象但不是数组
-        else if (typeof obj === 'object' && obj !== null) {
+        else if (typeof obj === "object" && obj !== null) {
             // 生成对象表头
             if (currentPrefix) {
                 output += `[${currentPrefix}]\n`;
@@ -5654,7 +6432,7 @@ const convertToTOML = (obj: any, prefix: string = '', processedObjects = new Wea
 
             // 处理嵌套属性
             for (const [key, value] of Object.entries(obj)) {
-                if (value === null || typeof value !== 'object') continue;
+                if (value === null || typeof value !== "object") continue;
 
                 const newPrefix = currentPrefix ? `${currentPrefix}.${key}` : key;
                 output += processObject(value, newPrefix);
@@ -5672,10 +6450,10 @@ const convertToTOML = (obj: any, prefix: string = '', processedObjects = new Wea
 
         if (Array.isArray(value)) {
             result += processObject(value, currentPrefix);
-        } else if (typeof value === 'object') {
+        } else if (typeof value === "object") {
             result += processObject(value, currentPrefix);
         } else {
-            if (typeof value === 'string') {
+            if (typeof value === "string") {
                 result += `${key} = "${value}"\n`;
             } else {
                 result += `${key} = ${value}\n`;
@@ -5687,11 +6465,15 @@ const convertToTOML = (obj: any, prefix: string = '', processedObjects = new Wea
 };
 
 // JSON 转 XML
-const convertToXML = (obj: any, rootName: string = 'root', processedObjects = new WeakSet()): string => {
+const convertToXML = (
+    obj: any,
+    rootName: string = "root",
+    processedObjects = new WeakSet()
+): string => {
     // 处理循环引用
-    if (typeof obj === 'object' && obj !== null) {
+    if (typeof obj === "object" && obj !== null) {
         if (processedObjects.has(obj)) {
-            return ''; // 避免循环引用
+            return ""; // 避免循环引用
         }
         processedObjects.add(obj);
     }
@@ -5699,30 +6481,34 @@ const convertToXML = (obj: any, rootName: string = 'root', processedObjects = ne
     // 转义XML特殊字符
     const escapeXML = (str: string): string => {
         return str
-            .replace(/&/g, '&amp;')
-            .replace(/</g, '&lt;')
-            .replace(/>/g, '&gt;')
-            .replace(/"/g, '&quot;')
-            .replace(/'/g, '&apos;');
+            .replace(/&/g, "&amp;")
+            .replace(/</g, "&lt;")
+            .replace(/>/g, "&gt;")
+            .replace(/"/g, "&quot;")
+            .replace(/'/g, "&apos;");
     };
 
     // 验证XML标签名（只允许字母、数字、下划线、连字符）
     const sanitizeTagName = (name: string): string => {
         // 如果以数字开头，添加前缀
         if (/^\d/.test(name)) {
-            name = 'item' + name;
+            name = "item" + name;
         }
         // 替换非法字符为下划线
-        return name.replace(/[^a-zA-Z0-9_\-]/g, '_');
+        return name.replace(/[^a-zA-Z0-9_\-]/g, "_");
     };
 
     // 生成缩进字符串
     const getIndent = (level: number): string => {
-        return '  '.repeat(level);
+        return "  ".repeat(level);
     };
 
     // 处理值（带缩进）
-    const processValue = (value: any, tagName: string, indent: number = 0): string => {
+    const processValue = (
+        value: any,
+        tagName: string,
+        indent: number = 0
+    ): string => {
         const indentStr = getIndent(indent);
         const nextIndent = indent + 1;
 
@@ -5730,15 +6516,15 @@ const convertToXML = (obj: any, rootName: string = 'root', processedObjects = ne
             return `${indentStr}<${tagName}></${tagName}>`;
         }
 
-        if (typeof value === 'boolean') {
+        if (typeof value === "boolean") {
             return `${indentStr}<${tagName}>${value}</${tagName}>`;
         }
 
-        if (typeof value === 'number') {
+        if (typeof value === "number") {
             return `${indentStr}<${tagName}>${value}</${tagName}>`;
         }
 
-        if (typeof value === 'string') {
+        if (typeof value === "string") {
             return `${indentStr}<${tagName}>${escapeXML(value)}</${tagName}>`;
         }
 
@@ -5749,22 +6535,27 @@ const convertToXML = (obj: any, rootName: string = 'root', processedObjects = ne
 
             let result = `${indentStr}<${tagName}>\n`;
             value.forEach((item, index) => {
-                const itemTagName = sanitizeTagName(tagName === 'root' ? 'item' : tagName);
+                const itemTagName = sanitizeTagName(
+                    tagName === "root" ? "item" : tagName
+                );
                 // 如果是对象数组，使用item标签；如果是简单数组，使用原标签名
-                const currentTag = (typeof item === 'object' && item !== null)
-                    ? (tagName === 'root' ? 'item' : itemTagName)
-                    : itemTagName;
-                result += processValue(item, currentTag, nextIndent) + '\n';
+                const currentTag =
+                    typeof item === "object" && item !== null
+                        ? tagName === "root"
+                            ? "item"
+                            : itemTagName
+                        : itemTagName;
+                result += processValue(item, currentTag, nextIndent) + "\n";
             });
             result += `${indentStr}</${tagName}>`;
             return result;
         }
 
-        if (typeof value === 'object') {
+        if (typeof value === "object") {
             let result = `${indentStr}<${tagName}>\n`;
             for (const [key, val] of Object.entries(value)) {
                 const sanitizedKey = sanitizeTagName(key);
-                result += processValue(val, sanitizedKey, nextIndent) + '\n';
+                result += processValue(val, sanitizedKey, nextIndent) + "\n";
             }
             result += `${indentStr}</${tagName}>`;
             return result;
@@ -5782,32 +6573,34 @@ const convertToXML = (obj: any, rootName: string = 'root', processedObjects = ne
 
         let result = `<?xml version="1.0" encoding="UTF-8"?>\n<${rootName}>\n`;
         obj.forEach((item) => {
-            const itemTagName = sanitizeTagName('item');
-            result += processValue(item, itemTagName, 1) + '\n';
+            const itemTagName = sanitizeTagName("item");
+            result += processValue(item, itemTagName, 1) + "\n";
         });
         result += `</${rootName}>`;
         return result;
     }
 
     // 对象根
-    if (typeof obj === 'object' && obj !== null) {
+    if (typeof obj === "object" && obj !== null) {
         let result = `<?xml version="1.0" encoding="UTF-8"?>\n<${rootName}>\n`;
         for (const [key, value] of Object.entries(obj)) {
             const sanitizedKey = sanitizeTagName(key);
-            result += processValue(value, sanitizedKey, 1) + '\n';
+            result += processValue(value, sanitizedKey, 1) + "\n";
         }
         result += `</${rootName}>`;
         return result;
     }
 
     // 基本类型
-    return `<?xml version="1.0" encoding="UTF-8"?>\n<${rootName}>${escapeXML(String(obj))}</${rootName}>`;
+    return `<?xml version="1.0" encoding="UTF-8"?>\n<${rootName}>${escapeXML(
+        String(obj)
+    )}</${rootName}>`;
 };
 
 // JSON 转 Go 结构体
 const convertToGo = (obj: any): string => {
     const processedTypes = new Set<string>();
-    let result = '';
+    let result = "";
 
     // 转换为驼峰命名并首字母大写
     const toCamelCase = (str: string): string => {
@@ -5819,60 +6612,72 @@ const convertToGo = (obj: any): string => {
         return str
             .toLowerCase()
             .replace(/[_-]([a-z])/g, (_, letter) => letter.toUpperCase())
-            .replace(/^[a-z]/, letter => letter.toUpperCase());
+            .replace(/^[a-z]/, (letter) => letter.toUpperCase());
     };
 
     // 生成结构体名称
-    const getStructName = (key: string, parentKey: string = ''): string => {
+    const getStructName = (key: string, parentKey: string = ""): string => {
         return toCamelCase(key);
     };
 
     // 获取 Go 类型
-    const getGoType = (value: any, key: string, parentKey: string = ''): string => {
+    const getGoType = (
+        value: any,
+        key: string,
+        parentKey: string = ""
+    ): string => {
         if (Array.isArray(value)) {
-            if (value.length === 0) return '[]interface{}';
-            if (typeof value[0] === 'string') return '[]string';
-            if (typeof value[0] === 'number') return Number.isInteger(value[0]) ? '[]int' : '[]float64';
-            if (typeof value[0] === 'object' && value[0] !== null) {
+            if (value.length === 0) return "[]interface{}";
+            if (typeof value[0] === "string") return "[]string";
+            if (typeof value[0] === "number")
+                return Number.isInteger(value[0]) ? "[]int" : "[]float64";
+            if (typeof value[0] === "object" && value[0] !== null) {
                 const itemType = getStructName(key);
                 return `[]${itemType}`;
             }
-            return '[]interface{}';
+            return "[]interface{}";
         }
 
-        if (typeof value === 'object' && value !== null) {
+        if (typeof value === "object" && value !== null) {
             return getStructName(key, parentKey);
         }
 
-        if (typeof value === 'string') return 'string';
-        if (typeof value === 'number') return Number.isInteger(value) ? 'int' : 'float64';
-        if (typeof value === 'boolean') return 'bool';
-        return 'interface{}';
+        if (typeof value === "string") return "string";
+        if (typeof value === "number")
+            return Number.isInteger(value) ? "int" : "float64";
+        if (typeof value === "boolean") return "bool";
+        return "interface{}";
     };
 
     // 处理结构体
-    const processStruct = (obj: any, structName: string, parentKey: string = ''): string => {
+    const processStruct = (
+        obj: any,
+        structName: string,
+        parentKey: string = ""
+    ): string => {
         // 处理数组特殊情况 - 数组本身不需要添加到 processedTypes，直接处理元素
         if (Array.isArray(obj)) {
-            if (obj.length > 0 && typeof obj[0] === 'object') {
+            if (obj.length > 0 && typeof obj[0] === "object") {
                 // 如果 parentKey 为空（顶层数组），使用默认名称
-                const itemType = parentKey ? getStructName(parentKey, parentKey) : structName || 'Item';
+                const itemType = parentKey
+                    ? getStructName(parentKey, parentKey)
+                    : structName || "Item";
                 return processStruct(obj[0], itemType, parentKey);
             }
-            return '';
+            return "";
         }
 
         // 对于非数组对象，检查是否已处理过
-        if (processedTypes.has(structName)) return '';
+        if (processedTypes.has(structName)) return "";
         processedTypes.add(structName);
 
-        let structDef = '';
+        let structDef = "";
 
         // 先处理所有嵌套的结构体
         for (const [key, value] of Object.entries(obj)) {
-            if (typeof value === 'object' && value !== null) {
+            if (typeof value === "object" && value !== null) {
                 if (Array.isArray(value)) {
-                    if (value.length > 0 && typeof value[0] === 'object') {
+                    if (value.length > 0 && typeof value[0] === "object") {
                         const itemType = getStructName(key);
                         structDef += processStruct(value[0], itemType, key);
                     }
@@ -5887,14 +6692,14 @@ const convertToGo = (obj: any): string => {
         structDef += `type ${structName} struct {\n`;
 
         // 使用固定的 4 个空格作为 Go 结构体的缩进
-        const indent = '    ';
+        const indent = "    ";
         for (const [key, value] of Object.entries(obj)) {
             const fieldName = toCamelCase(key);
             const goType = getGoType(value, key, parentKey);
             structDef += `${indent}${fieldName} ${goType} \`json:"${key}"\`\n`;
         }
 
-        structDef += '}\n\n';
+        structDef += "}\n\n";
         return structDef;
     };
 
@@ -5907,17 +6712,17 @@ const convertToGo = (obj: any): string => {
     try {
         // 如果顶层是数组，使用 'Item' 作为默认名称；否则使用 'Root'
         if (Array.isArray(obj)) {
-            if (obj.length > 0 && typeof obj[0] === 'object') {
-                result = processStruct(obj, 'Item');
+            if (obj.length > 0 && typeof obj[0] === "object") {
+                result = processStruct(obj, "Item");
             } else {
-                result = processStruct(obj, 'Root');
+                result = processStruct(obj, "Root");
             }
         } else {
-            result = processStruct(obj, 'Root');
+            result = processStruct(obj, "Root");
         }
         return result.trim();
     } catch (error: any) {
-        throw new Error('转换 Go 结构体失败: ' + error.message);
+        throw new Error("转换 Go 结构体失败: " + error.message);
     }
 };
 
@@ -5926,13 +6731,13 @@ const cookieToJSON = (cookieStr: string): string => {
     try {
         // 处理常见的 Cookie 格式问题
         const cookies = cookieStr
-            .split(/[;\n]/)  // 分割多个 cookie（支持分号或换行分隔）
-            .map(pair => pair.trim())
-            .filter(pair => pair)  // 过滤空值
+            .split(/[;\n]/) // 分割多个 cookie（支持分号或换行分隔）
+            .map((pair) => pair.trim())
+            .filter((pair) => pair) // 过滤空值
             .reduce((acc: Record<string, any>, pair) => {
                 // 处理键值对
-                const [key, ...values] = pair.split('=');
-                const value = values.join('=');  // 处理值中包含等号的情况
+                const [key, ...values] = pair.split("=");
+                const value = values.join("="); // 处理值中包含等号的情况
 
                 if (key && value) {
                     try {
@@ -5948,7 +6753,7 @@ const cookieToJSON = (cookieStr: string): string => {
 
         return JSON.stringify(cookies, null, indentSize.value);
     } catch (error: any) {
-        throw new Error('Cookie 格式无效: ' + error.message);
+        throw new Error("Cookie 格式无效: " + error.message);
     }
 };
 
@@ -5956,32 +6761,32 @@ const cookieToJSON = (cookieStr: string): string => {
 const handleFileUpload = async (uploadFile: UploadFile) => {
     const file = uploadFile.raw as File;
     if (!file) {
-        showError('无法获取文件');
+        showError("无法获取文件");
         return;
     }
 
     try {
         // 检查文件名长度
         if (file.name.length > 255) {
-            showError('文件名过长');
+            showError("文件名过长");
             return;
         }
 
         // 检查文件扩展名
-        if (!file.name.toLowerCase().endsWith('.json')) {
-            showError('只能上传 JSON 文件');
+        if (!file.name.toLowerCase().endsWith(".json")) {
+            showError("只能上传 JSON 文件");
             return;
         }
 
         // 检查文件大小
         if (file.size > MAX_FILE_SIZE) {
-            showError('文件大小不能超过 5 MB');
+            showError("文件大小不能超过 5 MB");
             return;
         }
 
         // 检查 MIME 类型
-        if (file.type && !['application/json', 'text/plain'].includes(file.type)) {
-            showError('文件类型不正确');
+        if (file.type && !["application/json", "text/plain"].includes(file.type)) {
+            showError("文件类型不正确");
             return;
         }
 
@@ -5993,83 +6798,52 @@ const handleFileUpload = async (uploadFile: UploadFile) => {
                     // 检查文件编码
                     try {
                         const text = e.target.result as string;
-                        if (text.includes('\uFFFD')) {
-                            reject(new Error('文件编码不是有效的UTF-8'));
+                        if (text.includes("\uFFFD")) {
+                            reject(new Error("文件编码不是有效的UTF-8"));
                             return;
                         }
                         resolve(text);
                     } catch (error) {
-                        reject(new Error('文件编码不正确'));
+                        reject(new Error("文件编码不正确"));
                     }
                 } else {
-                    reject(new Error('文件读取失败'));
+                    reject(new Error("文件读取失败"));
                 }
             };
-            reader.onerror = () => reject(new Error('文件读取出错'));
-            reader.readAsText(file, 'utf-8');
+            reader.onerror = () => reject(new Error("文件读取出错"));
+            reader.readAsText(file, "utf-8");
         });
 
         // 检查行数限制
-        const lines = content.split('\n');
+        const lines = content.split("\n");
         if (lines.length > MAX_LINES) {
             showError(`文件内容超过行数限制（共 ${lines.length} 行）`);
             return;
         }
 
-        // JSON格式检查和格式化处理
-        // 使用与 formatJSON 相同的格式化逻辑
-        let preprocessedValue = content;
-
-        // 预处理 JSON 字符串
-        let parsed;
-        let originalString = preprocessedValue;
-        try {
-            const result = preprocessJSON(preprocessedValue);
-            parsed = result.data;
-            // 如果是保持原样模式，使用原始输入字符串以保留Unicode转义等原始格式
-            // 否则使用预处理后的字符串
-            originalString = encodingMode.value === 0 ? content : result.originalString;
-        } catch (error: any) {
-            showError('无效的 JSON 格式: ' + (error.message || 'JSON 解析失败'));
-            return; // 格式化失败，拒绝上传
-        }
-
-        // 检查深度
-        const depth = getObjectDepth(parsed);
-        if (depth > 99) {
-            showError('JSON深度超过99层, 不允许上传');
-            return; // 格式化失败，拒绝上传
-        }
-
-        // 使用自定义格式化函数格式化JSON，保持原始转义字符
-        let formattedJson: string;
-        try {
-            formattedJson = customStringify(parsed, null, 2, originalString);
-        } catch (error: any) {
-            showError('格式化失败: ' + (error.message || '未知错误'));
-            return; // 格式化失败，拒绝上传
-        }
-
-        // 更新编辑器 - 将格式化结果展示到输入区域
+        // 直接使用文件原始内容，不进行格式化
+        // 更新编辑器 - 将文件原始内容展示到输入区域
         if (inputEditor) {
-            inputEditor.setValue(formattedJson);
+            inputEditor.setValue(content);
             updateLineNumberWidth(inputEditor);
             updateEditorHeight(inputEditor);
             // 确保使用2空格缩进
-            inputEditor.getModel()?.updateOptions({ tabSize: 2, indentSize: 2, insertSpaces: true });
+            inputEditor
+                .getModel()
+                ?.updateOptions({ tabSize: 2, indentSize: 2, insertSpaces: true });
             // 同时更新编辑器选项
             inputEditor.updateOptions({ tabSize: 2, indentSize: 2 } as any);
         }
 
         // 清空outputEditor的内容
-        outputEditor?.setValue('');
+        outputEditor?.setValue("");
         updateLineNumberWidth(outputEditor);
         updateEditorHeight(outputEditor);
 
         // 显示成功提示
-        showSuccess('文件上传成功，已格式化并加载到输入区域');
+        showSuccess("文件上传成功，已加载到输入区域");
     } catch (error: any) {
-        showError('文件处理失败: ' + error.message);
+        showError("文件处理失败: " + error.message);
     }
 };
 
@@ -6085,21 +6859,23 @@ const clearInput = () => {
             const model = inputEditor.getModel();
             if (model) {
                 // 先将模型的语言设置为纯文本，避免JSON验证
-                monaco.editor.setModelLanguage(model, 'plaintext');
+                monaco.editor.setModelLanguage(model, "plaintext");
 
                 // 使用 executeEdits 来清空内容，这样可以保留撤销历史
                 const fullRange = model.getFullModelRange();
                 if (!fullRange.isEmpty()) {
-                    inputEditor.executeEdits('clear-input', [{
-                        range: fullRange,
-                        text: ''
-                    }]);
+                    inputEditor.executeEdits("clear-input", [
+                        {
+                            range: fullRange,
+                            text: "",
+                        },
+                    ]);
                 }
 
                 // 延迟后再设置回JSON语言
                 setTimeout(() => {
                     if (model && !model.isDisposed()) {
-                        monaco.editor.setModelLanguage(model, 'json');
+                        monaco.editor.setModelLanguage(model, "json");
                     }
                 }, 100);
             }
@@ -6109,21 +6885,23 @@ const clearInput = () => {
             const model = outputEditor.getModel();
             if (model) {
                 // 先将模型的语言设置为纯文本
-                monaco.editor.setModelLanguage(model, 'plaintext');
+                monaco.editor.setModelLanguage(model, "plaintext");
 
                 // 使用 executeEdits 来清空内容，这样可以保留撤销历史
                 const fullRange = model.getFullModelRange();
                 if (!fullRange.isEmpty()) {
-                    outputEditor.executeEdits('clear-output', [{
-                        range: fullRange,
-                        text: ''
-                    }]);
+                    outputEditor.executeEdits("clear-output", [
+                        {
+                            range: fullRange,
+                            text: "",
+                        },
+                    ]);
                 }
 
                 // 延迟后再设置回JSON语言
                 setTimeout(() => {
                     if (model && !model.isDisposed()) {
-                        monaco.editor.setModelLanguage(model, 'json');
+                        monaco.editor.setModelLanguage(model, "json");
                     }
                 }, 100);
             }
@@ -6132,36 +6910,39 @@ const clearInput = () => {
         }
 
         // 重置输出类型
-        outputType.value = 'json';
+        outputType.value = "json";
 
-        showSuccess('已清空内容');
+        showSuccess("已清空内容");
     } catch (error: any) {
-        showError('清空内容失败');
+        showError("清空内容失败");
     }
 };
 
 // 复制输出
 const copyOutput = async () => {
     try {
-        const value = outputEditor?.getValue() || '';
+        const value = outputEditor?.getValue() || "";
         if (!value) {
-            showWarning('没有可复制的内容');
+            showWarning("没有可复制的内容");
             return;
         }
 
         try {
             await navigator.clipboard.writeText(value);
-            showSuccess('复制成功');
+            showSuccess("复制成功");
         } catch (err) {
-            showError('复制失败, 请尝试手动复制');
+            showError("复制失败, 请尝试手动复制");
 
             // 自动选择内容以方便用户复制
             outputEditor?.focus();
             outputEditor?.getModel()?.getFullModelRange();
-            outputEditor?.setSelection(outputEditor.getModel()?.getFullModelRange() || new monaco.Range(0, 0, 0, 0));
+            outputEditor?.setSelection(
+                outputEditor.getModel()?.getFullModelRange() ||
+                new monaco.Range(0, 0, 0, 0)
+            );
         }
     } catch (error: any) {
-        showError('复制失败, 请尝试手动复制');
+        showError("复制失败, 请尝试手动复制");
     }
 };
 
@@ -6169,9 +6950,11 @@ const copyOutput = async () => {
 const calculateHash = async (content: string): Promise<string> => {
     const encoder = new TextEncoder();
     const data = encoder.encode(content);
-    const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+    const hashBuffer = await crypto.subtle.digest("SHA-256", data);
     const hashArray = Array.from(new Uint8Array(hashBuffer));
-    const hashHex = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+    const hashHex = hashArray
+        .map((b) => b.toString(16).padStart(2, "0"))
+        .join("");
     return hashHex;
 };
 
@@ -6179,7 +6962,7 @@ const calculateHash = async (content: string): Promise<string> => {
 const downloadOutput = async () => {
     const content = outputEditor?.getValue();
     if (!content) {
-        showWarning('没有可下载的内容');
+        showWarning("没有可下载的内容");
         return;
     }
 
@@ -6189,21 +6972,25 @@ const downloadOutput = async () => {
         const hash = fullHash.substring(0, 32);
 
         // 根据输出类型决定文件扩展名和 MIME 类型
-        const fileExtensionMap: Record<'json' | 'yaml' | 'toml' | 'xml' | 'go', string> = {
-            json: '.json',
-            yaml: '.yaml',
-            toml: '.toml',
-            xml: '.xml',
-            go: '.go'
+        const fileExtensionMap: Record<
+            "json" | "yaml" | "toml" | "xml" | "go",
+            string
+        > = {
+            json: ".json",
+            yaml: ".yaml",
+            toml: ".toml",
+            xml: ".xml",
+            go: ".go",
         };
         const fileExtension = fileExtensionMap[outputType.value];
 
-        const mimeTypeMap: Record<'json' | 'yaml' | 'toml' | 'xml' | 'go', string> = {
-            json: 'application/json',
-            yaml: 'text/yaml',
-            toml: 'text/plain',
-            xml: 'application/xml',
-            go: 'text/plain'
+        const mimeTypeMap: Record<"json" | "yaml" | "toml" | "xml" | "go", string> =
+        {
+            json: "application/json",
+            yaml: "text/yaml",
+            toml: "text/plain",
+            xml: "application/xml",
+            go: "text/plain",
         };
         const mimeType = mimeTypeMap[outputType.value];
 
@@ -6212,7 +6999,7 @@ const downloadOutput = async () => {
         const url = URL.createObjectURL(blob);
 
         // 创建下载链接
-        const link = document.createElement('a');
+        const link = document.createElement("a");
         link.href = url;
         // 生成文件名：哈希值（32字符）.扩展名
         link.download = `${hash}${fileExtension}`;
@@ -6223,20 +7010,20 @@ const downloadOutput = async () => {
         document.body.removeChild(link);
         URL.revokeObjectURL(url);
 
-        showSuccess('下载成功');
+        showSuccess("下载成功");
     } catch (error: any) {
-        showError('下载失败：' + (error?.message || '未知错误'));
+        showError("下载失败：" + (error?.message || "未知错误"));
     }
 };
 
 // 切换全屏状态
 const toggleFullscreen = () => {
-    isFullscreen.value = !isFullscreen.value
+    isFullscreen.value = !isFullscreen.value;
 };
 
 // 处理默认全屏设置切换，同时同步当前全屏状态
 const handleInitialFullscreenChange = (value: boolean | string | number) => {
-    const normalizedValue = value === true || value === 'true' || value === 1;
+    const normalizedValue = value === true || value === "true" || value === 1;
     startInFullscreen.value = normalizedValue;
     if (normalizedValue) {
         isFullscreen.value = true;
@@ -6247,20 +7034,23 @@ const handleInitialFullscreenChange = (value: boolean | string | number) => {
 
 // 监听 ESC 键退出全屏
 const handleEscapeKey = (event: KeyboardEvent) => {
-    if (event.key === 'Escape' && isFullscreen.value) {
+    if (event.key === "Escape" && isFullscreen.value) {
         isFullscreen.value = false;
     }
 };
 
 // 拖动时也要更新预览区域布局，让滚动条紧贴右边界，但需要恢复滚动内容位置
-const updateEditorLayouts = (updateOutputEditor: boolean = true, forceWidth?: { inputWidth?: number; outputWidth?: number }) => {
+const updateEditorLayouts = (
+    updateOutputEditor: boolean = true,
+    forceWidth?: { inputWidth?: number; outputWidth?: number }
+) => {
     if (inputEditor) {
         const container = inputEditor.getContainerDomNode();
         // 输入区域的滚动条需要实时紧贴分割线，所以拖动时也要更新
         const width = forceWidth?.inputWidth ?? container.clientWidth;
         inputEditor.layout({
             width: width,
-            height: container.clientHeight
+            height: container.clientHeight,
         });
     }
     if (outputEditor && updateOutputEditor) {
@@ -6269,23 +7059,27 @@ const updateEditorLayouts = (updateOutputEditor: boolean = true, forceWidth?: { 
         const width = forceWidth?.outputWidth ?? container.clientWidth;
         outputEditor.layout({
             width: width,
-            height: container.clientHeight
+            height: container.clientHeight,
         });
     }
 };
 
 // 获取事件中的 clientX（统一处理不同事件类型）
-const getClientX = (e: MouseEvent | TouchEvent | PointerEvent): number | null => {
-    if ('touches' in e && e.touches.length > 0) {
+const getClientX = (
+    e: MouseEvent | TouchEvent | PointerEvent
+): number | null => {
+    if ("touches" in e && e.touches.length > 0) {
         return e.touches[0].clientX;
-    } else if ('clientX' in e) {
+    } else if ("clientX" in e) {
         return e.clientX;
     }
     return null;
 };
 
 // 处理指针移动（提升到外层作用域，避免每次拖动创建新函数）
-const handlePointerMove = (moveEvent: MouseEvent | TouchEvent | PointerEvent) => {
+const handlePointerMove = (
+    moveEvent: MouseEvent | TouchEvent | PointerEvent
+) => {
     if (!isResizing.value || !resizeState) return;
 
     const clientX = getClientX(moveEvent);
@@ -6295,7 +7089,8 @@ const handlePointerMove = (moveEvent: MouseEvent | TouchEvent | PointerEvent) =>
     if (resizeState.container) {
         const currentRect = resizeState.container.getBoundingClientRect();
         resizeState.rect = currentRect;
-        resizeState.minWidthPercent = (resizeState.minWidthPx / currentRect.width) * 100;
+        resizeState.minWidthPercent =
+            (resizeState.minWidthPx / currentRect.width) * 100;
         resizeState.maxWidthPercent = 100 - resizeState.minWidthPercent;
     }
 
@@ -6309,7 +7104,10 @@ const handlePointerMove = (moveEvent: MouseEvent | TouchEvent | PointerEvent) =>
     const deltaX = clampedX - resizeState.initialX;
     const deltaPercentage = (deltaX / resizeState.rect.width) * 100;
     const newWidth = Math.min(
-        Math.max(resizeState.initialPercentage + deltaPercentage, resizeState.minWidthPercent),
+        Math.max(
+            resizeState.initialPercentage + deltaPercentage,
+            resizeState.minWidthPercent
+        ),
         resizeState.maxWidthPercent
     );
 
@@ -6337,14 +7135,14 @@ const stopResize = (upEvent?: Event) => {
     if (!isResizing.value) return;
 
     isResizing.value = false;
-    document.body.style.userSelect = '';
-    document.body.style.cursor = '';
+    document.body.style.userSelect = "";
+    document.body.style.cursor = "";
 
     // 恢复 CSS transition（拖动结束后恢复平滑动画）
     if (resizeState && resizeState.container) {
-        const panels = resizeState.container.querySelectorAll('.editor-panel');
+        const panels = resizeState.container.querySelectorAll(".editor-panel");
         panels.forEach((panel: Element) => {
-            (panel as HTMLElement).style.transition = '';
+            (panel as HTMLElement).style.transition = "";
         });
     }
 
@@ -6356,7 +7154,10 @@ const stopResize = (upEvent?: Event) => {
     stableLeftPanelWidth.value = leftPanelWidth.value;
 
     // 释放指针捕获
-    if (upEvent instanceof PointerEvent && upEvent.target instanceof HTMLElement) {
+    if (
+        upEvent instanceof PointerEvent &&
+        upEvent.target instanceof HTMLElement
+    ) {
         try {
             upEvent.target.releasePointerCapture(upEvent.pointerId);
         } catch (err) {
@@ -6365,8 +7166,11 @@ const stopResize = (upEvent?: Event) => {
     }
 
     // 移除事件监听（只使用 pointer 事件，现代浏览器已足够）
-    document.removeEventListener('pointermove', handlePointerMove as EventListener);
-    document.removeEventListener('pointerup', stopResize as EventListener);
+    document.removeEventListener(
+        "pointermove",
+        handlePointerMove as EventListener
+    );
+    document.removeEventListener("pointerup", stopResize as EventListener);
 
     // 保存滚动位置（在布局更新前保存，因为布局更新可能会改变滚动位置）
     const savedScrollLeft = resizeState?.outputScrollLeft || 0;
@@ -6383,7 +7187,9 @@ const stopResize = (upEvent?: Event) => {
             requestAnimationFrame(() => {
                 if (outputEditor) {
                     // 通过 Monaco Editor 的滚动容器 DOM 元素恢复滚动位置
-                    const scrollableElement = outputEditor.getContainerDomNode().querySelector('.monaco-scrollable-element') as HTMLElement;
+                    const scrollableElement = outputEditor
+                        .getContainerDomNode()
+                        .querySelector(".monaco-scrollable-element") as HTMLElement;
                     if (scrollableElement) {
                         // 总是恢复滚动位置，即使为 0 也可能是有效的顶部位置
                         scrollableElement.scrollLeft = savedScrollLeft;
@@ -6402,7 +7208,9 @@ const stopResize = (upEvent?: Event) => {
 const startResize = (e: MouseEvent | TouchEvent | PointerEvent) => {
     // 初始化容器引用（如果还没有）
     if (!editorContainer) {
-        editorContainer = document.querySelector('.editor-container') as HTMLElement;
+        editorContainer = document.querySelector(
+            ".editor-container"
+        ) as HTMLElement;
     }
     if (!editorContainer) return;
 
@@ -6416,13 +7224,13 @@ const startResize = (e: MouseEvent | TouchEvent | PointerEvent) => {
     stableLeftPanelWidth.value = leftPanelWidth.value;
 
     // 禁用选择和默认事件
-    document.body.style.userSelect = 'none';
-    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = "none";
+    document.body.style.cursor = "col-resize";
 
     // 禁用 CSS transition，避免拖动时的动画延迟（确保实时响应）
-    const panels = editorContainer.querySelectorAll('.editor-panel');
+    const panels = editorContainer.querySelectorAll(".editor-panel");
     panels.forEach((panel: Element) => {
-        (panel as HTMLElement).style.transition = 'none';
+        (panel as HTMLElement).style.transition = "none";
     });
 
     // 获取初始位置
@@ -6448,12 +7256,16 @@ const startResize = (e: MouseEvent | TouchEvent | PointerEvent) => {
     const maxWidthPercent = 100 - minWidthPercent;
 
     // 获取预览区域容器并保存初始状态（用于恢复滚动内容位置）
-    const outputPanel = editorContainer.querySelector('.output-panel') as HTMLElement;
+    const outputPanel = editorContainer.querySelector(
+        ".output-panel"
+    ) as HTMLElement;
     let outputScrollLeft = 0;
     let outputScrollTop = 0;
 
     if (outputPanel && outputEditor) {
-        const scrollableElement = outputEditor.getContainerDomNode().querySelector('.monaco-scrollable-element') as HTMLElement;
+        const scrollableElement = outputEditor
+            .getContainerDomNode()
+            .querySelector(".monaco-scrollable-element") as HTMLElement;
         if (scrollableElement) {
             outputScrollLeft = scrollableElement.scrollLeft;
             outputScrollTop = scrollableElement.scrollTop;
@@ -6475,8 +7287,10 @@ const startResize = (e: MouseEvent | TouchEvent | PointerEvent) => {
     };
 
     // 添加事件监听（只使用 pointer 事件，已覆盖鼠标和触摸）
-    document.addEventListener('pointermove', handlePointerMove as EventListener, { passive: true });
-    document.addEventListener('pointerup', stopResize as EventListener);
+    document.addEventListener("pointermove", handlePointerMove as EventListener, {
+        passive: true,
+    });
+    document.addEventListener("pointerup", stopResize as EventListener);
 
     // 阻止默认行为
     if (e instanceof MouseEvent || e instanceof PointerEvent) {
@@ -6488,15 +7302,15 @@ const startResize = (e: MouseEvent | TouchEvent | PointerEvent) => {
 const transferToInput = (e: MouseEvent) => {
     // 阻止事件冒泡，防止触发分割线的拖动
     e.stopPropagation();
-    if (outputType.value !== 'json') {
-        showWarning('当前内容类型不支持转移到输入区域');
+    if (outputType.value !== "json") {
+        showWarning("当前内容类型不支持转移到输入区域");
         return;
     }
 
     try {
-        const outputContent = outputEditor?.getValue() || '';
+        const outputContent = outputEditor?.getValue() || "";
         if (!outputContent.trim()) {
-            showWarning('预览区域内容为空, 无需转移');
+            showWarning("预览区域内容为空, 无需转移");
             return;
         }
 
@@ -6506,7 +7320,12 @@ const transferToInput = (e: MouseEvent) => {
             // 先预处理 JSON（处理注释、尾逗号等）
             const preprocessed = preprocessJSON(outputContent);
             // 重新格式化为2个空格缩进
-            formattedContent = customStringify(preprocessed.data, null, 2, preprocessed.originalString);
+            formattedContent = customStringify(
+                preprocessed.data,
+                null,
+                2,
+                preprocessed.originalString
+            );
         } catch (parseError) {
             // 如果解析失败，尝试直接使用 JSON.stringify 格式化
             try {
@@ -6524,18 +7343,22 @@ const transferToInput = (e: MouseEvent) => {
             if (inputModel) {
                 const fullRange = inputModel.getFullModelRange();
                 inputEditor.pushUndoStop();
-                inputEditor.executeEdits('transfer-to-input', [
+                inputEditor.executeEdits("transfer-to-input", [
                     {
                         range: fullRange,
-                        text: formattedContent
-                    }
+                        text: formattedContent,
+                    },
                 ]);
                 inputEditor.pushUndoStop();
                 updateLineNumberWidth(inputEditor);
                 updateEditorHeight(inputEditor);
 
                 // 确保输入编辑器使用2空格缩进
-                inputModel.updateOptions({ tabSize: 2, indentSize: 2, insertSpaces: true });
+                inputModel.updateOptions({
+                    tabSize: 2,
+                    indentSize: 2,
+                    insertSpaces: true,
+                });
                 // 同时更新编辑器选项
                 inputEditor.updateOptions({ tabSize: 2, indentSize: 2 } as any);
             }
@@ -6543,14 +7366,14 @@ const transferToInput = (e: MouseEvent) => {
 
         // 清空预览区域
         if (outputEditor) {
-            outputEditor.setValue('');
+            outputEditor.setValue("");
             updateLineNumberWidth(outputEditor);
             updateEditorHeight(outputEditor);
         }
 
-        showSuccess('内容已成功转移到输入区域');
+        showSuccess("内容已成功转移到输入区域");
     } catch (error: any) {
-        showError('转移内容失败: ' + error.message);
+        showError("转移内容失败: " + error.message);
     }
 };
 </script>
@@ -6588,7 +7411,7 @@ const transferToInput = (e: MouseEvent) => {
 
 .warning-icon {
     font-size: 48px;
-    color: #E6A23C;
+    color: #e6a23c;
     margin-bottom: 20px;
 }
 
@@ -6663,7 +7486,7 @@ const transferToInput = (e: MouseEvent) => {
 }
 
 .tool-bar {
-    padding: 8px 16px 6px 16px;
+    padding: 6px;
     display: flex;
     align-items: center;
     gap: 0;
@@ -6744,12 +7567,18 @@ const transferToInput = (e: MouseEvent) => {
 
 .gradient-mask-left {
     left: 0;
-    background: linear-gradient(to right, rgba(255, 255, 255, 1) 0%, rgba(255, 255, 255, 0.85) 40%, rgba(255, 255, 255, 0) 100%);
+    background: linear-gradient(to right,
+            rgba(255, 255, 255, 1) 0%,
+            rgba(255, 255, 255, 0.85) 40%,
+            rgba(255, 255, 255, 0) 100%);
 }
 
 .gradient-mask-right {
     right: 0;
-    background: linear-gradient(to left, rgba(255, 255, 255, 1) 0%, rgba(255, 255, 255, 0.85) 40%, rgba(255, 255, 255, 0) 100%);
+    background: linear-gradient(to left,
+            rgba(255, 255, 255, 1) 0%,
+            rgba(255, 255, 255, 0.85) 40%,
+            rgba(255, 255, 255, 0) 100%);
 }
 
 /* 按钮组之间紧挨着，但单个按钮和按钮组之间要有间距 */
@@ -6769,7 +7598,6 @@ const transferToInput = (e: MouseEvent) => {
     margin-left: 0;
 }
 
-
 /* 层级控制优化 */
 .collapse-control {
     display: flex;
@@ -6780,7 +7608,6 @@ const transferToInput = (e: MouseEvent) => {
 .collapse-control .level-select {
     width: 90px;
 }
-
 
 /* 响应式：小屏幕时调整布局 */
 @media screen and (max-width: 1200px) {
@@ -6833,41 +7660,6 @@ const transferToInput = (e: MouseEvent) => {
     /* 添加相对定位 */
 }
 
-/* 左侧面板样式 - 只有左侧圆角 */
-.editor-panel:first-child {
-    border-top-left-radius: 6px;
-    border-bottom-left-radius: 6px;
-}
-
-/* 右侧面板样式 - 只有右侧圆角 */
-.editor-panel:last-child {
-    border-top-right-radius: 6px;
-    border-bottom-right-radius: 6px;
-}
-
-/* 左侧面板头部 - 只有左上角圆角（右边是分割线） */
-.editor-panel:first-child .panel-header {
-    border-top-left-radius: 6px;
-    border-top-right-radius: 0;
-}
-
-/* 右侧面板头部 - 只有右上角圆角 */
-.editor-panel:last-child .panel-header {
-    border-top-left-radius: 0;
-    border-top-right-radius: 6px;
-}
-
-/* 编辑器容器圆角调整 - 移除底部圆角，让状态栏处理底部圆角 */
-.editor-panel:first-child .monaco-editor-container {
-    border-bottom-left-radius: 0;
-    border-bottom-right-radius: 0;
-}
-
-.editor-panel:last-child .monaco-editor-container {
-    border-bottom-left-radius: 0;
-    border-bottom-right-radius: 0;
-}
-
 /* 添加分隔线样式 */
 .resizer {
     width: 24px;
@@ -6908,8 +7700,6 @@ const transferToInput = (e: MouseEvent) => {
     padding: 10px 15px;
     background: linear-gradient(to bottom, #fafbfc, #f6f8fa);
     border-bottom: 1px solid #e4e7ed;
-    border-top-left-radius: 6px;
-    border-top-right-radius: 6px;
     /* 确保头部布局变化是瞬时的，无过渡动画，避免拖动时标题换行 */
     transition: none !important;
 }
@@ -6927,7 +7717,7 @@ const transferToInput = (e: MouseEvent) => {
 
 .panel-title i {
     margin-right: 6px;
-    color: #409EFF;
+    color: #409eff;
 }
 
 .panel-actions {
@@ -6985,8 +7775,6 @@ const transferToInput = (e: MouseEvent) => {
     background: linear-gradient(to bottom, #fafbfc, #f5f7fa);
     border: 1px solid #e4e7ed;
     border-top: none;
-    border-bottom-left-radius: 0;
-    border-bottom-right-radius: 0;
     display: flex;
     align-items: center;
     padding: 0 10px;
@@ -6996,22 +7784,11 @@ const transferToInput = (e: MouseEvent) => {
     box-shadow: 0 -1px 2px rgba(0, 0, 0, 0.02);
 }
 
-/* 左侧面板状态栏 - 只有左下角圆角 */
-.editor-panel:first-child .editor-status-bar {
-    border-bottom-left-radius: 6px;
-    border-bottom-right-radius: 0;
-}
-
-/* 右侧面板状态栏 - 只有右下角圆角 */
-.editor-panel:last-child .editor-status-bar {
-    border-bottom-left-radius: 0;
-    border-bottom-right-radius: 6px;
-}
-
 .editor-status-bar .status-text {
     user-select: none;
     white-space: nowrap;
-    font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', 'Consolas', 'source-code-pro', monospace;
+    font-family: "Monaco", "Menlo", "Ubuntu Mono", "Consolas", "source-code-pro",
+        monospace;
 }
 
 /* 确保Monaco编辑器内部元素也有正确的背景色 */
@@ -7173,7 +7950,7 @@ const transferToInput = (e: MouseEvent) => {
 
 .transfer-button .el-icon {
     font-size: 16px;
-    color: #409EFF;
+    color: #409eff;
 }
 
 /* 调整单选按钮的大小和样式 */
@@ -7236,8 +8013,6 @@ const transferToInput = (e: MouseEvent) => {
     padding: 12px 20px 16px;
     border-top: 1px solid #e4e7ed;
 }
-
-
 
 :deep(.el-card__body) {
     padding: 16px 20px;
@@ -7408,7 +8183,6 @@ const transferToInput = (e: MouseEvent) => {
     color: var(--el-text-color-regular);
 }
 
-
 .settings-subsection {
     margin-bottom: 16px;
 }
@@ -7430,7 +8204,7 @@ const transferToInput = (e: MouseEvent) => {
 
 .button-visibility-list {
     display: grid;
-    grid-template-columns: repeat(4, 1fr);
+    grid-template-columns: repeat(5, 1fr);
     grid-auto-rows: min-content;
     gap: 6px 24px;
     align-items: start;
@@ -7476,5 +8250,114 @@ const transferToInput = (e: MouseEvent) => {
         width: 100%;
         margin-right: 0;
     }
+}
+
+/* 存档侧边栏样式 */
+.archive-sidebar {
+    display: flex;
+    flex-direction: column;
+    background-color: #f8fafc;
+    padding: 10px 5px;
+    box-sizing: border-box;
+    transition: width 0.1s ease;
+    flex-shrink: 0;
+}
+
+.archive-sidebar.collapsed {
+    padding: 10px 5px;
+}
+
+.archive-sidebar.collapsed .archive-item {
+    justify-content: center;
+    padding: 5px 0;
+}
+
+.archive-sidebar.collapsed .archive-name {
+    text-align: center;
+    background-color: #edf5ff;
+    color: #409eff;
+    border-radius: 2px;
+    min-width: 20px;
+    padding: 2px 4px;
+    display: inline-block;
+}
+
+.archive-sidebar-header {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-bottom: 8px;
+}
+
+.archive-sidebar-title {
+    font-size: 13px;
+    font-weight: 600;
+    color: #606266;
+}
+
+/* 存档侧边栏分割线 */
+.archive-resizer {
+    width: 2px;
+    background-color: #e4e7ed;
+    cursor: col-resize;
+    flex-shrink: 0;
+    position: relative;
+    transition: background-color 0.2s;
+}
+
+.archive-resizer:hover {
+    background-color: #409eff;
+}
+
+.archive-resizer:active {
+    background-color: #409eff;
+}
+
+.archive-list {
+    flex: 1;
+    overflow-y: auto;
+}
+
+.archive-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 4px 4px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 12px;
+    color: #606266;
+}
+
+.archive-name {
+    flex: 1;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    overflow: hidden;
+    user-select: none;
+}
+
+.archive-actions {
+    display: flex;
+    align-items: center;
+}
+
+.archive-action-icon {
+    font-size: 14px;
+    color: #909399;
+    cursor: pointer;
+}
+
+.archive-action-icon:not(:first-child) {
+    margin-left: 4px;
+}
+
+.archive-action-icon:hover {
+    color: #409eff;
+}
+
+.archive-empty {
+    font-size: 12px;
+    color: #c0c4cc;
 }
 </style>

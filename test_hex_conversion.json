@@ -1,0 +1,35 @@
+{
+    "test_hex_conversion": {
+        "standard_escapes": {
+            "tab": "Before\x09After",
+            "newline": "Line1\x0ALine2",
+            "carriage_return": "Line1\x0DLine2",
+            "backspace": "Before\x08After",
+            "form_feed": "Before\x0CAfter",
+            "quote": "Text\x22quote\x22",
+            "backslash": "Path\x5Cfile"
+        },
+        "control_characters": {
+            "null": "Before\x00After",
+            "bell": "Alert\x07Sound",
+            "escape": "ESC\x1Bcode"
+        },
+        "printable_characters": {
+            "space": "Word1\x20Word2",
+            "exclamation": "Hello\x21",
+            "at_sign": "Email\x40domain"
+        },
+        "mixed_with_unicode": {
+            "hex_and_unicode": "Text\x20\\u4E2D\\u6587\x09More",
+            "newline_with_chinese": "Line1\x0A\\u4E2D\\u6587\x0ALine2"
+        },
+        "edge_cases": {
+            "hex_00": "Null\x00char",
+            "hex_1F": "Last\x1Fcontrol",
+            "hex_7F": "DEL\x7Fchar",
+            "hex_9F": "Last\x9Fcontrol",
+            "hex_20": "Space\x20here",
+            "hex_21": "Excl\x21mark"
+        }
+    }
+}
