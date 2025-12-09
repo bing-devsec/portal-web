@@ -100,12 +100,33 @@
                 <template v-if="archives.length">
                     <div class="archive-sidebar" :class="{
                         collapsed: archiveSidebarWidth <= calculateArchiveMinWidth(),
+                        'archive-dragging': !!draggingArchiveId,
                     }" :style="{ width: archiveSidebarWidth + 'px' }">
                         <div class="archive-sidebar-header">
                             <span class="archive-sidebar-title">存档</span>
                         </div>
-                        <div class="archive-list" v-if="archives.length">
-                            <div v-for="item in archives" :key="item.id" class="archive-item">
+                        <div class="archive-list" v-if="archives.length" ref="archiveListRef"
+                            @dragover="onArchiveListDragOver" @drop="onArchiveListDrop">
+                            <template v-for="(item, idx) in archives" :key="item.id">
+                                <div v-if="dropIndicatorIndex === idx" class="archive-drop-indicator"></div>
+                                <div class="archive-item"
+                                :draggable="dragEnabledArchiveId === item.id"
+                                @mousedown="onArchivePressStart(item.id, $event)"
+                                @touchstart.passive="onArchivePressStart(item.id, $event)"
+                                @mouseup="onArchivePressEnd"
+                                @mouseleave="onArchivePressEnd"
+                                @touchend.passive="onArchivePressEnd"
+                                @touchcancel.passive="onArchivePressEnd"
+                                @dragstart="onArchiveDragStart(item, $event)"
+                                @dragenter="onArchiveDragEnter(item.id)"
+                                @dragover="onArchiveDragOver($event, item.id, idx)"
+                                @drop="onArchiveDrop(item.id)"
+                                @dragend="onArchiveDragEnd"
+                                :class="{
+                                    dragging: draggingArchiveId === item.id,
+                                    'drag-over': dragOverArchiveId === item.id,
+                                    'drag-ready': dragEnabledArchiveId === item.id,
+                                }">
                                 <span class="archive-name" :title="item.name" @click="handleArchiveCommand(item.id)">
                                     {{
                                         archiveSidebarWidth <= calculateArchiveMinWidth() ? item.name ? item.name.slice(0,2): "##" : item.name }} </span>
@@ -120,14 +141,16 @@
                                                 <Delete />
                                             </el-icon>
                                         </div>
-                            </div>
+                                </div>
+                            </template>
+                            <div v-if="dropIndicatorIndex === archives.length" class="archive-drop-indicator"></div>
                         </div>
                         <div v-else-if="archiveSidebarWidth > calculateArchiveMinWidth()" class="archive-empty">
                             暂无存档
                         </div>
                     </div>
                     <!-- 分割线 -->
-                    <div class="archive-resizer" @mousedown="startArchiveResize" @touchstart="startArchiveResize"></div>
+                    <div class="archive-resizer" @mousedown="startArchiveResize" @touchstart.passive="startArchiveResize"></div>
                 </template>
 
                 <div class="editor-panel" :style="{ width: `${leftPanelWidth}%` }">
@@ -448,15 +471,7 @@
 </template>
 
 <script setup lang="ts">
-import {
-    ref,
-    onMounted,
-    onBeforeUnmount,
-    nextTick,
-    watch,
-    onUnmounted,
-    computed,
-} from "vue";
+import {ref, computed, watch, onMounted, onBeforeUnmount, onUnmounted, nextTick} from "vue";
 import { ElMessage, ElMessageBox } from "element-plus";
 import type { UploadFile } from "element-plus";
 import * as monaco from "monaco-editor";
@@ -559,7 +574,7 @@ const saveSettings = () => {
 // ==================== 设置持久化管理结束 ====================
 
 const getMessageOffset = () => {
-    return isFullscreen.value ? 10 : 56.5;
+    return isFullscreen.value ? 5 : 51.5;
 };
 const MAX_FILE_SIZE = 5 * 1024 * 1024; // 文件大小限制：5MB
 const MAX_LINES = 100000; // 最大行数限制
@@ -625,6 +640,12 @@ const MAX_ARCHIVE_TOTAL_SIZE = 10 * 1024 * 1024;
 const MAX_ARCHIVE_COUNT = 20;
 
 const archives = ref<JsonArchive[]>([]);
+const draggingArchiveId = ref<string | null>(null);
+const dragOverArchiveId = ref<string | null>(null);
+const dragEnabledArchiveId = ref<string | null>(null);
+const dropIndicatorIndex = ref<number | null>(null);
+let archiveLongPressTimer: number | null = null;
+const archiveListRef = ref<HTMLElement | null>(null);
 
 const loadArchives = () => {
     if (typeof window === "undefined") return;
@@ -1114,35 +1135,28 @@ const showOutputActions = computed(() => {
     return rightPanelWidthPx >= BUTTON_MIN_WIDTH;
 });
 
-// 添加消息提示函数
-const showSuccess = (message: string) => {
+// 消息提示配置
+const MESSAGE_CUSTOM_CLASS = "json-tool-message";
+type MessageType = "success" | "error" | "warning" | "info";
+const notify = (type: MessageType, message: string, duration?: number) => {
+    // 使用 CSS 变量让自定义类覆盖全局 .el-message 的 top:7px!important
+    if (typeof document !== "undefined") {
+        document.documentElement.style.setProperty("--json-message-offset", `${getMessageOffset()}px`);
+    }
     ElMessage({
         message,
-        type: "success",
-    });
-};
-
-const showError = (message: string) => {
-    ElMessage({
-        message,
-        type: "error",
-    });
-};
-
-const showWarning = (message: string) => {
-    ElMessage({
-        message,
-        type: "warning",
-    });
-};
-
-const showInfo = (message: string, duration: number = 300) => {
-    ElMessage({
-        message,
-        type: "info",
+        type,
         duration,
+        offset: getMessageOffset(),
+        customClass: MESSAGE_CUSTOM_CLASS,
     });
 };
+
+// 添加消息提示函数
+const showSuccess = (message: string, duration?: number) => notify("success", message, duration);
+const showError = (message: string, duration?: number) => notify("error", message, duration);
+const showWarning = (message: string, duration?: number) => notify("warning", message, duration);
+const showInfo = (message: string, duration: number = 300) => notify("info", message, duration);
 
 // 更新编辑器行号宽度
 const updateLineNumberWidth = (
@@ -1151,8 +1165,8 @@ const updateLineNumberWidth = (
     if (!editor) return;
 
     const lineCount = editor.getModel()?.getLineCount() || 0;
-    // 当行数小于999时，固定为3位数宽度；否则按实际行数计算
-    const digitCount = lineCount < 999 ? 3 : String(lineCount).length;
+    // 当行数小于999，固定为2位宽度；否则按实际行数计算
+    const digitCount = lineCount < 99 ? 2 : String(lineCount).length;
     const minChars = digitCount + 1;
 
     editor.updateOptions({
@@ -1206,8 +1220,12 @@ const getEditorOptions = (
     language,
     theme: "vs",
     readOnly: isReadOnly,
+    cursorBlinking: "blink" as const, // 确保光标闪烁
+    cursorStyle: "line" as const, // 细线光标
+    renderLineHighlightOnlyWhenFocus: false, // 保持行高亮，辅助定位
 
     // 外观配置
+    renderLineHighlight: "line" as const, // 仅高亮内容行，不高亮行号区域
     minimap: { enabled: false }, // 禁用右侧的代码概览图
     lineNumbers: "on" as const, // 启用行号
     roundedSelection: true, // 启用圆角选择
@@ -1251,7 +1269,7 @@ const getEditorOptions = (
     fontSize: fontSize.value, // 字体大小设置
     autoClosingBrackets: "languageDefined" as const, // 根据语言自动闭合括号
     autoClosingQuotes: "languageDefined" as const, // 根据语言自动闭合引号
-    formatOnPaste: true, // 启用粘贴时自动格式化
+    formatOnPaste: false, // 启用粘贴时自动格式化
     maxUndoRedoEntries: 100, // 历史记录可撤销/重做的最大步数为100
     useTabStops: false, // 禁用TabStop
     maxTokenizationLineLength: 100000,
@@ -2323,8 +2341,6 @@ const debouncedUpdateLineNumberWidth = debounce(updateLineNumberWidth, 150);
 
 // 监听全屏状态变化
 watch(isFullscreen, () => {
-    // 更新消息提示位置
-    updateMessageOffset();
     // 等待 DOM 更新
     nextTick(() => {
         setTimeout(() => {
@@ -2426,34 +2442,6 @@ watch(
     { deep: true }
 );
 
-// 保存消息提示样式元素的引用，以便动态更新
-let messageStyleElement: HTMLStyleElement | null = null;
-
-// 更新消息提示位置的函数
-const updateMessageOffset = () => {
-    if (typeof window === "undefined" || !messageStyleElement) return;
-    const offset = getMessageOffset();
-    messageStyleElement.textContent = `
-        .el-message {
-            top: ${offset}px !important;
-            z-index: 9999 !important;
-            left: auto !important;
-            right: 25px !important;
-            transform: translateX(0) !important;
-        }
-    `;
-};
-
-// ==================== onMounted 辅助函数 ====================
-
-// 初始化消息样式
-const initializeMessageStyles = () => {
-    if (typeof window === "undefined") return;
-    messageStyleElement = document.createElement("style");
-    updateMessageOffset();
-    document.head.appendChild(messageStyleElement);
-};
-
 // 初始化Monaco环境
 const initializeMonacoEnvironment = () => {
     if (typeof window === "undefined") return;
@@ -2501,13 +2489,11 @@ const createOutputEditor = () => {
 };
 
 // 配置输入编辑器
-const configureInputEditor = () => {
+const configureInputEditor: () => void = () => {
     if (!inputEditor) return;
 
     // 输入编辑器始终使用2个空格缩进，不受格式化设置影响
-    inputEditor
-        .getModel()
-        ?.updateOptions({ tabSize: 2, indentSize: 2, insertSpaces: true });
+    inputEditor.getModel()?.updateOptions({ tabSize: 2, indentSize: 2, insertSpaces: true });
     // 同时更新编辑器选项，确保formatOnPaste使用2个空格
     inputEditor.updateOptions({ tabSize: 2, indentSize: 2 } as any);
 
@@ -2593,12 +2579,10 @@ const configureInputEditor = () => {
 };
 
 // 配置输出编辑器
-const configureOutputEditor = () => {
+const configureOutputEditor: () => void = () => {
     if (!outputEditor) return;
 
-    outputEditor
-        .getModel()
-        ?.updateOptions({ tabSize: indentSize.value, insertSpaces: true });
+    outputEditor.getModel()?.updateOptions({ tabSize: indentSize.value, insertSpaces: true });
     // 设置双击选中整个字符串并复制功能
     setupDoubleClickSelectString(outputEditor);
     // 设置选择变化监听
@@ -2710,7 +2694,6 @@ onMounted(async () => {
     window.addEventListener("keydown", handleEscapeKey);
 
     // 初始化基础环境
-    initializeMessageStyles();
     initializeMonacoEnvironment();
 
     // 添加延迟确保DOM完全渲染
@@ -2781,12 +2764,6 @@ onBeforeUnmount(() => {
     window.removeEventListener("resize", debouncedResize);
     window.removeEventListener("resize", checkToolBarScroll);
     window.removeEventListener("keydown", handleEscapeKey);
-
-    // 清理消息提示样式元素
-    if (messageStyleElement && messageStyleElement.parentNode) {
-        messageStyleElement.parentNode.removeChild(messageStyleElement);
-        messageStyleElement = null;
-    }
 
     // 清理 ResizeObserver
     if (inputEditorResizeObserver) {
@@ -2992,11 +2969,40 @@ function customStringify(
             try {
                 parsedValue = JSON5.parse(`${quote}${originalEscaped}${quote}`);
                 // JSON5.parse 成功时，需要将 \xXX 智能转换为标准JSON转义序列
-                // 控制字符转换为标准转义（\n, \t等），可打印字符保持为实际字符
-                // 这样既保留了原始字符串中的其他转义序列（如 \uXXXX），又确保了 \xXX 被正确转换
-                finalEscaped = originalEscaped.replace(/\\x([0-9a-fA-F]{2})/gi, (match, hex) => {
-                    return convertHexToJsonEscape(hex);
-                });
+                // 方法：基于解析后的字符值重新构建转义形式，确保控制字符被正确转换
+                // 遍历解析后的字符串，对于每个字符：
+                // 1. 如果是控制字符（0x7F-0x9F），转换为 \uXXXX
+                // 2. 如果是标准转义字符，使用标准转义（\n, \t 等）
+                // 3. 其他字符保持原样
+                finalEscaped = "";
+                for (let i = 0; i < parsedValue.length; i++) {
+                    const char = parsedValue[i];
+                    const codePoint = char.charCodeAt(0);
+                    
+                    // 控制字符（0x7F-0x9F）必须转换为 \uXXXX
+                    if (codePoint >= 0x7F && codePoint <= 0x9F) {
+                        finalEscaped += "\\u" + ("0000" + codePoint.toString(16)).slice(-4).toLowerCase();
+                    } else {
+                        // 标准转义字符
+                        switch (codePoint) {
+                            case 0x08: finalEscaped += "\\b"; break;  // 退格
+                            case 0x09: finalEscaped += "\\t"; break;  // 制表符
+                            case 0x0A: finalEscaped += "\\n"; break;  // 换行符
+                            case 0x0C: finalEscaped += "\\f"; break;  // 换页
+                            case 0x0D: finalEscaped += "\\r"; break;  // 回车符
+                            case 0x22: finalEscaped += '\\"'; break;  // 双引号
+                            case 0x5C: finalEscaped += "\\\\"; break; // 反斜杠
+                            default:
+                                // 其他控制字符（0x00-0x1F）转换为 \uXXXX
+                                if (codePoint <= 0x1F) {
+                                    finalEscaped += "\\u" + ("0000" + codePoint.toString(16)).slice(-4).toLowerCase();
+                                } else {
+                                    // 可打印字符保持原样
+                                    finalEscaped += char;
+                                }
+                        }
+                    }
+                }
             } catch {
                 // 解析失败，说明包含无效转义序列，手动解析
                 parsedValue = "";
@@ -5513,10 +5519,7 @@ const handleSaveArchive = () => {
             archives.value.unshift(archive);
             saveArchives();
 
-            ElMessage.success({
-                message: "已保存到本地存档（当前会话有效）",
-                offset: getMessageOffset(),
-            });
+            showSuccess("已保存到本地存档（当前会话有效）");
         };
         archiveNameDialogVisible.value = true;
     } else {
@@ -5539,10 +5542,7 @@ const handleSaveArchive = () => {
         archives.value.unshift(archive);
         saveArchives();
 
-        ElMessage.success({
-            message: "已保存到本地存档（当前会话有效）",
-            offset: getMessageOffset(),
-        });
+        showSuccess("已保存到本地存档（当前会话有效）");
     }
 };
 
@@ -5566,10 +5566,7 @@ const handleArchiveCommand = async (command: string) => {
 
         archives.value = [];
         saveArchives();
-        ElMessage.success({
-            message: "已清空所有存档",
-            offset: getMessageOffset(),
-        });
+        showSuccess("已清空所有存档");
         return;
     }
 
@@ -5591,10 +5588,7 @@ const handleArchiveCommand = async (command: string) => {
     updateLineNumberWidth(outputEditor);
     updateEditorHeight(outputEditor);
 
-    ElMessage.success({
-        message: `已加载存档：${archive.name}`,
-        offset: getMessageOffset(),
-    });
+    showSuccess(`已加载存档：${archive.name}`);
 };
 
 // 处理加载分享的JSON数据到输入区域
@@ -5784,7 +5778,10 @@ watch(
 
 // 开始拖动存档侧边栏分割线
 const startArchiveResize = (e: MouseEvent | TouchEvent) => {
-    e.preventDefault();
+    // 触摸场景通过 touch-action:none 阻止滚动，鼠标场景保持 preventDefault
+    if (!("touches" in e)) {
+        e.preventDefault();
+    }
     e.stopPropagation();
 
     isArchiveResizing.value = true;
@@ -5873,10 +5870,7 @@ const handleDeleteArchive = async (item: JsonArchive) => {
     if (index !== -1) {
         archives.value.splice(index, 1);
         saveArchives();
-        ElMessage.success({
-            message: "已删除存档",
-            offset: getMessageOffset(),
-        });
+        showSuccess("已删除存档");
     }
 };
 
@@ -5898,12 +5892,157 @@ const handleRenameArchive = (item: JsonArchive) => {
         item.name = normalizedName;
         saveArchives();
 
-        ElMessage.success({
-            message: "已更新存档名称",
-            offset: getMessageOffset(),
-        });
+        showSuccess("已更新存档名称");
     };
     archiveNameDialogVisible.value = true;
+};
+
+// 长按启用拖拽
+const clearArchivePressTimer = () => {
+    if (archiveLongPressTimer !== null) {
+        window.clearTimeout(archiveLongPressTimer);
+        archiveLongPressTimer = null;
+    }
+};
+
+const onArchivePressStart = (id: string, event: MouseEvent | TouchEvent) => {
+    // 仅响应左键或单指触摸
+    if ("button" in event && event.button !== 0) return;
+    clearArchivePressTimer();
+    archiveLongPressTimer = window.setTimeout(() => {
+        dragEnabledArchiveId.value = id;
+    }, 120); // 缩短长按延时，提升响应
+};
+
+const onArchivePressEnd = () => {
+    clearArchivePressTimer();
+};
+
+// 拖动排序存档列表
+const resetArchiveDragState = () => {
+    draggingArchiveId.value = null;
+    dragOverArchiveId.value = null;
+    dragEnabledArchiveId.value = null;
+    dropIndicatorIndex.value = null;
+    clearArchivePressTimer();
+};
+
+const onArchiveDragStart = (item: JsonArchive, event: DragEvent) => {
+    if (dragEnabledArchiveId.value !== item.id) {
+        event.preventDefault();
+        return;
+    }
+    draggingArchiveId.value = item.id;
+    dragOverArchiveId.value = null;
+    event.dataTransfer?.setData("text/plain", item.id);
+    if (event.dataTransfer) {
+        event.dataTransfer.effectAllowed = "move";
+    }
+    document.body.style.userSelect = "none";
+    document.body.style.cursor = "grabbing";
+};
+
+const onArchiveDragEnter = (targetId: string) => {
+    if (!draggingArchiveId.value || draggingArchiveId.value === targetId) return;
+    dragOverArchiveId.value = targetId;
+};
+
+const computeDropIndex = (clientY: number): number => {
+    const listEl = archiveListRef.value;
+    if (!listEl) return archives.value.length;
+    const items = Array.from(listEl.querySelectorAll(".archive-item")) as HTMLElement[];
+    if (!items.length) return 0;
+    for (let i = 0; i < items.length; i++) {
+        const rect = items[i].getBoundingClientRect();
+        const mid = rect.top + rect.height / 2;
+        if (clientY < mid) {
+            return i;
+        }
+    }
+    return items.length;
+};
+
+const onArchiveDragOver = (event: DragEvent, targetId: string, targetIndex: number) => {
+    if (!draggingArchiveId.value) return;
+    event.preventDefault();
+    if (event.dataTransfer) {
+        event.dataTransfer.dropEffect = "move";
+    }
+
+    // 计算指示线位置（基于列表整体，避免命中偏差）
+    dropIndicatorIndex.value = computeDropIndex(event.clientY);
+    dragOverArchiveId.value = targetId;
+};
+
+// 处理在列表空白区域或指示线处的拖拽
+const onArchiveListDragOver = (event: DragEvent) => {
+    if (!draggingArchiveId.value) return;
+    event.preventDefault();
+    if (event.dataTransfer) {
+        event.dataTransfer.dropEffect = "move";
+    }
+    dropIndicatorIndex.value = computeDropIndex(event.clientY);
+};
+
+const onArchiveListDrop = (event: DragEvent) => {
+    if (!draggingArchiveId.value) {
+        resetArchiveDragState();
+        return;
+    }
+    dropIndicatorIndex.value = computeDropIndex(event.clientY);
+    // 如果已计算指示位置，走统一的 drop 流程
+    if (dropIndicatorIndex.value !== null) {
+        const sourceId = draggingArchiveId.value;
+        const sourceIndex = archives.value.findIndex((a) => a.id === sourceId);
+        const targetIndex = dropIndicatorIndex.value;
+        if (sourceIndex !== -1) {
+            const [moved] = archives.value.splice(sourceIndex, 1);
+            let insertIndex = targetIndex;
+            if (sourceIndex < targetIndex) {
+                insertIndex = targetIndex - 1;
+            }
+            insertIndex = Math.max(0, Math.min(insertIndex, archives.value.length));
+            archives.value.splice(insertIndex, 0, moved);
+            saveArchives();
+        }
+    }
+    resetArchiveDragState();
+};
+
+const onArchiveDrop = (targetId: string, event?: DragEvent) => {
+    const sourceId = draggingArchiveId.value;
+    if (!sourceId || sourceId === targetId) {
+        resetArchiveDragState();
+        return;
+    }
+
+    const sourceIndex = archives.value.findIndex((a) => a.id === sourceId);
+    const targetIndex =
+        dropIndicatorIndex.value ??
+        (event ? computeDropIndex(event.clientY) : archives.value.findIndex((a) => a.id === targetId));
+
+    if (sourceIndex === -1 || targetIndex === -1) {
+        resetArchiveDragState();
+        return;
+    }
+
+    const [moved] = archives.value.splice(sourceIndex, 1);
+    let insertIndex = targetIndex;
+    // 如果原位置在目标之前，删除后目标索引需要前移一位
+    if (sourceIndex < targetIndex) {
+        insertIndex = targetIndex - 1;
+    }
+    // 防御：确保在范围内
+    insertIndex = Math.max(0, Math.min(insertIndex, archives.value.length));
+    archives.value.splice(insertIndex, 0, moved);
+    saveArchives();
+    resetArchiveDragState();
+};
+
+const onArchiveDragEnd = () => {
+    resetArchiveDragState();
+    document.body.style.userSelect = "";
+    document.body.style.cursor = "";
 };
 
 // 从URL参数加载分享数据
@@ -6825,14 +6964,36 @@ const handleFileUpload = async (uploadFile: UploadFile) => {
         // 更新编辑器 - 将文件原始内容展示到输入区域
         if (inputEditor) {
             inputEditor.setValue(content);
+
+            // 根据文件内容推断缩进宽度（默认 2）
+            const detectIndentSize = (text: string): { size: number; insertSpaces: boolean } => {
+                const lines = text.split("\n");
+                for (const line of lines) {
+                    const match = line.match(/^[ \t]+(?=\S)/);
+                    if (match) {
+                        const indentStr = match[0];
+                        if (indentStr.includes("\t")) {
+                            return { size: 4, insertSpaces: false };
+                        }
+                        return { size: indentStr.length || 2, insertSpaces: true };
+                    }
+                }
+                return { size: 2, insertSpaces: true };
+            };
+
+            const { size, insertSpaces } = detectIndentSize(content);
+
             updateLineNumberWidth(inputEditor);
             updateEditorHeight(inputEditor);
-            // 确保使用2空格缩进
-            inputEditor
-                .getModel()
-                ?.updateOptions({ tabSize: 2, indentSize: 2, insertSpaces: true });
+
+            const model = inputEditor.getModel();
+            model?.updateOptions({
+                tabSize: size,
+                indentSize: size,
+                insertSpaces,
+            });
             // 同时更新编辑器选项
-            inputEditor.updateOptions({ tabSize: 2, indentSize: 2 } as any);
+            inputEditor.updateOptions({ tabSize: size, indentSize: size, insertSpaces } as any);
         }
 
         // 清空outputEditor的内容
@@ -7314,12 +7475,11 @@ const transferToInput = (e: MouseEvent) => {
             return;
         }
 
-        // 解析 JSON 数据并重新格式化为2个空格缩进
+        // 解析 JSON 数据并重新格式化为2个空格缩进（写死2空格）
         let formattedContent: string;
         try {
-            // 先预处理 JSON（处理注释、尾逗号等）
+            // 先预处理 JSON（支持注释、尾逗号等）
             const preprocessed = preprocessJSON(outputContent);
-            // 重新格式化为2个空格缩进
             formattedContent = customStringify(
                 preprocessed.data,
                 null,
@@ -7379,13 +7539,20 @@ const transferToInput = (e: MouseEvent) => {
 </script>
 
 <style scoped>
+/* 全局消息样式（配合 customClass 使用） */
+:global(.json-tool-message) {
+    right: 15px;
+    left: auto;
+    transform: translateX(0);
+    z-index: 9999;
+}
+
 /* 折叠信息文本样式 */
 :deep(.folding-info-text) {
     color: #909399;
 }
 
 .json-tool-container {
-    padding: 5px;
     display: flex;
     flex-direction: column;
     height: calc(100vh - 165px);
@@ -7439,10 +7606,11 @@ const transferToInput = (e: MouseEvent) => {
     top: 0;
     bottom: 0;
     z-index: 1500;
-    width: calc(100% - 10px);
-    height: calc(100% - 10px);
+    left: 0;
+    right: 0;
+    width: 100vw;
+    height: 100vh;
     background-color: #f0f2f5;
-    box-shadow: 0 0 20px rgba(0, 0, 0, 0.1);
     animation: fullscreenEnter 0.4s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
@@ -7479,7 +7647,6 @@ const transferToInput = (e: MouseEvent) => {
 /* 工具栏包装器 */
 .tool-bar-wrapper {
     position: relative;
-    margin-bottom: 4px;
     display: flex;
     align-items: center;
     min-height: 48px;
@@ -7495,14 +7662,9 @@ const transferToInput = (e: MouseEvent) => {
     overflow-x: auto;
     overflow-y: hidden;
     background-color: #ffffff;
-    border-radius: 6px;
-    box-shadow: 0 2px 12px 0 rgba(0, 0, 0, 0.03);
-    border: 1px solid #ebeef5;
     position: relative;
     flex: 1;
     scroll-behavior: smooth;
-    -webkit-overflow-scrolling: touch;
-    /* iOS 平滑滚动 */
     scrollbar-width: none;
     /* Firefox 隐藏滚动条 */
     -ms-overflow-style: none;
@@ -7665,6 +7827,7 @@ const transferToInput = (e: MouseEvent) => {
     width: 24px;
     background-color: #eef0f6;
     cursor: col-resize;
+    touch-action: none;
     position: relative;
     z-index: 10;
     transition: background-color 0.2s;
@@ -7700,7 +7863,6 @@ const transferToInput = (e: MouseEvent) => {
     padding: 10px 15px;
     background: linear-gradient(to bottom, #fafbfc, #f6f8fa);
     border-bottom: 1px solid #e4e7ed;
-    /* 确保头部布局变化是瞬时的，无过渡动画，避免拖动时标题换行 */
     transition: none !important;
 }
 
@@ -7755,7 +7917,6 @@ const transferToInput = (e: MouseEvent) => {
     flex: 1;
     min-height: 0;
     background-color: white;
-    border: 1px solid #e4e7ed;
     border-top: none;
     border-bottom: none;
     overflow: hidden;
@@ -7773,7 +7934,6 @@ const transferToInput = (e: MouseEvent) => {
 .editor-status-bar {
     height: 22px;
     background: linear-gradient(to bottom, #fafbfc, #f5f7fa);
-    border: 1px solid #e4e7ed;
     border-top: none;
     display: flex;
     align-items: center;
@@ -7849,6 +8009,21 @@ const transferToInput = (e: MouseEvent) => {
     background: transparent !important;
 }
 
+/* 自定义当前行高亮样式 */
+:deep(.monaco-editor .current-line) {
+    background-color: rgba(64, 158, 255, 0.06) !important;
+    border: none !important;
+}
+
+/* 禁用行号区域的高亮 */
+:deep(.monaco-editor .current-line-margin) {
+    background-color: transparent !important;
+}
+
+:deep(.monaco-editor .margin .current-line) {
+    background-color: transparent !important;
+}
+
 .collapse-control {
     display: flex;
     gap: 8px;
@@ -7870,6 +8045,19 @@ const transferToInput = (e: MouseEvent) => {
 
 :deep(.el-overlay) {
     z-index: 1800 !important;
+}
+
+/* 当设置弹窗打开时，隐藏其遮罩层的滚动条 */
+:deep(.el-overlay-dialog) {
+    /* 隐藏滚动条但保持滚动功能 */
+    scrollbar-width: none; /* Firefox */
+    -ms-overflow-style: none; /* IE 和 Edge */
+}
+
+:deep(.el-overlay-dialog)::-webkit-scrollbar {
+    display: none; /* Chrome, Safari, Opera */
+    width: 0;
+    height: 0;
 }
 
 :deep(.level-select) {
@@ -8043,6 +8231,14 @@ const transferToInput = (e: MouseEvent) => {
     margin-bottom: 0 !important;
 }
 
+/* 确保弹窗内容区域可以滚动 */
+.settings-dialog-wrapper :deep(.el-dialog__body) {
+    overflow-y: auto;
+    flex: 1;
+    min-height: 0; /* 重要：允许 flex 子元素缩小 */
+    max-height: 100%; /* 确保不超过父容器高度 */
+}
+
 .settings-dialog-content {
     padding: 0;
 }
@@ -8053,7 +8249,6 @@ const transferToInput = (e: MouseEvent) => {
 }
 
 .settings-dialog-content :deep(.el-collapse-item) {
-    border: 1px solid #e4e7ed;
     border-radius: 4px;
     margin-bottom: 8px;
 }
@@ -8297,9 +8492,10 @@ const transferToInput = (e: MouseEvent) => {
 
 /* 存档侧边栏分割线 */
 .archive-resizer {
-    width: 2px;
+    width: 3px;
     background-color: #e4e7ed;
     cursor: col-resize;
+    touch-action: none;
     flex-shrink: 0;
     position: relative;
     transition: background-color 0.2s;
@@ -8327,6 +8523,11 @@ const transferToInput = (e: MouseEvent) => {
     cursor: pointer;
     font-size: 12px;
     color: #606266;
+    transition: background-color 0.12s ease, box-shadow 0.12s ease, opacity 0.12s ease;
+}
+
+.archive-item.drag-ready {
+    background-color: #f7faff;
 }
 
 .archive-name {
@@ -8340,6 +8541,23 @@ const transferToInput = (e: MouseEvent) => {
 .archive-actions {
     display: flex;
     align-items: center;
+}
+
+.archive-item.dragging {
+    opacity: 0.7;
+    background-color: #eef5ff;
+}
+
+.archive-item.drag-over {
+    background-color: #f7faff;
+}
+
+.archive-drop-indicator {
+    height: 2px;
+    background: #409eff;
+    margin: 2px 0;
+    border-radius: 1px;
+    pointer-events: none;
 }
 
 .archive-action-icon {
