@@ -6751,7 +6751,7 @@ const convertToXML = (
     )}</${rootName}>`;
 };
 
-// JSON 转 Go 结构体
+// JSON 转 Go 结构体（智能识别 struct vs map）
 const convertToGo = (obj: any): string => {
     const processedTypes = new Set<string>();
     let result = "";
@@ -6774,11 +6774,204 @@ const convertToGo = (obj: any): string => {
         return toCamelCase(key);
     };
 
+    // 获取值的类型标识（用于形状比较）
+    const getValueType = (value: any): string => {
+        if (Array.isArray(value)) {
+            if (value.length === 0) return "[]";
+            return `[]${getValueType(value[0])}`;
+        }
+        if (typeof value === "object" && value !== null) {
+            return "object";
+        }
+        return typeof value;
+    };
+
+    // 规则4：判断两个对象是否具有相同的形状（80% 相似度阈值）
+    const isSameShape = (a: any, b: any): boolean => {
+        if (typeof a !== typeof b) return false;
+        if (typeof a !== "object" || a === null || b === null) {
+            return a === b;
+        }
+        if (Array.isArray(a) !== Array.isArray(b)) return false;
+
+        const keysA = Object.keys(a);
+        const keysB = Object.keys(b);
+        if (keysA.length === 0 && keysB.length === 0) return true;
+
+        // 计算交集
+        const commonKeys = keysA.filter((k) => keysB.includes(k));
+        const allKeys = new Set([...keysA, ...keysB]);
+        const similarity = commonKeys.length / allKeys.size;
+
+        // 相似度需要 >= 80%
+        if (similarity < 0.8) return false;
+
+        // 检查共同字段的类型是否一致
+        for (const key of commonKeys) {
+            const typeA = getValueType(a[key]);
+            const typeB = getValueType(b[key]);
+            if (typeA !== typeB) {
+                // 如果都是对象，递归检查
+                if (typeA === "object" && typeB === "object") {
+                    if (!isSameShape(a[key], b[key])) return false;
+                } else {
+                    return false;
+                }
+            }
+        }
+
+        return true;
+    };
+
+    // 规则2：判断 key 是否"不可作为 Go 字段名"
+    const isInvalidGoFieldName = (key: string): boolean => {
+        // 数字开头
+        if (/^\d/.test(key)) return true;
+
+        // 含有大量数字（超过 key 长度的 30%）
+        const digitCount = (key.match(/\d/g) || []).length;
+        if (digitCount / key.length > 0.3) return true;
+
+        // 看起来像业务 ID（uuid、hash、code 等模式）
+        const idPatterns = [
+            /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i, // UUID
+            /^[0-9a-f]{32,}$/i, // Hash
+            /^[a-z0-9]{16,}$/i, // 长 ID
+            /_\d{4,}/, // 下划线+年份等
+            /-\d{4,}/, // 横线+年份等
+        ];
+        if (idPatterns.some((pattern) => pattern.test(key))) return true;
+
+        return false;
+    };
+
+    // 规则1：分析 key 形态一致性（提取正则特征）
+    const analyzeKeyPattern = (keys: string[]): { pattern: string | null; similarity: number } => {
+        if (keys.length < 2) return { pattern: null, similarity: 0 };
+
+        // 尝试提取共同前缀
+        let commonPrefix = "";
+        const minLength = Math.min(...keys.map((k) => k.length));
+        for (let i = 0; i < minLength; i++) {
+            const char = keys[0][i];
+            if (keys.every((k) => k[i] === char)) {
+                commonPrefix += char;
+            } else {
+                break;
+            }
+        }
+
+        // 尝试提取共同后缀
+        let commonSuffix = "";
+        for (let i = 1; i <= minLength; i++) {
+            const char = keys[0][keys[0].length - i];
+            if (keys.every((k) => k[k.length - i] === char)) {
+                commonSuffix = char + commonSuffix;
+            } else {
+                break;
+            }
+        }
+
+        // 如果前缀或后缀足够长，认为有模式
+        if (commonPrefix.length >= 3 || commonSuffix.length >= 3) {
+            // 构建正则模式（简化版：前缀+可变部分+后缀）
+            const pattern = commonPrefix.length >= 3
+                ? `^${commonPrefix.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}.*`
+                : `.*${commonSuffix.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`;
+            return { pattern, similarity: 0.7 };
+        }
+
+        // 检查是否有相似的分隔符模式（如 model_xxx, user_xxx）
+        const separatorPatterns = [
+            /^[a-z]+_[a-z0-9_]+$/i, // 下划线分隔
+            /^[a-z]+-[a-z0-9-]+$/i, // 横线分隔
+        ];
+
+        const matchingPattern = separatorPatterns.find((pattern) =>
+            keys.every((k) => pattern.test(k))
+        );
+
+        if (matchingPattern) {
+            // 提取基础部分（如 model_ 或 user-）
+            const baseParts = keys.map((k) => {
+                const match = k.match(/^([a-z]+)[_-]/i);
+                return match ? match[1] : "";
+            });
+            if (baseParts.every((p) => p && p === baseParts[0])) {
+                return { pattern: `^${baseParts[0]}[_-].*`, similarity: 0.8 };
+            }
+        }
+
+        return { pattern: null, similarity: 0 };
+    };
+
+    // 智能判断：应该使用 map 还是 struct
+    const shouldUseMap = (obj: Record<string, any>): boolean => {
+        const keys = Object.keys(obj);
+        const values = Object.values(obj);
+
+        // 规则2：检查是否有无效的 Go 字段名（优先级最高）
+        // 如果 key 是数字开头或完全由数字组成，必须使用 map（Go 语法要求）
+        const invalidKeyCount = keys.filter(isInvalidGoFieldName).length;
+        if (invalidKeyCount > 0) {
+            // 只要有无效的 key，就使用 map（因为无法生成合法的 struct）
+            // 特别是数字开头的 key，Go 语法不允许作为字段名
+            if (keys.some((k) => /^\d/.test(k))) {
+                return true; // 数字开头的 key 必须用 map
+            }
+            // 其他无效 key，如果超过 50% 也使用 map
+            if (invalidKeyCount / keys.length >= 0.5) {
+                return true;
+            }
+        }
+
+        // 规则3：Key 数量阈值（>= 5 个开始考虑 map）
+        if (keys.length >= 5) {
+            // 继续检查其他规则
+        } else if (keys.length < 3) {
+            // 少于 3 个 key，倾向于 struct（但前提是 key 都是有效的）
+            return false;
+        }
+
+        // 规则1：Key 形态一致性 + Value 结构一致性
+        const keyAnalysis = analyzeKeyPattern(keys);
+        if (keyAnalysis.pattern && keyAnalysis.similarity >= 0.7) {
+            // Key 有相似模式，检查 value 结构一致性
+            if (values.length >= 2) {
+                // 检查所有 value 是否具有相同形状
+                let sameShapeCount = 0;
+                for (let i = 1; i < values.length; i++) {
+                    if (
+                        typeof values[i] === "object" &&
+                        values[i] !== null &&
+                        !Array.isArray(values[i]) &&
+                        typeof values[0] === "object" &&
+                        values[0] !== null &&
+                        !Array.isArray(values[0])
+                    ) {
+                        if (isSameShape(values[0], values[i])) {
+                            sameShapeCount++;
+                        }
+                    }
+                }
+                const shapeSimilarity = sameShapeCount / (values.length - 1);
+                // 如果 80% 以上的 value 形状相同，使用 map
+                if (shapeSimilarity >= 0.8) {
+                    return true;
+                }
+            }
+        }
+
+        // 默认使用 struct
+        return false;
+    };
+
     // 获取 Go 类型
     const getGoType = (
         value: any,
         key: string,
-        parentKey: string = ""
+        parentKey: string = "",
+        isMapValue: boolean = false
     ): string => {
         if (Array.isArray(value)) {
             if (value.length === 0) return "[]interface{}";
@@ -6803,29 +6996,180 @@ const convertToGo = (obj: any): string => {
         return "interface{}";
     };
 
-    // 处理结构体
+    // 处理结构体或 map
     const processStruct = (
         obj: any,
         structName: string,
-        parentKey: string = ""
+        parentKey: string = "",
+        isRoot: boolean = false
     ): string => {
-        // 处理数组特殊情况 - 数组本身不需要添加到 processedTypes，直接处理元素
+        // 处理数组特殊情况
         if (Array.isArray(obj)) {
-            if (obj.length > 0 && typeof obj[0] === "object") {
-                // 如果 parentKey 为空（顶层数组），使用默认名称
-                const itemType = parentKey
-                    ? getStructName(parentKey, parentKey)
-                    : structName || "Item";
-                return processStruct(obj[0], itemType, parentKey);
+            if (obj.length === 0) return "";
+            
+            // 过滤出所有对象类型的元素
+            const objectElements = obj.filter(
+                (item) => typeof item === "object" && item !== null && !Array.isArray(item)
+            );
+            
+            if (objectElements.length === 0) return "";
+            
+            // 确定数组元素的类型名
+            // 如果 isRoot，使用 "Item" 作为元素类型名；否则使用 parentKey 或 structName
+            const elementTypeName = isRoot 
+                ? "Item" 
+                : (parentKey ? getStructName(parentKey, parentKey) : structName || "Item");
+            
+            // 检查数组元素是否应该使用 map
+            // 如果所有元素的 key 集合不同，应该使用 map
+            if (objectElements.length > 1) {
+                const allKeys = new Set<string>();
+                objectElements.forEach((elem) => {
+                    Object.keys(elem).forEach((k) => allKeys.add(k));
+                });
+                
+                // 检查每个元素的 key 集合是否相同
+                const firstKeys = new Set(Object.keys(objectElements[0]));
+                const allSameKeys = objectElements.every((elem) => {
+                    const elemKeys = new Set(Object.keys(elem));
+                    if (elemKeys.size !== firstKeys.size) return false;
+                    return Array.from(elemKeys).every((k) => firstKeys.has(k));
+                });
+                
+                // 如果 key 集合不同，检查是否应该用 map
+                if (!allSameKeys) {
+                    // 收集所有元素的 value（用于检查 value 结构是否一致）
+                    const allValues: any[] = [];
+                    objectElements.forEach((elem) => {
+                        Object.values(elem).forEach((val) => {
+                            if (typeof val === "object" && val !== null && !Array.isArray(val)) {
+                                allValues.push(val);
+                            }
+                        });
+                    });
+                    
+                    // 检查所有 value 的结构是否一致
+                    let valuesSameShape = true;
+                    if (allValues.length >= 2) {
+                        const firstValue = allValues[0];
+                        for (let i = 1; i < allValues.length; i++) {
+                            if (!isSameShape(firstValue, allValues[i])) {
+                                valuesSameShape = false;
+                                break;
+                            }
+                        }
+                    }
+                    
+                    // 如果 value 结构一致，使用 map[string]ValueType
+                    if (valuesSameShape && allValues.length > 0) {
+                        const valueTypeName = elementTypeName + "Value";
+                        const valueStructDef = processStruct(
+                            allValues[0],
+                            valueTypeName,
+                            parentKey,
+                            false
+                        );
+                        
+                        // 生成数组类型：[]map[string]ValueType
+                        // 如果 isRoot，使用 structName 作为最终类型名；否则使用 elementTypeName
+                        const finalTypeName = isRoot ? structName : elementTypeName;
+                        const mapTypeName = elementTypeName;
+                        return valueStructDef + 
+                               `type ${mapTypeName} map[string]${valueTypeName}\n\n` +
+                               (isRoot ? `type ${finalTypeName} []${mapTypeName}\n\n` : "");
+                    } else {
+                        // Value 结构不一致，使用 map[string]interface{}
+                        const finalTypeName = isRoot ? structName : elementTypeName;
+                        const mapTypeName = elementTypeName;
+                        return `type ${mapTypeName} map[string]interface{}\n\n` +
+                               (isRoot ? `type ${finalTypeName} []${mapTypeName}\n\n` : "");
+                    }
+                }
             }
+            
+            // Key 集合相同，使用第一个元素作为模板
+            const elementDef = processStruct(objectElements[0], elementTypeName, parentKey, false);
+            if (isRoot) {
+                return elementDef + `type ${structName} []${elementTypeName}\n\n`;
+            }
+            return elementDef;
+        }
+
+        // 如果不是对象，直接返回
+        if (typeof obj !== "object" || obj === null) {
             return "";
         }
 
+        const keys = Object.keys(obj);
+        if (keys.length === 0) {
+            return "";
+        }
+
+        // 智能判断：应该使用 map 还是 struct
+        const useMap = shouldUseMap(obj);
+
+        if (useMap) {
+            // 处理 map 情况
+            // 找到第一个非空对象 value 作为模板
+            let templateValue: any = null;
+            for (const value of Object.values(obj)) {
+                if (
+                    typeof value === "object" &&
+                    value !== null &&
+                    !Array.isArray(value)
+                ) {
+                    templateValue = value;
+                    break;
+                }
+            }
+
+            if (templateValue) {
+                // 生成 value 类型对应的结构体
+                const valueTypeName = structName.endsWith("Map")
+                    ? structName.replace(/Map$/, "Value")
+                    : structName + "Value";
+                
+                // 递归处理 value 类型（可能是 struct 或 map）
+                const valueStructDef = processStruct(
+                    templateValue,
+                    valueTypeName,
+                    parentKey,
+                    false
+                );
+
+                // 生成 map 类型定义
+                let mapDef = valueStructDef || "";
+
+                // 如果当前是根对象，生成 map 类型别名
+                if (isRoot) {
+                    mapDef += `type ${structName} map[string]${valueTypeName}\n\n`;
+                } else {
+                    // 非根对象，需要返回一个特殊标记，让调用方知道这是 map
+                    // 但我们仍然需要生成 value 类型定义
+                    // 使用一个特殊的前缀来标记这是 map 类型
+                    return `__MAP_TYPE__:${valueTypeName}:${mapDef}`;
+                }
+
+                return mapDef;
+            } else {
+                // 所有 value 都是基本类型，使用 map[string]interface{}
+                if (isRoot) {
+                    return `type ${structName} map[string]interface{}\n\n`;
+                }
+                // 非根对象返回特殊标记
+                return `__MAP_TYPE__:interface{}:`;
+            }
+        }
+
+        // 使用 struct（原有逻辑）
         // 对于非数组对象，检查是否已处理过
         if (processedTypes.has(structName)) return "";
         processedTypes.add(structName);
 
         let structDef = "";
+
+        // 存储字段类型映射（用于处理 map 类型）
+        const fieldTypeMap = new Map<string, string>();
 
         // 先处理所有嵌套的结构体
         for (const [key, value] of Object.entries(obj)) {
@@ -6833,11 +7177,30 @@ const convertToGo = (obj: any): string => {
                 if (Array.isArray(value)) {
                     if (value.length > 0 && typeof value[0] === "object") {
                         const itemType = getStructName(key);
-                        structDef += processStruct(value[0], itemType, key);
+                        structDef += processStruct(value[0], itemType, key, false);
                     }
                 } else {
                     const subType = getStructName(key);
-                    structDef += processStruct(value, subType, key);
+                    const nestedResult = processStruct(value, subType, key, false);
+                    
+                    // 检查返回的是 map 类型标记
+                    if (nestedResult && nestedResult.startsWith("__MAP_TYPE__:")) {
+                        // 解析 map 类型标记：__MAP_TYPE__:ValueTypeName:ValueDef
+                        const parts = nestedResult.split(":");
+                        if (parts.length >= 2) {
+                            const valueTypeName = parts[1];
+                            const valueDef = parts.slice(2).join(":");
+                            // 添加 value 类型定义
+                            if (valueDef) {
+                                structDef += valueDef;
+                            }
+                            // 记录字段类型为 map
+                            fieldTypeMap.set(key, `map[string]${valueTypeName}`);
+                        }
+                    } else {
+                        // 正常的结构体定义
+                        structDef += nestedResult;
+                    }
                 }
             }
         }
@@ -6849,7 +7212,13 @@ const convertToGo = (obj: any): string => {
         const indent = "    ";
         for (const [key, value] of Object.entries(obj)) {
             const fieldName = toCamelCase(key);
-            const goType = getGoType(value, key, parentKey);
+            let goType = fieldTypeMap.get(key);
+
+            // 如果没有在 map 类型映射中找到，使用常规类型
+            if (!goType) {
+                goType = getGoType(value, key, parentKey, false);
+            }
+
             structDef += `${indent}${fieldName} ${goType} \`json:"${key}"\`\n`;
         }
 
@@ -6864,15 +7233,16 @@ const convertToGo = (obj: any): string => {
     });
 
     try {
-        // 如果顶层是数组，使用 'Item' 作为默认名称；否则使用 'Root'
+        // 如果顶层是数组，使用 'Root' 作为最终类型名，'Item' 作为元素类型名
         if (Array.isArray(obj)) {
             if (obj.length > 0 && typeof obj[0] === "object") {
-                result = processStruct(obj, "Item");
+                // 对于数组，structName 是最终类型名（Root），元素类型名在 processStruct 内部处理
+                result = processStruct(obj, "Root", "", true);
             } else {
-                result = processStruct(obj, "Root");
+                result = processStruct(obj, "Root", "", true);
             }
         } else {
-            result = processStruct(obj, "Root");
+            result = processStruct(obj, "Root", "", true);
         }
         return result.trim();
     } catch (error: any) {
