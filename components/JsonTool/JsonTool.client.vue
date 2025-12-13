@@ -1337,24 +1337,26 @@ const updateIndentGuides = () => {
 // 更新输出编辑器配置（包括模型选项，确保缩进指南线正确显示）
 const updateOutputEditorConfig = (
     language: string = "json",
-    enableLargeFileFolding: boolean = false
+    enableLargeFileFolding: boolean = false,
+    customIndentSize?: number
 ) => {
     if (!outputEditor) return;
 
+    const size = customIndentSize ?? indentSize.value;
     const model = outputEditor.getModel();
     if (model) {
         monaco.editor.setModelLanguage(model, language);
         // 更新模型选项，确保缩进指南线正确显示
         model.updateOptions({
-            tabSize: indentSize.value,
-            indentSize: indentSize.value,
+            tabSize: size,
+            indentSize: size,
             insertSpaces: true,
         });
     }
 
     // 更新编辑器配置
     outputEditor.updateOptions(
-        getEditorOptions(indentSize.value, true, language, enableLargeFileFolding)
+        getEditorOptions(size, true, language, enableLargeFileFolding)
     );
 
     updateLineNumberWidth(outputEditor);
@@ -4312,9 +4314,12 @@ const handleConvert = (command: string) => {
             outputEditor.setValue(result);
 
             // 更新编辑器配置（包括模型选项，确保缩进指南线正确显示）
-            updateOutputEditorConfig(editorLanguage);
+            // Go 结构体使用 4 空格缩进，保持指南线间距一致
+            const goIndentSize = command === "go" ? 4 : undefined;
+            const enableLargeFile = editorLanguage === "json";
+            updateOutputEditorConfig(editorLanguage, enableLargeFile, goIndentSize);
 
-            showSuccess(`转换为 ${command.toUpperCase()} 成功`);
+            showSuccess(`转换为 ${command.toUpperCase()} 语言结构体成功`);
         }
     } catch (error: any) {
         showError("转换失败: " + error.message);
@@ -5402,13 +5407,6 @@ const normalizeArchiveName = (rawName: string): string => {
     return normalized.slice(0, 30);
 };
 
-// 检查存档名称是否已存在
-const isArchiveNameExists = (name: string, excludeId?: string): boolean => {
-    return archives.value.some(
-        (archive) => archive.name === name && archive.id !== excludeId
-    );
-};
-
 // 找到最小的未使用的数字（用于自动命名）
 const findNextAvailableNumber = (): number => {
     // 获取所有已使用的数字
@@ -5659,6 +5657,8 @@ let archiveResizeState: {
     minWidth: number;
     maxWidth: number;
 } | null = null;
+// 用于在拖动过程中节流编辑器布局更新
+let archiveLayoutRaf: number | null = null;
 
 // 使用 DOM 实际测量文本宽度（更准确）
 const measureTextWidth = (text: string): number => {
@@ -5826,6 +5826,14 @@ const handleArchiveResizeMove = (e: MouseEvent | TouchEvent) => {
         archiveResizeState.minWidth,
         Math.min(newWidth, archiveResizeState.maxWidth)
     );
+
+    // 存档侧边栏拖动时同步更新编辑器布局，避免滚动条与容器脱离
+    if (!archiveLayoutRaf) {
+        archiveLayoutRaf = requestAnimationFrame(() => {
+            archiveLayoutRaf = null;
+            updateEditorLayouts(true);
+        });
+    }
 };
 
 // 停止拖动存档侧边栏
@@ -5842,6 +5850,13 @@ const stopArchiveResize = () => {
     if (sidebar) {
         sidebar.style.transition = "";
     }
+
+    // 清理动画帧并补一次布局，防止滚动条残留偏移
+    if (archiveLayoutRaf) {
+        cancelAnimationFrame(archiveLayoutRaf);
+        archiveLayoutRaf = null;
+    }
+    nextTick(() => updateEditorLayouts(true));
 
     document.removeEventListener("mousemove", handleArchiveResizeMove);
     document.removeEventListener("mouseup", stopArchiveResize);
@@ -7205,21 +7220,32 @@ const updateEditorLayouts = (
     updateOutputEditor: boolean = true,
     forceWidth?: { inputWidth?: number; outputWidth?: number }
 ) => {
-    if (inputEditor) {
+    // 如果没有传入强制宽度，使用面板的实际宽度，避免受到存档侧边栏宽度的影响
+    let inputWidth = forceWidth?.inputWidth;
+    let outputWidth = forceWidth?.outputWidth;
+
+    if (inputWidth === undefined || outputWidth === undefined) {
+        const panels = document.querySelectorAll(
+            ".editor-container .editor-panel"
+        ) as NodeListOf<HTMLElement>;
+        if (panels.length >= 2) {
+            const [leftPanel, rightPanel] = panels;
+            inputWidth = inputWidth ?? leftPanel.clientWidth;
+            outputWidth = outputWidth ?? rightPanel.clientWidth;
+        }
+    }
+
+    if (inputEditor && inputWidth !== undefined) {
         const container = inputEditor.getContainerDomNode();
-        // 输入区域的滚动条需要实时紧贴分割线，所以拖动时也要更新
-        const width = forceWidth?.inputWidth ?? container.clientWidth;
         inputEditor.layout({
-            width: width,
+            width: inputWidth,
             height: container.clientHeight,
         });
     }
-    if (outputEditor && updateOutputEditor) {
+    if (outputEditor && updateOutputEditor && outputWidth !== undefined) {
         const container = outputEditor.getContainerDomNode();
-        // 预览区域的滚动条应该始终紧贴右边，拖动时也要更新让滚动条紧贴右边界
-        const width = forceWidth?.outputWidth ?? container.clientWidth;
         outputEditor.layout({
-            width: width,
+            width: outputWidth,
             height: container.clientHeight,
         });
     }
@@ -7280,10 +7306,13 @@ const handlePointerMove = (
 
     // 这样可以确保 Monaco Editor 接收到准确的宽度，从而正确计算滚动条位置
     const containerWidth = resizeState.rect.width;
-    const resizerWidth = 24; // 分割线宽度（固定值）
-    const availableWidth = containerWidth - resizerWidth;
+    const archiveWidth = archives.value.length ? archiveSidebarWidth.value : 0;
+    const archiveResizerWidth = archives.value.length ? 3 : 0;
+    const resizerWidth = 24; // 中间分割线宽度（固定值）
+    const availableWidth =
+        containerWidth - archiveWidth - archiveResizerWidth - resizerWidth;
 
-    // 计算面板的实际宽度（考虑分割线）
+    // 计算面板的实际宽度（考虑存档侧边栏和分割线）
     const inputWidth = Math.round((newWidth / 100) * availableWidth);
     const outputWidth = Math.round(((100 - newWidth) / 100) * availableWidth);
 
