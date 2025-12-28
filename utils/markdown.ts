@@ -41,5 +41,3 @@ export function renderMarkdownToHtml(markdown: string | undefined | null, maxLen
         return `<pre>${contentToRender}</pre>`;
     }
 }
-
-

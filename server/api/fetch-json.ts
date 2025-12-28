@@ -295,14 +295,6 @@ function logRequest(ip: string, url: string, method: string, success: boolean, e
     success: success,
     error: error ? error.substring(0, 100) : undefined, // 限制错误信息长度
   };
-  
-  // 生产环境可以写入日志文件或发送到日志服务
-  if (process.env.NODE_ENV === 'production') {
-    // 这里可以集成日志服务，如 Winston、Pino 等
-    console.log(JSON.stringify(logEntry));
-  } else {
-    console.log('[FetchJSON]', logEntry);
-  }
 }
 
 // 获取客户端IP地址

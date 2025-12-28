@@ -161,7 +161,7 @@
                                                 :debounce="100"
                                                 popper-class="field-path-autocomplete"
                                                 @select="(item) => handleFieldPathSelect(item, pathIndex)"
-                                                @input="(value) => handleFieldPathInput(value, pathIndex)"
+                                                @input="(value) => handleFieldPathInput(String(value), pathIndex)"
                                                 @keyup.enter="(event: KeyboardEvent) => handleFieldPathEnter(event, pathIndex)"
                                             >
                                                 <template #default="{ item }">

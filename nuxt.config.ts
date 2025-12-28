@@ -57,7 +57,7 @@ export default defineNuxtConfig({
     public: {
       baseURL: '/api-backend',
       // baseURL: "http://127.0.0.1:8080",
-      siteUrl: "https://liubing.xyz", // SEO: 网站URL，用于生成canonical链接和结构化数据
+      siteUrl: "https://liubing.xyz",
     },
     ssrApiBase: 'http://meta-api:8080'
     // ssrApiBase: "http://127.0.0.1:8080",

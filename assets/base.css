@@ -751,3 +751,81 @@ a {
     border-top: 1px solid #EDEDED;
     padding: 10px 12px 10px 12px;
 }
+
+
+/* ==============
+   全局表单与对话框统一样式（从各组件抽取，供所有弹窗共享）
+   ============== */
+
+.form-item {
+    margin-bottom: 20px;
+}
+
+.form-item:last-child {
+    margin-bottom: 0;
+}
+
+.form-label {
+    display: block;
+    margin-bottom: 8px;
+    font-size: 14px;
+    color: #606266;
+    font-weight: 500;
+}
+
+.form-hint {
+    margin-top: 5px;
+    font-size: 12px;
+    color: #909399;
+}
+
+.dialog-footer {
+    display: flex;
+    justify-content: flex-end;
+    gap: 10px;
+}
+
+
+/* 限制常见对话框最大高度，避免超出视口（适配 .share-dialog-wrapper 等类名） */
+
+.share-dialog-wrapper .el-dialog,
+.fetch-json-main-dialog .el-dialog,
+.config-delete-dialog-wrapper .el-dialog {
+    max-height: calc(100vh - 12vh);
+    display: flex;
+    flex-direction: column;
+    margin-top: 0 !important;
+    margin-bottom: 0 !important;
+}
+
+.autocomplete-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    width: 100%;
+}
+
+.path-text {
+    flex: 1;
+    font-size: 13px;
+    color: #303133;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.path-type {
+    font-size: 11px;
+    color: #909399;
+    padding: 2px 6px;
+    margin-left: 8px;
+    white-space: nowrap;
+}
+
+.item-meta {
+    font-size: 11px;
+    color: #909399;
+    padding: 2px 6px;
+    background: #f5f7fa;
+    border-radius: 12px;
+}
