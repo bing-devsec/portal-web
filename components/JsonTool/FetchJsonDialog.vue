@@ -40,8 +40,9 @@
                         </div>
                     </div>
                     <div class="form-item">
-                        <label class="form-label">请求URL <span style="color: #f56c6c;">*</span></label>
+                        <label class="form-label" for="fetch-json-url">请求URL <span style="color: #f56c6c;">*</span></label>
                         <el-input
+                            id="fetch-json-url"
                             v-model="fetchJsonUrl"
                             placeholder="请输入URL，例如: https://api.example.com/data.json"
                             clearable
@@ -52,8 +53,8 @@
                     </div>
 
                     <div class="form-item">
-                        <label class="form-label">请求方法 <span style="color: #f56c6c;">*</span></label>
-                        <el-select v-model="fetchJsonMethod" style="width: 100%">
+                        <label class="form-label" for="fetch-json-method">请求方法 <span style="color: #f56c6c;">*</span></label>
+                        <el-select id="fetch-json-method" v-model="fetchJsonMethod" style="width: 100%">
                             <el-option label="GET" value="GET" />
                             <el-option label="POST" value="POST" />
                             <el-option label="PUT" value="PUT" />
@@ -63,8 +64,9 @@
                     </div>
 
                     <div class="form-item" v-if="fetchJsonMethod !== 'GET'">
-                        <label class="form-label">请求体（可选）</label>
+                        <label class="form-label" for="fetch-json-body">请求体（可选）</label>
                         <el-input
+                            id="fetch-json-body"
                             v-model="fetchJsonBody"
                             type="textarea"
                             :autosize="{ minRows: 3, maxRows: requestBodyMaxRows }"
@@ -82,7 +84,7 @@
 
                     <div class="form-item">
                         <div class="form-label-row">
-                            <label class="form-label">请求头（可选）</label>
+                            <label class="form-label" for="header-key-0">请求头（可选）</label>
                             <el-button size="small" type="primary" @click="addHeader">添加</el-button>
                         </div>
                         <div v-if="showEmptyHeaderWarning && hasEmptyHeader && fetchJsonHeaders.length > 0" style="color: #f56c6c; font-size: 12px; margin-top: 5px; margin-bottom: 5px;">
@@ -95,6 +97,7 @@
                             <div v-for="(header, index) in fetchJsonHeaders" :key="index" class="header-item">
                                 <div class="header-input-wrapper">
                                     <el-autocomplete
+                                        :id="index === 0 ? 'header-key-0' : undefined"
                                         v-model="header.key"
                                         :fetch-suggestions="fetchHeaderKeySuggestions"
                                         placeholder="Header名称"
@@ -196,8 +199,9 @@
                 <!-- cURL命令方式 -->
                 <div v-if="fetchJsonMode === 'curl'" class="fetch-mode-content">
                     <div class="form-item">
-                        <label class="form-label">cURL命令</label>
+                        <label class="form-label" for="fetch-json-curl-command">cURL命令</label>
                         <el-input
+                            id="fetch-json-curl-command"
                             v-model="fetchJsonCurlCommand"
                             type="textarea"
                             :rows="6"
@@ -235,8 +239,9 @@
                     {{ saveConfigError }}
                 </div>
                 <div class="form-item">
-                    <label class="form-label">配置名称：</label>
+                    <label class="form-label" for="config-name">配置名称：</label>
                     <el-input
+                        id="config-name"
                         v-model="configName"
                         placeholder="请输入配置名称，例如：API测试环境"
                         clearable
@@ -384,6 +389,7 @@
 <script setup lang="ts">
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
+import { showMessageSuccess as showSuccess, showMessageError as showError, showMessageWarning as showWarning } from '~/utils/api';
 import { Warning, ArrowRight, DocumentAdd, Folder, Delete } from '@element-plus/icons-vue';
 import type { UploadFile } from 'element-plus';
 import type * as monaco from 'monaco-editor';
@@ -816,7 +822,7 @@ const handleCertUpload = (file: UploadFile) => {
     if (file.size && file.size > MAX_CERT_SIZE) {
         const sizeKB = (file.size / 1024).toFixed(2);
         const maxKB = (MAX_CERT_SIZE / 1024).toFixed(0);
-        ElMessage.error(`证书文件大小超过限制（${sizeKB} KB，最大 ${maxKB} KB）`);
+        showMessageError(`证书文件大小超过限制（${sizeKB} KB，最大 ${maxKB} KB）`);
         return;
     }
     
@@ -827,7 +833,7 @@ const handleCertUpload = (file: UploadFile) => {
         // 证书格式和大小校验
         const certValidation = validateCert(content);
         if (!certValidation.isValid) {
-            ElMessage.error(certValidation.error || '证书校验失败');
+            showMessageError(certValidation.error || '证书校验失败');
             return;
         }
         
@@ -835,7 +841,7 @@ const handleCertUpload = (file: UploadFile) => {
         certFileName.value = file.name;
     };
     reader.onerror = () => {
-        ElMessage.error('证书文件读取失败');
+        showMessageError('证书文件读取失败');
     };
     reader.readAsText(file.raw as Blob);
 };
@@ -846,7 +852,7 @@ const handleKeyUpload = (file: UploadFile) => {
     if (file.size && file.size > MAX_KEY_SIZE) {
         const sizeKB = (file.size / 1024).toFixed(2);
         const maxKB = (MAX_KEY_SIZE / 1024).toFixed(0);
-        ElMessage.error(`私钥文件大小超过限制（${sizeKB} KB，最大 ${maxKB} KB）`);
+        showMessageError(`私钥文件大小超过限制（${sizeKB} KB，最大 ${maxKB} KB）`);
         return;
     }
     
@@ -857,7 +863,7 @@ const handleKeyUpload = (file: UploadFile) => {
         // 私钥格式和大小校验
         const keyValidation = validateKey(content);
         if (!keyValidation.isValid) {
-            ElMessage.error(keyValidation.error || '私钥校验失败');
+            showMessageError(keyValidation.error || '私钥校验失败');
             return;
         }
         
@@ -865,7 +871,7 @@ const handleKeyUpload = (file: UploadFile) => {
         keyFileName.value = file.name;
     };
     reader.onerror = () => {
-        ElMessage.error('私钥文件读取失败');
+        showMessageError('私钥文件读取失败');
     };
     reader.readAsText(file.raw as Blob);
 };
@@ -1242,13 +1248,13 @@ const loadSavedConfigs = () => {
                 savedConfigs.value = configs.slice(0, MAX_CONFIG_COUNT);
                 saveConfigsToStorage(); // 保存截断后的配置
                 // 这个提示在加载配置时显示，使用 ElMessage 更合适，因为此时弹窗可能还没打开
-                ElMessage.warning(`配置数量超过限制，已自动保留前 ${MAX_CONFIG_COUNT} 个配置`);
+                showMessageWarning(`配置数量超过限制，已自动保留前 ${MAX_CONFIG_COUNT} 个配置`);
             } else {
                 savedConfigs.value = configs;
             }
         }
     } catch (error) {
-        ElMessage.error('加载配置失败，可能是数据格式错误');
+        showMessageError('加载配置失败，可能是数据格式错误');
     }
 };
 
@@ -1258,7 +1264,7 @@ const saveConfigsToStorage = () => {
     try {
         localStorage.setItem(CONFIG_STORAGE_KEY, JSON.stringify(savedConfigs.value));
     } catch (error) {
-        ElMessage.error('保存配置失败，可能是存储空间不足');
+        showMessageError('保存配置失败，可能是存储空间不足');
     }
 };
 
@@ -1469,7 +1475,7 @@ const cancelDelete = () => {
 // 执行删除
 const executeDelete = (index: number) => {
     if (index < 0 || index >= savedConfigs.value.length) {
-        ElMessage.error('配置索引无效');
+        showMessageError('配置索引无效');
         return;
     }
     
@@ -1491,28 +1497,28 @@ const fetchJsonData = async () => {
             // URL校验
             const urlValidation = validateUrl(fetchJsonUrl.value);
             if (!urlValidation.isValid) {
-                ElMessage.error(urlValidation.error || 'URL校验失败');
+                showMessageError(urlValidation.error || 'URL校验失败');
                 return;
             }
             
             // 请求头数量校验
             const headerCountValidation = validateHeaderCount(fetchJsonHeaders.value);
             if (!headerCountValidation.isValid) {
-                ElMessage.error(headerCountValidation.error || '请求头数量校验失败');
+                showMessageError(headerCountValidation.error || '请求头数量校验失败');
                 return;
             }
             
             // 请求头KV字段校验
             const headerValidation = validateHeaders(fetchJsonHeaders.value);
             if (!headerValidation.isValid) {
-                ElMessage.error(headerValidation.error || '请求头校验失败');
+                showMessageError(headerValidation.error || '请求头校验失败');
                 return;
             }
             
             // 请求体校验
             const bodyValidation = validateRequestBody(fetchJsonBody.value, fetchJsonMethod.value);
             if (!bodyValidation.isValid) {
-                ElMessage.error(bodyValidation.error || '请求体校验失败');
+                showMessageError(bodyValidation.error || '请求体校验失败');
                 return;
             }
             
@@ -1520,7 +1526,7 @@ const fetchJsonData = async () => {
             if (fetchJsonCert.value) {
                 const certValidation = validateCert(fetchJsonCert.value);
                 if (!certValidation.isValid) {
-                    ElMessage.error(certValidation.error || '证书校验失败');
+                    showMessageError(certValidation.error || '证书校验失败');
                     return;
                 }
             }
@@ -1529,19 +1535,19 @@ const fetchJsonData = async () => {
             if (fetchJsonKey.value) {
                 const keyValidation = validateKey(fetchJsonKey.value);
                 if (!keyValidation.isValid) {
-                    ElMessage.error(keyValidation.error || '私钥校验失败');
+                    showMessageError(keyValidation.error || '私钥校验失败');
                     return;
                 }
             }
         } else {
             if (!fetchJsonCurlCommand.value.trim()) {
-                ElMessage.error('请输入cURL命令');
+                showMessageError('请输入cURL命令');
                 return;
             }
             
             // cURL命令长度校验（防止过长命令）
             if (fetchJsonCurlCommand.value.length > MAX_CURL_COMMAND_LENGTH) {
-                ElMessage.error(`cURL命令长度超过限制（${fetchJsonCurlCommand.value.length} 字符，最大 ${MAX_CURL_COMMAND_LENGTH} 字符）`);
+                showMessageError(`cURL命令长度超过限制（${fetchJsonCurlCommand.value.length} 字符，最大 ${MAX_CURL_COMMAND_LENGTH} 字符）`);
                 return;
             }
         }
@@ -1594,10 +1600,10 @@ const fetchJsonData = async () => {
                 dialogVisible.value = false;
             }
         } else {
-            ElMessage.error(response.error || '获取JSON数据失败');
+            showMessageError(response.error || '获取JSON数据失败');
         }
     } catch (error: any) {
-        ElMessage.error('获取JSON数据失败: ' + (error.message || '未知错误'));
+        showMessageError('获取JSON数据失败: ' + (error.message || '未知错误'));
     } finally {
         fetchJsonLoading.value = false;
     }

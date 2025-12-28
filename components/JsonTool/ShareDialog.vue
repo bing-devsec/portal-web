@@ -161,9 +161,10 @@
                 <!-- 分享结果 -->
                 <div v-if="shareResult" class="share-result">
                     <div class="form-item">
-                        <label class="form-label">分享链接：</label>
+                        <label class="form-label" for="share-url">分享链接：</label>
                         <div class="share-url-container">
                             <el-input
+                                id="share-url"
                                 v-model="shareResult.shareUrl"
                                 readonly
                                 class="share-url-input"
@@ -186,9 +187,10 @@
                     </div>
 
                     <div class="form-item" v-if="password">
-                        <label class="form-label">访问密码：</label>
+                        <label class="form-label" for="access-password">访问密码：</label>
                         <div class="password-info">
                             <el-input
+                                id="access-password"
                                 v-model="password"
                                 readonly
                                 type="password"
@@ -246,6 +248,7 @@
 <script setup lang="ts">
 import { ref, computed, watch, nextTick } from 'vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
+import { showMessageSuccess as showSuccess, showMessageError as showError } from '~/utils/api';
 import { FingerprintDetector } from '~/utils/fingerprint';
 
 // Props
@@ -560,7 +563,7 @@ const copyShareUrl = async () => {
     try {
         // 优先使用现代 Clipboard API
         await navigator.clipboard.writeText(shareResult.value.shareUrl);
-        ElMessage.success('链接已复制');
+        showMessageSuccess('链接已复制');
     } catch (error) {
         // 降级方案：使用传统方法（execCommand 已废弃，但作为兼容性降级方案）
         const textarea = document.createElement('textarea');
@@ -580,7 +583,7 @@ const copyShareUrl = async () => {
                 throw new Error('execCommand failed');
             }
         } catch (err) {
-            ElMessage.error('复制失败，请手动复制');
+            showMessageError('复制失败，请手动复制');
         } finally {
             document.body.removeChild(textarea);
         }
@@ -593,7 +596,7 @@ const copyShareUrl = async () => {
 const copyText = async (text: string, successTip = '已复制') => {
     try {
         await navigator.clipboard.writeText(text);
-        ElMessage.success(successTip);
+        showMessageSuccess(successTip);
     } catch (error) {
         const textarea = document.createElement('textarea');
         textarea.value = text;
@@ -608,12 +611,12 @@ const copyText = async (text: string, successTip = '已复制') => {
         try {
             const success = document.execCommand('copy');
             if (success) {
-                ElMessage.success(successTip);
+                showMessageSuccess(successTip);
             } else {
                 throw new Error('execCommand failed');
             }
         } catch {
-            ElMessage.error('复制失败，请手动复制');
+            showMessageError('复制失败，请手动复制');
         } finally {
             document.body.removeChild(textarea);
         }
@@ -646,7 +649,7 @@ const copyPassword = async () => {
                 throw new Error('execCommand failed');
             }
         } catch (err) {
-            ElMessage.error('复制失败，请手动复制');
+            showMessageError('复制失败，请手动复制');
         } finally {
             document.body.removeChild(textarea);
         }
@@ -720,10 +723,10 @@ const fetchMyShares = async () => {
                 shareName: item.shareName,
             }));
         } else {
-            ElMessage.error(response.error || '获取分享列表失败');
+            showMessageError(response.error || '获取分享列表失败');
         }
     } catch (e: any) {
-        ElMessage.error(e?.message || '获取分享列表失败');
+        showMessageError(e?.message || '获取分享列表失败');
     } finally {
         mySharesLoading.value = false;
     }
@@ -754,9 +757,9 @@ const loadShareIntoEditor = async (row: any) => {
         if (res.success && res.data?.jsonData) {
             // 将内容发射给父组件处理注入到输入区域
             emit('loadSharedJson', res.data.jsonData);
-            ElMessage.success('已加载到输入区域');
+            showMessageSuccess('已加载到输入区域');
         } else {
-            ElMessage.error(res.error || '加载失败');
+            showMessageError(res.error || '加载失败');
         }
     } catch {
         // 用户取消等不提示错误

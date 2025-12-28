@@ -505,14 +505,14 @@
                         </div>
                     </template>
                 </el-autocomplete>
-                <div class="form-hint">指定要排序的数据范围。留空表示对整个数据排序；使用 [*] 表示数组元素，如 [*].items 表示排序范围是数组中每个对象的 items 字段</div>
+                <div class="form-hint">指定要排序的数据范围，留空表示对整个数据排序</div>
             </div>
 
             <div class="form-item">
                 <label class="form-label">
-                    排序字段 <span style="color: #f56c6c">*</span>
+                    排序字段
                 </label>
-                <el-autocomplete v-model="sortFieldName" :fetch-suggestions="queryFieldPaths"
+                <el-autocomplete v-model="sortFieldName" :fetch-suggestions="queryFieldPathsDisabled"
                     placeholder="输入字段名，如：score 或 user.name" clearable @select="handleFieldPathSelect"
                     @input="handleFieldPathInput" @keydown="handleFieldPathKeydown">
                     <template #default="{ item }">
@@ -524,16 +524,56 @@
                         </div>
                     </template>
                 </el-autocomplete>
-                <div class="form-hint">选择用于排序的字段名。支持点号分隔的嵌套字段，如 user.profile.age</div>
+                <div class="form-hint">选择用于排序的字段名，支持点号分隔的嵌套字段，如 user.profile.age</div>
             </div>
 
             <template #footer>
                 <el-button @click="fieldSortDialogVisible = false">取消</el-button>
-                <el-button type="primary" @click="executeFieldSort" :disabled="!sortFieldName.trim()">
+                <el-button type="warning" @click="showFieldSortDemo">演示示例</el-button>
+                <el-button type="primary" @click="executeFieldSort">
                     开始排序
                 </el-button>
             </template>
         </el-dialog>
+
+        <!-- 演示模式遮罩层 -->
+        <div v-if="isDemoMode" class="demo-overlay" @click="endDemoMode">
+            <div class="demo-content">
+                <!-- 教学弹窗 -->
+                <div v-if="demoGuideVisible && currentDemoStepData" class="demo-guide-popup" :style="{ top: popupTop + 'px', left: popupLeft + 'px', position: 'fixed' }" @click.stop>
+                    <div class="demo-guide-header" @mousedown.stop.prevent="startDrag">
+                        <h3>{{ currentDemoStepData.title }}</h3>
+                        <button class="demo-close-btn" @click="endDemoMode">×</button>
+                    </div>
+                    <div class="demo-guide-content">
+                        <p>{{ currentDemoStepData.content }}</p>
+                        <div v-if="isDemoMode" class="demo-current-settings">
+                            <strong>当前设置：</strong>
+                            <span style="margin-left:8px;">排序范围：<code>{{ sortRootPath || '(留空)' }}</code></span>
+                            <span style="margin-left:12px;">排序字段：<code>{{ sortFieldName || '(未设置)' }}</code></span>
+                        </div>
+                    </div>
+                    <div class="demo-guide-footer">
+                        <el-button
+                            v-for="(btn, index) in currentDemoStepData.buttons"
+                            :key="index"
+                            :type="btn.action === endDemoMode ? 'primary' : 'default'"
+                            @click="btn.action()"
+                        >
+                            {{ btn.text }}
+                        </el-button>
+                    </div>
+                    <!-- 步骤指示器 -->
+                    <div class="demo-step-indicator">
+                        <span
+                            v-for="i in demoStepsCount"
+                            :key="i"
+                            :class="['step-dot', { active: i === currentDemoStep + 1 }]"
+                        ></span>
+                    </div>
+                </div>
+            </div>
+        </div>
     </div>
 </template>
 
@@ -573,6 +613,7 @@ import ShareDialog from "./ShareDialog.vue";
 import DataMaskingDialog from "./DataMaskingDialog.vue";
 import ArchiveNameDialog from "./ArchiveNameDialog.vue";
 import JSON5 from "json5";
+import { showMessageSuccess as showSuccess, showMessageError as showError, showMessageWarning as showWarning, showMessageInfo as showInfo } from '~/utils/api';
 
 // ==================== 设置持久化管理 ====================
 const SETTINGS_STORAGE_KEY = "json-tool-settings";
@@ -763,7 +804,7 @@ const saveArchives = () => {
     try {
         sessionStorage.setItem(ARCHIVE_STORAGE_KEY, JSON.stringify(archives.value));
     } catch (error) {
-        showError("存档保存失败：浏览器存储空间可能已满");
+        showMessageError("存档保存失败：浏览器存储空间可能已满");
     }
 };
 
@@ -775,6 +816,134 @@ const settingsCollapseActiveNames = ref<string | number>("settings"); // 手风�
 const fieldSortDialogVisible = ref(false);
 const sortRootPath = ref<string>("");
 const sortFieldName = ref<string>("");
+
+// 字段排序演示相关状态
+const fieldSortDemoVisible = ref(false);
+const isDemoMode = ref(false);
+const demoGuideVisible = ref(false);
+const currentDemoStepData = ref<any>(null);
+const demoData = ref([
+    {
+        "id": 1,
+        "firstName": "Dylan",
+        "lastName": "Mullins",
+        "age": 25,
+        "education": [
+            {
+                "degree": "Diploma",
+                "major": "Medicine",
+                "university": "MIT",
+                "graduationYear": 2003
+            },
+            {
+                "degree": "Master",
+                "major": "Music",
+                "university": "Harvard University",
+                "graduationYear": 1983
+            }
+        ]
+    },
+    {
+        "id": 2,
+        "firstName": "Logan",
+        "lastName": "Boyle",
+        "age": 32,
+        "education": [
+            {
+                "degree": "Diploma",
+                "major": "Psychology",
+                "university": "Yale University",
+                "graduationYear": 2000
+            },
+            {
+                "degree": "Associate",
+                "major": "Engineering",
+                "university": "University of Pennsylvania",
+                "graduationYear": 2020
+            }
+        ]
+    }
+]);
+const demoResults = ref<any>({});
+const currentDemoStep = ref(0);
+const demoStepsCount = ref(0);
+// 保存演示开始前的输入编辑器内容，演示结束时恢复
+const savedInputContent = ref<string | null>(null);
+
+// 演示用 map 数据（用于展示对 map 的排序）
+const demoMapData = ref({
+    "B": {
+        "id": 102,
+        "key": "task-B",
+        "value": { "score": 100 }
+    },
+    "A": {
+        "id": 101,
+        "key": "task-A",
+        "value": { "score": 70 }
+    },
+    "C": {
+        "id": 103,
+        "key": "task-C",
+        "value": { "score": 80 }
+    },
+    "E": {
+        "id": 105,
+        "key": "task-E",
+        "value": { "score": 60 }
+    },
+    "D": {
+        "id": 104,
+        "key": "task-D",
+        "value": { "score": null }
+    }
+});
+
+// 拖拽相关状态
+const popupLeft = ref(0);
+const popupTop = ref(0);
+const isDragging = ref(false);
+const dragOffsetX = ref(0);
+const dragOffsetY = ref(0);
+const DEMO_POPUP_WIDTH = 640;
+
+const startDrag = (event: MouseEvent) => {
+    isDragging.value = true;
+    dragOffsetX.value = event.clientX - popupLeft.value;
+    dragOffsetY.value = event.clientY - popupTop.value;
+    // prevent text selection
+    document.body.style.userSelect = 'none';
+};
+
+const onMouseMove = (event: MouseEvent) => {
+    if (!isDragging.value) return;
+    popupLeft.value = event.clientX - dragOffsetX.value;
+    popupTop.value = event.clientY - dragOffsetY.value;
+    // clamp to viewport
+    const maxLeft = window.innerWidth - DEMO_POPUP_WIDTH - 16;
+    const maxTop = window.innerHeight - 120;
+    if (popupLeft.value < 8) popupLeft.value = 8;
+    if (popupTop.value < 8) popupTop.value = 8;
+    if (popupLeft.value > maxLeft) popupLeft.value = maxLeft;
+    if (popupTop.value > maxTop) popupTop.value = maxTop;
+};
+
+const endDrag = () => {
+    if (isDragging.value) {
+        isDragging.value = false;
+        document.body.style.userSelect = '';
+    }
+};
+
+onMounted(() => {
+    window.addEventListener('mousemove', onMouseMove);
+    window.addEventListener('mouseup', endDrag);
+});
+
+onBeforeUnmount(() => {
+    window.removeEventListener('mousemove', onMouseMove);
+    window.removeEventListener('mouseup', endDrag);
+});
 
 // 字段路径建议类型
 interface PathSuggestion {
@@ -1241,36 +1410,6 @@ const showOutputActions = computed(() => {
     // 宽度小于临界值时立即隐藏按钮，确保标题不换行
     return rightPanelWidthPx >= BUTTON_MIN_WIDTH;
 });
-
-// 消息提示配置
-const MESSAGE_CUSTOM_CLASS = "json-tool-message";
-type MessageType = "success" | "error" | "warning" | "info";
-const notify = (type: MessageType, message: string, duration?: number) => {
-    // 使用 CSS 变量让自定义类覆盖全局 .el-message 的 top:7px!important
-    if (typeof document !== "undefined") {
-        document.documentElement.style.setProperty(
-            "--json-message-offset",
-            `${getMessageOffset()}px`
-        );
-    }
-    ElMessage({
-        message,
-        type,
-        duration,
-        offset: getMessageOffset(),
-        customClass: MESSAGE_CUSTOM_CLASS,
-    });
-};
-
-// 添加消息提示函数
-const showSuccess = (message: string, duration?: number) =>
-    notify("success", message, duration);
-const showError = (message: string, duration?: number) =>
-    notify("error", message, duration);
-const showWarning = (message: string, duration?: number) =>
-    notify("warning", message, duration);
-const showInfo = (message: string, duration: number = 300) =>
-    notify("info", message, duration);
 
 // 更新编辑器行号宽度
 const updateLineNumberWidth = (
@@ -2418,7 +2557,7 @@ const setupDoubleClickSelectString = (
 
                     // 复制字符串值到剪贴板（不包含引号，保持原始转义字符形式）
                     copyToClipboard(stringValueText);
-                    showSuccess("字符串已复制到剪贴板");
+                    showMessageSuccess("字符串已复制到剪贴板");
                 }
             }, 10);
         }
@@ -2653,7 +2792,7 @@ const configureInputEditor: () => void = () => {
             // 检查行数和深度限制
             const checkResult = checkLinesAndDepth(cleanedContent);
             if (!checkResult.isValid) {
-                showError(checkResult.error || "内容不符合要求");
+                showMessageError(checkResult.error || "内容不符合要求");
                 maxLevel.value = 0;
                 selectedLevel.value = 0;
                 // 如果深度超过99层，自动清空输入区域内容
@@ -2848,10 +2987,10 @@ onMounted(async () => {
                 // 检查URL参数，加载分享数据
                 await loadSharedDataFromUrl();
             } catch (error: any) {
-                showError("Monaco编辑器初始化失败: " + error.message);
+                showMessageError("Monaco编辑器初始化失败: " + error.message);
             }
         } catch (error: any) {
-            showError("Monaco编辑器初始化失败: " + error.message);
+            showMessageError("Monaco编辑器初始化失败: " + error.message);
         }
     }, 200);
 
@@ -4039,14 +4178,14 @@ const foldByIndentation = () => {
                                 }
                             }, 50);
 
-                            showSuccess(`收缩到第 ${selectedLevel.value} 层成功`);
+                            showMessageSuccess(`收缩到第 ${selectedLevel.value} 层成功`);
                         } catch (e) {
                             // 发生错误时也要清除折叠状态
                             isFolding.value = false;
                             if (outputEditor) {
                                 updateEditorStatus(outputEditor, outputEditorStatus, false);
                             }
-                            showWarning("折叠操作失败, 请尝试手动折叠");
+                            showMessageWarning("折叠操作失败, 请尝试手动折叠");
                         }
                     }, 100);
                 }
@@ -4385,7 +4524,7 @@ const foldByIndentation = () => {
                         failedCount > 0
                             ? `收缩到第 ${selectedLevel.value} 层完成，成功 ${foldedCount} 个元素，失败 ${failedCount} 个元素`
                             : `收缩到第 ${selectedLevel.value} 层成功，共折叠 ${foldedCount} 个元素`;
-                    showSuccess(message);
+                    showMessageSuccess(message);
 
                     // 清除折叠状态标志
                     isFolding.value = false;
@@ -4411,7 +4550,7 @@ const foldByIndentation = () => {
                 concurrentBatchFold();
             }, 150);
         } else {
-            showInfo(`未找到可收缩的第 ${selectedLevel.value} 层内容`);
+            showMessageInfo(`未找到可收缩的第 ${selectedLevel.value} 层内容`);
         }
     } catch (e: any) {
         // 发生错误时清除折叠状态
@@ -4419,7 +4558,7 @@ const foldByIndentation = () => {
         if (outputEditor) {
             updateEditorStatus(outputEditor, outputEditorStatus, false);
         }
-        showWarning("折叠操作失败: " + (e.message || "未知错误"));
+        showMessageWarning("折叠操作失败: " + (e.message || "未知错误"));
     }
 };
 
@@ -4428,7 +4567,7 @@ const handleConvert = (command: string) => {
     try {
         const value = inputEditor?.getValue() || "";
         if (!value.trim()) {
-            showError("请先输入内容");
+            showMessageError("请先输入内容");
             return;
         }
 
@@ -4438,7 +4577,7 @@ const handleConvert = (command: string) => {
             outputEditor?.setValue(jsonStr);
             updateLineNumberWidth(outputEditor);
             updateEditorHeight(outputEditor);
-            showSuccess("Cookie 转换成功");
+            showMessageSuccess("Cookie 转换成功");
             return;
         }
 
@@ -4448,7 +4587,7 @@ const handleConvert = (command: string) => {
             const result = preprocessJSON(value);
             parsed = result.data;
         } catch (error) {
-            showError("请输入有效的 JSON 数据");
+            showMessageError("请输入有效的 JSON 数据");
             return;
         }
 
@@ -4489,10 +4628,10 @@ const handleConvert = (command: string) => {
             const enableLargeFile = editorLanguage === "json";
             updateOutputEditorConfig(editorLanguage, enableLargeFile, goIndentSize);
 
-            showSuccess(`转换为 ${command.toUpperCase()} 语言结构体成功`);
+            showMessageSuccess(`转换为 ${command.toUpperCase()} 语言结构体成功`);
         }
     } catch (error: any) {
-        showError("转换失败: " + error.message);
+        showMessageError("转换失败: " + error.message);
     }
 };
 
@@ -4503,7 +4642,7 @@ const formatJSON = () => {
         const value = inputEditor?.getValue() || "";
 
         if (!value.trim()) {
-            showError("请先输入 JSON 数据");
+            showMessageError("请先输入 JSON 数据");
             return;
         }
 
@@ -4520,7 +4659,7 @@ const formatJSON = () => {
             // 对于其他模式，也使用原始输入字符串，让customStringify根据编码模式处理
             originalString = value;
         } catch (error) {
-            showError("请输入有效的 JSON 数据");
+            showMessageError("请输入有效的 JSON 数据");
             return;
         }
 
@@ -4544,9 +4683,9 @@ const formatJSON = () => {
         // 对于JSON输出，总是启用大文件折叠优化
         updateOutputEditorConfig("json", true);
 
-        showSuccess("格式化成功");
+        showMessageSuccess("格式化成功");
     } catch (error: any) {
-        showError("格式化失败: " + error.message);
+        showMessageError("格式化失败: " + error.message);
     }
 };
 
@@ -4556,7 +4695,7 @@ const compressJSON = () => {
         outputType.value = "json";
         const value = inputEditor?.getValue() || "";
         if (!value.trim()) {
-            showError("请先输入 JSON 数据");
+            showMessageError("请先输入 JSON 数据");
             return;
         }
 
@@ -4566,7 +4705,7 @@ const compressJSON = () => {
             const result = preprocessJSON(value);
             parsed = result.data;
         } catch (error) {
-            showError("请输入有效的 JSON 数据");
+            showMessageError("请输入有效的 JSON 数据");
             return;
         }
 
@@ -4578,9 +4717,9 @@ const compressJSON = () => {
         // 对于JSON输出，总是启用大文件折叠优化
         updateOutputEditorConfig("json", true);
 
-        showSuccess("压缩成功");
+        showMessageSuccess("压缩成功");
     } catch (error: any) {
-        showError("压缩失败: " + error.message);
+        showMessageError("压缩失败: " + error.message);
     }
 };
 
@@ -4590,7 +4729,7 @@ const escapeJSON = () => {
         outputType.value = "json";
         const value = inputEditor?.getValue() || "";
         if (!value.trim()) {
-            showError("请先输入 JSON 数据");
+            showMessageError("请先输入 JSON 数据");
             return;
         }
 
@@ -4600,7 +4739,7 @@ const escapeJSON = () => {
             const result = preprocessJSON(value);
             parsed = result.data;
         } catch (error) {
-            showError("请输入有效的 JSON 数据");
+            showMessageError("请输入有效的 JSON 数据");
             return;
         }
 
@@ -4697,9 +4836,9 @@ const escapeJSON = () => {
         // 对于JSON输出，总是启用大文件折叠优化
         updateOutputEditorConfig("json", true);
 
-        showSuccess("转义成功");
+        showMessageSuccess("转义成功");
     } catch (error: any) {
-        showError("转义失败: " + error.message);
+        showMessageError("转义失败: " + error.message);
     }
 };
 
@@ -4708,7 +4847,7 @@ const unescapeJSON = (recursive: boolean = true) => {
     try {
         const value = inputEditor?.getValue() || "";
         if (!value.trim()) {
-            showError("请先输入内容");
+            showMessageError("请先输入内容");
             return;
         }
         outputType.value = "json";
@@ -5111,7 +5250,7 @@ const unescapeJSON = (recursive: boolean = true) => {
                         updateEditorHeight(outputEditor);
                     }
 
-                    showSuccess("去除转义成功");
+                    showMessageSuccess("去除转义成功");
                     return;
                 }
             } catch (processError: any) {
@@ -5143,7 +5282,7 @@ const unescapeJSON = (recursive: boolean = true) => {
                     updateEditorHeight(outputEditor);
                 }
 
-                showSuccess("去除转义成功（仅外层）");
+                showMessageSuccess("去除转义成功（仅外层）");
                 return;
             } catch (formatError) {
                 // 格式化失败，继续尝试其他方式
@@ -5199,7 +5338,7 @@ const unescapeJSON = (recursive: boolean = true) => {
                                     updateEditorHeight(outputEditor);
                                 }
 
-                                showSuccess("去除双重转义成功");
+                                showMessageSuccess("去除双重转义成功");
                                 return;
                             }
                         } catch {
@@ -5223,7 +5362,7 @@ const unescapeJSON = (recursive: boolean = true) => {
                                 updateEditorHeight(outputEditor);
                             }
 
-                            showSuccess("去除转义成功");
+                            showMessageSuccess("去除转义成功");
                             return;
                         }
                     } else {
@@ -5276,7 +5415,7 @@ const unescapeJSON = (recursive: boolean = true) => {
                     updateEditorHeight(outputEditor);
                 }
 
-                showSuccess("去除转义成功");
+                showMessageSuccess("去除转义成功");
             } else {
                 // 没有标准JSON转义特征，提示用户
                 outputEditor?.setValue(originalInput);
@@ -5298,7 +5437,7 @@ const unescapeJSON = (recursive: boolean = true) => {
                     updateEditorHeight(outputEditor);
                 }
 
-                showWarning("未检测到标准JSON转义, 内容保持不变");
+                showMessageWarning("未检测到标准JSON转义, 内容保持不变");
             }
         } else {
             outputEditor?.setValue(originalInput);
@@ -5320,12 +5459,12 @@ const unescapeJSON = (recursive: boolean = true) => {
                 updateEditorHeight(outputEditor);
             }
 
-            showSuccess("去除转义成功");
+            showMessageSuccess("去除转义成功");
         }
 
         return;
     } catch (error: any) {
-        showError("去除转义失败: " + error.message);
+        showMessageError("去除转义失败: " + error.message);
     }
 };
 
@@ -5334,7 +5473,7 @@ const compressAndEscapeJSON = () => {
     try {
         const value = inputEditor?.getValue() || "";
         if (!value.trim()) {
-            showError("请先输入 JSON 数据");
+            showMessageError("请先输入 JSON 数据");
             return;
         }
         outputType.value = "json";
@@ -5345,7 +5484,7 @@ const compressAndEscapeJSON = () => {
             const result = preprocessJSON(value);
             parsed = result.data;
         } catch (error) {
-            showError("请输入有效的 JSON 数据");
+            showMessageError("请输入有效的 JSON 数据");
             return;
         }
 
@@ -5375,9 +5514,9 @@ const compressAndEscapeJSON = () => {
             updateEditorHeight(outputEditor);
         }
 
-        showSuccess("压缩并转义成功");
+        showMessageSuccess("压缩并转义成功");
     } catch (error: any) {
-        showError("压缩并转义失败: " + error.message);
+        showMessageError("压缩并转义失败: " + error.message);
     }
 };
 
@@ -5385,13 +5524,13 @@ const compressAndEscapeJSON = () => {
 const handleLevelAction = () => {
     try {
         if (!outputEditor) {
-            showError("编辑器未初始化");
+            showMessageError("编辑器未初始化");
             return;
         }
 
         const value = inputEditor?.getValue() || "";
         if (!value.trim()) {
-            showError("请先输入 JSON 数据");
+            showMessageError("请先输入 JSON 数据");
             selectedLevel.value = 1;
             return;
         }
@@ -5402,7 +5541,7 @@ const handleLevelAction = () => {
             const result = preprocessJSON(value);
             parsedData = result.data; // 提取实际的JSON数据
         } catch (error) {
-            showError("请输入有效的 JSON 数据");
+            showMessageError("请输入有效的 JSON 数据");
             return;
         }
 
@@ -5505,7 +5644,7 @@ const handleLevelAction = () => {
             }, unfoldDelay);
         }, delayTime);
     } catch (error: any) {
-        showError("操作失败: " + error.message);
+        showMessageError("操作失败: " + error.message);
     }
 };
 
@@ -5523,13 +5662,13 @@ const openShareDialog = () => {
 const openDataMaskingDialog = () => {
     // 检查输入编辑器是否有内容
     if (!inputEditor) {
-        showWarning("编辑器未初始化，请稍候再试");
+        showMessageWarning("编辑器未初始化，请稍候再试");
         return;
     }
 
     const jsonData = inputEditor.getValue();
     if (!jsonData || !jsonData.trim()) {
-        showError("请先输入 JSON 数据");
+        showMessageError("请先输入 JSON 数据");
         return;
     }
 
@@ -5537,7 +5676,7 @@ const openDataMaskingDialog = () => {
     try {
         JSON.parse(jsonData);
     } catch (error) {
-        showError("JSON 数据格式不正确，请先格式化 JSON 数据");
+        showMessageError("JSON 数据格式不正确，请先格式化 JSON 数据");
         return;
     }
 
@@ -5596,7 +5735,7 @@ const handleDataMaskingApply = (maskedJson: string) => {
 
         outputType.value = "json";
     } catch (error: any) {
-        showError("应用脱敏结果失败: " + (error.message || "未知错误"));
+        showMessageError("应用脱敏结果失败: " + (error.message || "未知错误"));
     }
 };
 
@@ -5679,19 +5818,19 @@ const calculateArchiveSize = (content: string): number => {
 
 const handleSaveArchive = () => {
     if (!inputEditor) {
-        showError("编辑器未初始化，请稍候再试");
+        showMessageError("编辑器未初始化，请稍候再试");
         return;
     }
 
     const content = inputEditor.getValue() || "";
     if (!content.trim()) {
-        showError("当前没有可存档的内容");
+        showMessageError("当前没有可存档的内容");
         return;
     }
 
     // 检查存档数量上限
     if (archives.value.length >= MAX_ARCHIVE_COUNT) {
-        showError(`存档数量已达到上限（${MAX_ARCHIVE_COUNT}个），请先删除部分存档`);
+        showMessageError(`存档数量已达到上限（${MAX_ARCHIVE_COUNT}个），请先删除部分存档`);
         return;
     }
 
@@ -5699,7 +5838,7 @@ const handleSaveArchive = () => {
     const totalSize = archives.value.reduce((sum, item) => sum + item.size, 0);
 
     if (totalSize + size > MAX_ARCHIVE_TOTAL_SIZE) {
-        showError("存档失败：所有存档总大小超过限制，请先清理部分存档");
+        showMessageError("存档失败：所有存档总大小超过限制，请先清理部分存档");
         return;
     }
 
@@ -5713,7 +5852,7 @@ const handleSaveArchive = () => {
         archiveNameDialogCallback.value = (name: string) => {
             // 再次检查存档数量上限（防止在弹窗打开期间存档数量达到上限）
             if (archives.value.length >= MAX_ARCHIVE_COUNT) {
-                showError(
+                showMessageError(
                     `存档数量已达到上限（${MAX_ARCHIVE_COUNT}个），请先删除部分存档`
                 );
                 return;
@@ -5721,7 +5860,7 @@ const handleSaveArchive = () => {
 
             const normalizedName = normalizeArchiveName(name);
             if (!normalizedName) {
-                showError("存档名称不能为空");
+                showMessageError("存档名称不能为空");
                 return;
             }
 
@@ -5739,7 +5878,7 @@ const handleSaveArchive = () => {
             archives.value.unshift(archive);
             saveArchives();
 
-            showSuccess("已保存到本地存档（当前会话有效）");
+            showMessageSuccess("已保存到本地存档（当前会话有效）");
         };
         archiveNameDialogVisible.value = true;
     } else {
@@ -5762,7 +5901,7 @@ const handleSaveArchive = () => {
         archives.value.unshift(archive);
         saveArchives();
 
-        showSuccess("已保存到本地存档（当前会话有效）");
+        showMessageSuccess("已保存到本地存档（当前会话有效）");
     }
 };
 
@@ -5786,18 +5925,18 @@ const handleArchiveCommand = async (command: string) => {
 
         archives.value = [];
         saveArchives();
-        showSuccess("已清空所有存档");
+        showMessageSuccess("已清空所有存档");
         return;
     }
 
     const archive = archives.value.find((item) => item.id === command);
     if (!archive) {
-        showError("未找到对应的存档");
+        showMessageError("未找到对应的存档");
         return;
     }
 
     if (!inputEditor) {
-        showError("编辑器未初始化，请稍候再试");
+        showMessageError("编辑器未初始化，请稍候再试");
         return;
     }
 
@@ -5808,19 +5947,19 @@ const handleArchiveCommand = async (command: string) => {
     updateLineNumberWidth(outputEditor);
     updateEditorHeight(outputEditor);
 
-    showSuccess(`已加载存档：${archive.name}`);
+    showMessageSuccess(`已加载存档：${archive.name}`);
 };
 
 // 处理加载分享的JSON数据到输入区域
 const handleLoadSharedJson = (jsonData: string) => {
     try {
         if (!inputEditor) {
-            showError("编辑器未初始化，请稍候再试");
+            showMessageError("编辑器未初始化，请稍候再试");
             return;
         }
 
         if (!jsonData || !jsonData.trim()) {
-            showError("分享数据为空");
+            showMessageError("分享数据为空");
             return;
         }
 
@@ -5828,7 +5967,7 @@ const handleLoadSharedJson = (jsonData: string) => {
         try {
             const parsed = JSON.parse(jsonData);
             // 使用自定义格式化函数格式化JSON，输入编辑器始终使用2空格缩进
-            const formattedJson = customStringify(parsed, null, 2);
+            const formattedJson = customStringify(parsed, null, 2, jsonData);
 
             // 将格式化后的JSON设置到输入编辑器
             inputEditor.setValue(formattedJson);
@@ -5862,10 +6001,10 @@ const handleLoadSharedJson = (jsonData: string) => {
 
             outputType.value = "json";
         } catch (error: any) {
-            showError("JSON格式不正确: " + (error.message || "解析失败"));
+            showMessageError("JSON格式不正确: " + (error.message || "解析失败"));
         }
     } catch (error: any) {
-        showError("加载分享数据失败: " + (error.message || "未知错误"));
+        showMessageError("加载分享数据失败: " + (error.message || "未知错误"));
     }
 };
 
@@ -6107,7 +6246,7 @@ const handleDeleteArchive = async (item: JsonArchive) => {
     if (index !== -1) {
         archives.value.splice(index, 1);
         saveArchives();
-        showSuccess("已删除存档");
+        showMessageSuccess("已删除存档");
     }
 };
 
@@ -6120,7 +6259,7 @@ const handleRenameArchive = (item: JsonArchive) => {
     archiveNameDialogCallback.value = (name: string) => {
         const normalizedName = normalizeArchiveName(name);
         if (!normalizedName) {
-            showError("存档名称不能为空");
+            showMessageError("存档名称不能为空");
             return;
         }
 
@@ -6129,7 +6268,7 @@ const handleRenameArchive = (item: JsonArchive) => {
         item.name = normalizedName;
         saveArchives();
 
-        showSuccess("已更新存档名称");
+        showMessageSuccess("已更新存档名称");
     };
     archiveNameDialogVisible.value = true;
 };
@@ -6330,7 +6469,7 @@ const loadSharedDataFromUrl = async () => {
                     // 验证JSON格式
                     const jsonData = JSON.parse(response.data.jsonData);
                     // 输入编辑器始终使用2个空格缩进，不受格式化设置影响
-                    const formattedJson = customStringify(jsonData, null, 2);
+                    const formattedJson = customStringify(jsonData, null, 2, response.data.jsonData);
                     inputEditor.setValue(formattedJson);
 
                     // 更新编辑器配置，确保使用2空格缩进
@@ -6358,9 +6497,9 @@ const loadSharedDataFromUrl = async () => {
 
                     // 显示成功消息
                     if (response.data.description) {
-                        showSuccess(`已加载分享数据：${response.data.description}`);
+                        showMessageSuccess(`已加载分享数据：${response.data.description}`);
                     } else {
-                        showSuccess("已加载分享数据");
+                        showMessageSuccess("已加载分享数据");
                     }
 
                     // 清除URL参数（可选，保持URL干净）
@@ -6369,7 +6508,7 @@ const loadSharedDataFromUrl = async () => {
                     cleanUrl.searchParams.delete("password");
                     window.history.replaceState({}, "", cleanUrl.toString());
                 } catch (error) {
-                    showError("分享数据格式不正确");
+                    showMessageError("分享数据格式不正确");
                 }
             }
         } else {
@@ -6399,11 +6538,11 @@ const loadSharedDataFromUrl = async () => {
                         // 用户取消
                     });
             } else {
-                showError(response.error || "加载分享数据失败");
+                showMessageError(response.error || "加载分享数据失败");
             }
         }
     } catch (error: any) {
-        showError("加载分享数据失败: " + (error.message || "未知错误"));
+        showMessageError("加载分享数据失败: " + (error.message || "未知错误"));
     }
 };
 
@@ -6786,6 +6925,52 @@ const sortJsonByField = (
                 result[key] = value;
             }
         }
+        // 如果顶层是对象且其值不是数组（比如 map），支持按 value 的子字段对键进行排序
+        const allValuesAreObjects = Object.values(data).every(v => typeof v === 'object' && v !== null && !Array.isArray(v));
+        const allValuesArePrimitive = Object.values(data).every(v => (typeof v !== 'object' || v === null) && !Array.isArray(v));
+
+        // 情况A：每个 value 是对象（例如 { id: 1 }），且用户填写了 fieldPath 或者可以自动回退到 value.<field>
+        if (allValuesAreObjects && fieldPath) {
+            const entries = Object.entries(data);
+            entries.sort((a, b) => {
+                // 支持直接写 value.id，也支持简写 id（尝试回退）
+                const extractValue = (obj: any) => {
+                    let v = getValueByPath(obj, fieldPath);
+                    if (v === undefined || v === null) {
+                        // 如果 fieldPath 本身没有 value. 前缀，尝试加上
+                        if (!fieldPath.startsWith('value.')) {
+                            v = getValueByPath(obj, 'value.' + fieldPath);
+                        }
+                    }
+                    return v;
+                };
+
+                const valueA = extractValue(a[1]);
+                const valueB = extractValue(b[1]);
+                const cmp = compareFieldValues(valueA, valueB);
+                return order === 'asc' ? cmp : -cmp;
+            });
+            const sortedObj: any = {};
+            for (const [k, v] of entries) {
+                sortedObj[k] = v;
+            }
+            return sortedObj;
+        }
+        // 情况B：每个 value 是原始类型（number/string/boolean/null），用户无需填写字段，直接按 value 排序
+        if (allValuesArePrimitive) {
+            const entries = Object.entries(data);
+            entries.sort((a, b) => {
+                const valueA = a[1];
+                const valueB = b[1];
+                const cmp = compareFieldValues(valueA, valueB);
+                return order === 'asc' ? cmp : -cmp;
+            });
+            const sortedObj: any = {};
+            for (const [k, v] of entries) {
+                sortedObj[k] = v;
+            }
+            return sortedObj;
+        }
         return result;
     }
 
@@ -7001,6 +7186,11 @@ const queryFieldPaths = (
     } catch (error) {
         cb([]);
     }
+};
+
+// 禁用字段智能提示的占位函数（始终不返回建议）
+const queryFieldPathsDisabled = (queryString: string, cb: (suggestions: PathSuggestion[]) => void) => {
+    cb([]);
 };
 
 // 获取下一级的key建议（基于当前输入内容）
@@ -7469,13 +7659,362 @@ const handleFieldPathKeydown = (event: KeyboardEvent) => {
     }
 };
 
-// 执行字段排序
-const executeFieldSort = () => {
-    if (!sortFieldName.value.trim()) {
-        showWarning("请输入排序字段");
-        return;
+// 显示字段排序演示
+const showFieldSortDemo = () => {
+    fieldSortDialogVisible.value = false;
+
+    // 自动填入演示数据到输入框
+    const demoJson = JSON.stringify(demoData.value, null, 2);
+    // 保存原始输入内容（如果尚未保存）
+    if (inputEditor && savedInputContent.value === null) {
+        try {
+            savedInputContent.value = inputEditor.getValue() || '';
+        } catch (e) {
+            savedInputContent.value = '';
+        }
+    }
+    if (inputEditor) {
+        inputEditor.setValue(demoJson);
+        updateEditorHeight(inputEditor);
     }
 
+    // 启动演示模式
+    startDemoMode();
+};
+
+// 启动演示模式
+const startDemoMode = () => {
+    isDemoMode.value = true;
+    currentDemoStep.value = 0;
+    demoResults.value = {};
+
+    // 记录演示开始前的输入内容（如果尚未记录）
+    if (inputEditor && savedInputContent.value === null) {
+        try {
+            savedInputContent.value = inputEditor.getValue() || '';
+        } catch (e) {
+            savedInputContent.value = '';
+        }
+    }
+
+    // 预先计算演示结果
+    demoResults.value['id'] = performFieldSort(JSON.parse(JSON.stringify(demoData.value)), '', 'id');
+    demoResults.value['education'] = performFieldSort(JSON.parse(JSON.stringify(demoData.value)), '[*].education', 'graduationYear');
+    // map 演示结果
+    demoResults.value['map_id'] = performFieldSort(JSON.parse(JSON.stringify(demoMapData.value)), '', 'id');
+    demoResults.value['map_value_score'] = performFieldSort(JSON.parse(JSON.stringify(demoMapData.value)), '', 'value.score');
+
+    // 显示第一个教学弹窗
+    // 初始化弹窗位置（居中偏上）
+    if (typeof window !== 'undefined') {
+        popupLeft.value = Math.max(8, (window.innerWidth - DEMO_POPUP_WIDTH) / 2);
+        popupTop.value = 100;
+    }
+    showDemoStep(0);
+};
+
+// 辅助函数：设置参数并跳转到指定步骤
+const setAndNext = (rootPath: string, fieldName: string, nextStep: number) => {
+    setDemoParams(rootPath, fieldName);
+    showDemoStep(nextStep);
+};
+
+// 辅助函数：执行排序并跳转到指定步骤（用于演示）
+const execAndNext = (rootPath: string, fieldName: string, nextStep: number) => {
+    // 在演示中直接使用预计算/即时计算结果并写入输出编辑器（默认使用 demoData）
+    const dataToUse = demoData.value;
+    const result = performFieldSort(JSON.parse(JSON.stringify(dataToUse)), rootPath, fieldName);
+    const formatted = customStringify(result, null, 2, JSON.stringify(dataToUse), 0, true);
+    const finalOutput = formatted.replace(/\\u([0-9a-fA-F]{4})/g, "\\\\u$1");
+    if (outputEditor) {
+        outputEditor.setValue(finalOutput);
+        updateEditorHeight(outputEditor);
+    }
+    showDemoStep(nextStep);
+};
+
+// 针对 demoMapData 的执行函数
+const execAndNextMap = (rootPath: string, fieldName: string, nextStep: number) => {
+    const dataToUse = demoMapData.value;
+    const result = performFieldSort(JSON.parse(JSON.stringify(dataToUse)), rootPath, fieldName);
+    const formatted = customStringify(result, null, 2, JSON.stringify(dataToUse), 0, true);
+    const finalOutput = formatted.replace(/\\u([0-9a-fA-F]{4})/g, "\\\\u$1");
+    if (outputEditor) {
+        outputEditor.setValue(finalOutput);
+        updateEditorHeight(outputEditor);
+    }
+    showDemoStep(nextStep);
+};
+
+// 将 demoMapData 加载到输入编辑器并设置参数，然后跳转
+const loadDemoMapAndNext = (rootPath: string, fieldName: string, nextStep: number) => {
+    if (inputEditor) {
+        const demoJson = JSON.stringify(demoMapData.value, null, 2);
+        inputEditor.setValue(demoJson);
+        updateEditorHeight(inputEditor);
+    }
+    // 重新计算预览结果
+    demoResults.value['map_id'] = performFieldSort(JSON.parse(JSON.stringify(demoMapData.value)), '', 'id');
+    demoResults.value['map_value_score'] = performFieldSort(JSON.parse(JSON.stringify(demoMapData.value)), '', 'value.score');
+
+    setDemoParams(rootPath, fieldName);
+    showDemoStep(nextStep);
+};
+
+// 将 demoMapData 加载到输入编辑器并设置参数（不跳转）
+const loadDemoMapNoAdvance = (rootPath: string, fieldName: string) => {
+    if (inputEditor) {
+        const demoJson = JSON.stringify(demoMapData.value, null, 2);
+        inputEditor.setValue(demoJson);
+        updateEditorHeight(inputEditor);
+    }
+    // 重新计算预览结果
+    demoResults.value['map_id'] = performFieldSort(JSON.parse(JSON.stringify(demoMapData.value)), '', 'id');
+    demoResults.value['map_value_score'] = performFieldSort(JSON.parse(JSON.stringify(demoMapData.value)), '', 'value.score');
+    // 不自动设置参数，保持示例初始为未设置状态
+};
+
+// 显示演示步骤
+const showDemoStep: (step: number) => void = (step: number) => {
+    currentDemoStep.value = step;
+
+    const steps = [
+        {
+            title: "📊 演示开始",
+            content: "已自动填入演示数据，现在可以拖动演示弹窗的位置，让我们学习如何使用字段排序功能。",
+            highlight: ".json-input-container",
+            buttons: [{ text: "开始学习", action: () => showDemoStep(1) }]
+        },
+        {
+            title: "🔢 示例1：Array - 按 id 排序",
+            content: "由于按照 id 字段排序的对象就是最外层数组的元素，所以排序范围就是整个 JSON 数据，因此排序范围可以留空，排序字段参数填入 id 即可。",
+            highlight: ".sort-fields-button",
+            buttons: [
+                { text: "上一步", action: () => showDemoStep(0) },
+                { text: "设置参数", action: () => setAndNext('', 'id', 2) }
+            ]
+        },
+        {
+            title: "🎯 执行排序",
+            content: "参数设置完成，点击“执行排序”将会应用排序并进入结果查看步骤。",
+            highlight: ".sort-fields-button",
+            buttons: [
+                { text: "上一步", action: () => showDemoStep(1) },
+                { text: "执行排序", action: () => execAndNext('', 'id', 3) }
+            ]
+        },
+        {
+            title: "✅ 排序完成",
+            content: "排序已完成，结果已写入预览区域。你可以返回上一步重新查看，或者进入下一个示例。",
+            highlight: null,
+            buttons: [
+                { text: "上一步", action: () => showDemoStep(2) },
+                { text: "下一个示例", action: () => showDemoStep(4) }
+            ]
+        },
+        {
+            title: "🔢 示例2：Array - 按毕业年份排序每个人的教育经历",
+            content: "当我们要对嵌套内部的数组排序时，需要指定排序范围：[*].education，表示每个人的教育经历，那么排序字段就是毕业年份： graduationYear。",
+            highlight: ".sort-fields-button",
+            buttons: [
+                { text: "上一步", action: () => showDemoStep(3) },
+                { text: "设置参数", action: () => setAndNext('[*].education', 'graduationYear', 5) }
+            ]
+        },
+        {
+            title: "🎯 执行排序",
+            content: "参数设置完成，点击“执行排序”将会应用排序并进入结果查看步骤。",
+            highlight: ".sort-fields-button",
+            buttons: [
+                { text: "上一步", action: () => showDemoStep(4) },
+                { text: "执行排序", action: () => execAndNext('[*].education', 'graduationYear', 6) }
+            ]
+        },
+        {
+            title: "✅ 排序完成（Array - education）",
+            content: "排序已完成，结果已写入预览区域。你可以返回上一步重新设置，或者进入 Map 示例。",
+            highlight: null,
+            buttons: [
+                { text: "上一步", action: () => showDemoStep(5) },
+                { text: "下一个示例", action: () => showDemoStep(7) }
+            ]
+        },
+        {
+            title: "🔢 示例3：Map — 按 id 排序",
+            content: "下面我们切换到 map 示例数据，示范如何对 map 按 id 排序。需要注意的是排序字段不需要输入 map 的 Key，直接输入 Value 内部的排序字段就行",
+            highlight: ".sort-fields-button",
+            buttons: [
+                { text: "上一步", action: () => showDemoStep(6) },
+                { text: "设置参数", action: () => setAndNext('', 'id', 8) }
+            ]
+        },
+        {
+            title: "🎯 执行排序",
+            content: "参数设置完成，点击“执行排序”将对 map 进行排序并进入结果查看步骤。",
+            highlight: ".sort-fields-button",
+            buttons: [
+                { text: "上一步", action: () => showDemoStep(7) },
+                { text: "执行排序", action: () => execAndNextMap('', 'id', 9) }
+            ]
+        },
+        {
+            title: "✅ 排序完成（Map - id）",
+            content: "Map 排序已完成，结果已写入预览区域。你可以返回上一步重新设置，或者进入下一个示例。",
+            highlight: null,
+            buttons: [
+                { text: "上一步", action: () => showDemoStep(8) },
+                { text: "下一个示例", action: () => showDemoStep(10) }
+            ]
+        },
+        {
+            title: "🔢 示例4：Map — 按 value.score 排序",
+            content: "同样可以按 map 内部字段排序，例如填写 value.score 来按 score 排序。",
+            highlight: ".sort-fields-button",
+            buttons: [
+                { text: "上一步", action: () => showDemoStep(9) },
+                { text: "设置参数", action: () => setAndNext('', 'value.score', 11) }
+            ]
+        },
+        {
+            title: "🎯 执行排序",
+            content: "参数设置完成，点击“执行排序”将应用 map 内部字段排序并进入结果查看步骤。",
+            highlight: ".sort-fields-button",
+            buttons: [
+                { text: "上一步", action: () => showDemoStep(10) },
+                { text: "执行排序", action: () => execAndNextMap('', 'value.score', 12) }
+            ]
+        },
+        {
+            title: "✅ 排序完成（Map - value.score）",
+            content: "排序已完成，结果已写入预览区域。你已完成所有示例。",
+            highlight: null,
+            buttons: [
+                { text: "再试一次", action: () => startDemoMode() },
+                { text: "结束演示", action: () => endDemoMode() }
+            ]
+        }
+    ];
+    // 更新步骤数量（用于指示器渲染）
+    demoStepsCount.value = steps.length;
+
+    if (step < steps.length) {
+        currentDemoStepData.value = steps[step];
+        demoGuideVisible.value = true;
+    }
+    // 自动切换 demo 数据：当进入 Map 示例步时，加载 map 示例到输入编辑器并设置默认字段（不跳转）
+    // 每个示例开始时清空当前参数（范围留空，字段未设置）
+    if ([1, 4, 7, 10].includes(step)) {
+        sortRootPath.value = '';
+        sortFieldName.value = '';
+    }
+    if (step === 7) {
+        // Map — 按 id 排序示例（加载 demo 数据，但保持字段未设置）
+        loadDemoMapNoAdvance('', '');
+    } else if (step === 10) {
+        // Map — 按 value.score 排序示例（加载 demo 数据，但保持字段未设置）
+        loadDemoMapNoAdvance('', '');
+    }
+};
+
+// 设置演示参数
+const setDemoParams = (rootPath: string, fieldName: string) => {
+    sortRootPath.value = rootPath;
+    sortFieldName.value = fieldName;
+};
+
+// 执行演示排序
+const executeDemoSort = (rootPath: string, fieldName: string) => {
+    setDemoParams(rootPath, fieldName);
+
+    // 模拟执行排序（在演示模式下，我们直接显示预计算的结果）
+    const result = performFieldSort(JSON.parse(JSON.stringify(demoData.value)), rootPath, fieldName);
+    const formatted = customStringify(result, null, 2, JSON.stringify(demoData.value), 0, true);
+    const finalOutput = formatted.replace(/\\u([0-9a-fA-F]{4})/g, "\\u$1");
+
+    if (outputEditor) {
+        outputEditor.setValue(finalOutput);
+        updateEditorHeight(outputEditor);
+    }
+
+    showDemoStep(currentDemoStep.value + 1);
+};
+
+// 结束演示模式
+const endDemoMode = () => {
+    isDemoMode.value = false;
+    demoGuideVisible.value = false;
+    currentDemoStepData.value = null;
+
+    // 清空演示数据
+    if (inputEditor) {
+        // 恢复开始演示前的输入内容（如果有保存），否则清空
+        const restored = savedInputContent.value !== null ? savedInputContent.value : '';
+        inputEditor.setValue(restored);
+        updateEditorHeight(inputEditor);
+    }
+    if (outputEditor) {
+        outputEditor.setValue('');
+        updateEditorHeight(outputEditor);
+    }
+    // 清除缓存的原始内容
+    savedInputContent.value = null;
+};
+
+// 执行演示排序
+const runDemoSort = (rootPath: string, fieldName: string) => {
+    try {
+        const data = JSON.parse(JSON.stringify(demoData.value));
+
+        // 执行排序逻辑
+        const result = performFieldSort(data, rootPath, fieldName);
+
+        demoResults.value[`${rootPath}_${fieldName}`] = result;
+    } catch (error) {
+        console.error('演示排序失败:', error);
+    }
+};
+
+// 执行字段排序的核心逻辑（提取为独立函数）
+const performFieldSort = (data: any, rootPath: string, fieldName: string) => {
+    let result = JSON.parse(JSON.stringify(data));
+
+    // 处理嵌套数组排序的情况
+    if (rootPath && rootPath.includes('[*]')) {
+        if (!Array.isArray(result)) {
+            throw new Error("根数据必须是数组才能使用 [*] 路径");
+        }
+
+        // 对每个数组元素进行排序
+        result.forEach(item => {
+            if (item && typeof item === 'object') {
+                // 提取 [*].path 中的 path 部分
+                const pathParts = rootPath.split('[*].');
+                if (pathParts.length === 2) {
+                    const subPath = pathParts[1];
+                    const subData = getValueByPath(item, subPath);
+                    if (Array.isArray(subData)) {
+                        // 对子数组进行排序
+                        const sortedSubData = sortJsonByField(
+                            subData,
+                            fieldName,
+                            sortOrder.value
+                        );
+                        // 设置排序后的数据回去
+                        setValueByPath(item, subPath, sortedSubData);
+                    }
+                }
+            }
+        });
+
+        return result;
+    }
+
+    // 简单排序
+    return sortJsonByField(result, fieldName, sortOrder.value);
+};
+
+// 执行字段排序
+const executeFieldSort = () => {
     fieldSortDialogVisible.value = false;
 
     try {
@@ -7492,7 +8031,7 @@ const executeFieldSort = () => {
             // 对于 [*].path 这样的路径，需要直接修改原始数据
             const rootPath = sortRootPath.value.trim();
             if (!Array.isArray(parsed)) {
-                showError("根数据必须是数组才能使用 [*] 路径");
+                showMessageError("根数据必须是数组才能使用 [*] 路径");
                 return;
             }
 
@@ -7531,7 +8070,7 @@ const executeFieldSort = () => {
             outputEditor?.setValue(finalOutput);
             updateEditorHeight(outputEditor);
 
-            showSuccess(`按字段 "${sortFieldName.value}" 对路径 "${rootPath}" 下的数组排序成功`);
+            showMessageSuccess(`按字段 "${sortFieldName.value}" 对路径 "${rootPath}" 下的数组排序成功`);
             return;
         }
 
@@ -7540,7 +8079,7 @@ const executeFieldSort = () => {
         if (sortRootPath.value.trim()) {
             dataToSort = getValueByPath(parsed, sortRootPath.value.trim());
             if (dataToSort === undefined) {
-                showError(`找不到路径 "${sortRootPath.value}" 对应的数据`);
+                showMessageError(`找不到路径 "${sortRootPath.value}" 对应的数据`);
                 return;
             }
         }
@@ -7589,9 +8128,9 @@ const executeFieldSort = () => {
         const rootDesc = sortRootPath.value.trim()
             ? `路径 "${sortRootPath.value}" 下的数据`
             : "根级数据";
-        showSuccess(`按字段 "${sortFieldName.value}" 对${rootDesc}排序成功`);
+        showMessageSuccess(`按字段 "${sortFieldName.value}" 对${rootDesc}排序成功`);
     } catch (error: any) {
-        showError("排序失败: " + error.message);
+        showMessageError("排序失败: " + error.message);
     }
 };
 
@@ -7602,7 +8141,7 @@ const applySort = () => {
         const value = inputEditor?.getValue() || "";
 
         if (!value.trim()) {
-            showError("请先输入 JSON 数据");
+            showMessageError("请先输入 JSON 数据");
             return;
         }
 
@@ -7614,7 +8153,7 @@ const applySort = () => {
             parsed = result.data;
             originalString = result.originalString;
         } catch (error) {
-            showError("请输入有效的 JSON 数据");
+            showMessageError("请输入有效的 JSON 数据");
             return;
         }
 
@@ -7663,9 +8202,9 @@ const applySort = () => {
             asc: "正序",
             desc: "倒序",
         };
-        showSuccess(`排序成功`);
+        showMessageSuccess(`排序成功`);
     } catch (error: any) {
-        showError("排序失败: " + error.message);
+        showMessageError("排序失败: " + error.message);
     }
 };
 
@@ -8597,32 +9136,32 @@ const cookieToJSON = (cookieStr: string): string => {
 const handleFileUpload = async (uploadFile: UploadFile) => {
     const file = uploadFile.raw as File;
     if (!file) {
-        showError("无法获取文件");
+        showMessageError("无法获取文件");
         return;
     }
 
     try {
         // 检查文件名长度
         if (file.name.length > 255) {
-            showError("文件名过长");
+            showMessageError("文件名过长");
             return;
         }
 
         // 检查文件扩展名
         if (!file.name.toLowerCase().endsWith(".json")) {
-            showError("只能上传 JSON 文件");
+            showMessageError("只能上传 JSON 文件");
             return;
         }
 
         // 检查文件大小
         if (file.size > MAX_FILE_SIZE) {
-            showError("文件大小不能超过 5 MB");
+            showMessageError("文件大小不能超过 5 MB");
             return;
         }
 
         // 检查 MIME 类型
         if (file.type && !["application/json", "text/plain"].includes(file.type)) {
-            showError("文件类型不正确");
+            showMessageError("文件类型不正确");
             return;
         }
 
@@ -8653,7 +9192,7 @@ const handleFileUpload = async (uploadFile: UploadFile) => {
         // 检查行数限制
         const lines = content.split("\n");
         if (lines.length > MAX_LINES) {
-            showError(`文件内容超过行数限制（共 ${lines.length} 行）`);
+            showMessageError(`文件内容超过行数限制（共 ${lines.length} 行）`);
             return;
         }
 
@@ -8705,9 +9244,9 @@ const handleFileUpload = async (uploadFile: UploadFile) => {
         updateEditorHeight(outputEditor);
 
         // 显示成功提示
-        showSuccess("文件上传成功，已加载到输入区域");
+        showMessageSuccess("文件上传成功，已加载到输入区域");
     } catch (error: any) {
-        showError("文件处理失败: " + error.message);
+        showMessageError("文件处理失败: " + error.message);
     }
 };
 
@@ -8776,9 +9315,9 @@ const clearInput = () => {
         // 重置输出类型
         outputType.value = "json";
 
-        showSuccess("已清空内容");
+        showMessageSuccess("已清空内容");
     } catch (error: any) {
-        showError("清空内容失败");
+        showMessageError("清空内容失败");
     }
 };
 
@@ -8787,15 +9326,15 @@ const copyOutput = async () => {
     try {
         const value = outputEditor?.getValue() || "";
         if (!value) {
-            showWarning("没有可复制的内容");
+            showMessageWarning("没有可复制的内容");
             return;
         }
 
         try {
             await navigator.clipboard.writeText(value);
-            showSuccess("复制成功");
+            showMessageSuccess("复制成功");
         } catch (err) {
-            showError("复制失败, 请尝试手动复制");
+            showMessageError("复制失败, 请尝试手动复制");
 
             // 自动选择内容以方便用户复制
             outputEditor?.focus();
@@ -8806,7 +9345,7 @@ const copyOutput = async () => {
             );
         }
     } catch (error: any) {
-        showError("复制失败, 请尝试手动复制");
+        showMessageError("复制失败, 请尝试手动复制");
     }
 };
 
@@ -8826,7 +9365,7 @@ const calculateHash = async (content: string): Promise<string> => {
 const downloadOutput = async () => {
     const content = outputEditor?.getValue();
     if (!content) {
-        showWarning("没有可下载的内容");
+        showMessageWarning("没有可下载的内容");
         return;
     }
 
@@ -8874,9 +9413,9 @@ const downloadOutput = async () => {
         document.body.removeChild(link);
         URL.revokeObjectURL(url);
 
-        showSuccess("下载成功");
+        showMessageSuccess("下载成功");
     } catch (error: any) {
-        showError("下载失败：" + (error?.message || "未知错误"));
+        showMessageError("下载失败：" + (error?.message || "未知错误"));
     }
 };
 
@@ -9181,14 +9720,14 @@ const transferToInput = (e: MouseEvent) => {
     // 阻止事件冒泡，防止触发分割线的拖动
     e.stopPropagation();
     if (outputType.value !== "json") {
-        showWarning("当前内容类型不支持转移到输入区域");
+        showMessageWarning("当前内容类型不支持转移到输入区域");
         return;
     }
 
     try {
         const outputContent = outputEditor?.getValue() || "";
         if (!outputContent.trim()) {
-            showWarning("预览区域内容为空, 无需转移");
+            showMessageWarning("预览区域内容为空, 无需转移");
             return;
         }
 
@@ -9248,21 +9787,14 @@ const transferToInput = (e: MouseEvent) => {
             updateEditorHeight(outputEditor);
         }
 
-        showSuccess("内容已成功转移到输入区域");
+        showMessageSuccess("内容已成功转移到输入区域");
     } catch (error: any) {
-        showError("转移内容失败: " + error.message);
+        showMessageError("转移内容失败: " + error.message);
     }
 };
 </script>
 
 <style scoped>
-/* 全局消息样式（配合 customClass 使用） */
-:global(.json-tool-message) {
-    right: 15px;
-    left: auto;
-    transform: translateX(0);
-    z-index: 9999;
-}
 
 /* 折叠信息文本样式 */
 :deep(.folding-info-text) {
@@ -9980,7 +10512,12 @@ const transferToInput = (e: MouseEvent) => {
 }
 
 .settings-dialog-content :deep(.el-collapse-item__header) {
-    padding: 12px 16px;
+    box-sizing: border-box;           /* 避免 padding 改变元素总宽度 */
+    display: flex;                    /* 使用 flex 布局，标题在左，箭头在右 */
+    align-items: center;
+    justify-content: space-between;
+    padding: 0;                        /* 内边距交给内部容器 .settings-collapse-title 控制 */
+
     background-color: #f5f7fa;
     border-radius: 4px;
     font-size: 15px;
@@ -9988,6 +10525,11 @@ const transferToInput = (e: MouseEvent) => {
     color: #303133;
     height: auto;
     line-height: 1.4;
+}
+
+/* 覆盖 Element Plus 的右侧额外 padding，使左右间距由内部容器控制 */
+.settings-dialog-content :deep(.el-collapse-icon-position-right .el-collapse-item__header) {
+    padding-right: 24px;
 }
 
 .settings-dialog-content :deep(.el-collapse-item__header:hover) {
@@ -10013,7 +10555,9 @@ const transferToInput = (e: MouseEvent) => {
     display: flex;
     align-items: center;
     gap: 8px;
-    width: 100%;
+    width: auto;           /* 不再占满整行，避免把箭头推远 */
+    flex: 0 1 auto;        /* 保持自适应且允许换行收缩 */
+    padding: 12px 24px;    /* 与折叠项的内部间距一致，保证左右对称视觉 */
 }
 
 .settings-collapse-content {
@@ -10300,5 +10844,221 @@ const transferToInput = (e: MouseEvent) => {
 .archive-empty {
     font-size: 12px;
     color: #c0c4cc;
+}
+
+/* 字段排序演示样式 */
+.demo-container {
+    max-height: 600px;
+    overflow-y: auto;
+}
+
+.demo-section {
+    margin-bottom: 24px;
+    padding: 16px;
+    border: 1px solid #e4e7ed;
+    border-radius: 6px;
+    background: #fafbfc;
+}
+
+.demo-section h3 {
+    margin: 0 0 12px 0;
+    color: #303133;
+    font-size: 16px;
+    font-weight: 600;
+}
+
+.demo-data pre,
+.demo-result pre {
+    background: #f6f8fa;
+    border: 1px solid #e1e4e7;
+    border-radius: 4px;
+    padding: 12px;
+    margin: 8px 0 0 0;
+    font-size: 12px;
+    line-height: 1.4;
+    overflow-x: auto;
+    max-height: 300px;
+    overflow-y: auto;
+}
+
+.demo-config {
+    background: #fff;
+    border: 1px solid #d1d5db;
+    border-radius: 4px;
+    padding: 12px;
+    margin-bottom: 12px;
+    font-size: 14px;
+    line-height: 1.5;
+}
+
+.demo-config code {
+    background: #f1f3f4;
+    padding: 2px 6px;
+    border-radius: 3px;
+    font-family: 'Monaco', 'Menlo', monospace;
+    font-size: 13px;
+    color: #d73a49;
+}
+
+.demo-result {
+    font-size: 14px;
+}
+
+/* 演示模式样式 */
+.demo-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    background: rgba(0, 0, 0, 0.3);
+    z-index: 9999;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.demo-content {
+    position: relative;
+    max-width: 90vw;
+    max-height: 90vh;
+}
+
+.demo-guide-popup {
+    background: white;
+    border-radius: 12px;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
+    width: 640px;
+    animation: demoPopup 0.3s ease-out;
+}
+
+@keyframes demoPopup {
+    from {
+        opacity: 0;
+        transform: scale(0.9) translateY(-20px);
+    }
+    to {
+        opacity: 1;
+        transform: scale(1) translateY(0);
+    }
+}
+
+.demo-guide-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 20px 24px 0;
+    border-bottom: 1px solid #f0f0f0;
+    margin-bottom: 16px;
+}
+
+.demo-guide-header h3 {
+    margin: 0;
+    color: #303133;
+    font-size: 18px;
+    font-weight: 600;
+}
+
+.demo-close-btn {
+    background: none;
+    border: none;
+    font-size: 24px;
+    color: #909399;
+    cursor: pointer;
+    padding: 0;
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s;
+}
+
+.demo-close-btn:hover {
+    background: #f5f5f5;
+    color: #606266;
+}
+
+.demo-guide-header {
+    cursor: move;
+    user-select: none;
+}
+
+.demo-guide-content {
+    padding: 0 24px;
+}
+
+.demo-guide-content p {
+    margin: 0 0 20px 0;
+    color: #606266;
+    font-size: 14px;
+    line-height: 1.6;
+}
+
+.demo-guide-footer {
+    padding: 0 24px 24px;
+    text-align: right;
+}
+
+.demo-guide-footer .el-button {
+    margin-left: 8px;
+}
+
+.demo-step-indicator {
+    display: flex;
+    justify-content: center;
+    padding: 0 24px 20px;
+    gap: 8px;
+}
+
+.step-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: #e4e7ed;
+    transition: background-color 0.3s;
+}
+
+.step-dot.active {
+    background: #409eff;
+}
+
+/* 演示模式下的高亮效果 */
+.demo-highlight {
+    position: relative;
+    z-index: 10000;
+}
+
+.demo-highlight::before {
+    content: '';
+    position: absolute;
+    top: -4px;
+    left: -4px;
+    right: -4px;
+    bottom: -4px;
+    background: #409eff;
+    border-radius: 6px;
+    z-index: -1;
+    animation: highlightPulse 2s infinite;
+}
+
+@keyframes highlightPulse {
+    0%, 100% {
+        opacity: 0.3;
+    }
+    50% {
+        opacity: 0.8;
+    }
+}
+
+/* 当前设置区域样式，增加与按钮的间距 */
+.demo-current-settings {
+    margin-top: 12px;
+    margin-bottom: 18px;
+    color: #606266;
+    font-size: 14px;
+    line-height: 1.6;
+    word-break: break-word;
 }
 </style>

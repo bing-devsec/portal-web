@@ -100,8 +100,9 @@
                         <div class="rule-item">
                             <div class="rule-header">
                                 <div class="rule-name-input-wrapper">
-                                    <label class="rule-name-label">规则名称：</label>
+                                    <label class="rule-name-label" for="rule-name">规则名称：</label>
                                     <el-input
+                                        id="rule-name"
                                         v-model="currentRule.name"
                                         placeholder="例如：手机号脱敏（保存时必填）"
                                         clearable
@@ -178,8 +179,9 @@
                                     <!-- 当策略为 fixed 时，策略和固定值并排显示 -->
                                     <div v-if="fieldPathConfig.strategy === 'fixed'" class="strategy-row">
                                         <div class="strategy-item">
-                                            <label class="field-label">脱敏策略：</label>
+                                            <label class="field-label" :for="'strategy-' + pathIndex">脱敏策略：</label>
                                             <el-select
+                                                :id="'strategy-' + pathIndex"
                                                 v-model="fieldPathConfig.strategy"
                                                 style="width: 100%"
                                                 @change="handleStrategyChange(fieldPathConfig, pathIndex)"
@@ -191,8 +193,9 @@
                                             </el-select>
                                         </div>
                                         <div class="strategy-item">
-                                            <label class="field-label">固定值：</label>
+                                            <label class="field-label" :for="'fixed-value-' + pathIndex">固定值：</label>
                                             <el-input
+                                                :id="'fixed-value-' + pathIndex"
                                                 v-model="fieldPathConfig.fixedValue"
                                                 placeholder="例如: ***, <MASKED>"
                                                 clearable
@@ -205,8 +208,9 @@
                                     <!-- 当策略为 partial 时，策略单独一行，参数配置在下一行 -->
                                     <template v-else-if="fieldPathConfig.strategy === 'partial'">
                                         <div class="strategy-single">
-                                            <label class="field-label">脱敏策略：</label>
+                                            <label class="field-label" :for="'strategy-single-' + pathIndex">脱敏策略：</label>
                                             <el-select
+                                                :id="'strategy-single-' + pathIndex"
                                                 v-model="fieldPathConfig.strategy"
                                                 style="width: 100%"
                                                 @change="handleStrategyChange(fieldPathConfig, pathIndex)"
@@ -219,8 +223,9 @@
                                         </div>
                                         <div class="partial-config">
                                             <div class="partial-item">
-                                                <label class="field-label">保留前几位：</label>
+                                                <label class="field-label" :for="'prefix-length-' + pathIndex">保留前几位：</label>
                                                 <el-input-number
+                                                    :id="'prefix-length-' + pathIndex"
                                                     v-model="fieldPathConfig.prefixLength"
                                                     :min="0"
                                                     :max="10"
@@ -229,8 +234,9 @@
                                                 />
                                             </div>
                                             <div class="partial-item">
-                                                <label class="field-label">保留后几位：</label>
+                                                <label class="field-label" :for="'suffix-length-' + pathIndex">保留后几位：</label>
                                                 <el-input-number
+                                                    :id="'suffix-length-' + pathIndex"
                                                     v-model="fieldPathConfig.suffixLength"
                                                     :min="0"
                                                     :max="10"
@@ -239,8 +245,9 @@
                                                 />
                                             </div>
                                             <div class="partial-item">
-                                                <label class="field-label">掩码字符：</label>
+                                                <label class="field-label" :for="'mask-char-' + pathIndex">掩码字符：</label>
                                                 <el-input
+                                                    :id="'mask-char-' + pathIndex"
                                                     v-model="fieldPathConfig.maskChar"
                                                     placeholder="例如: *"
                                                     maxlength="1"
@@ -252,8 +259,9 @@
                                     
                                     <!-- 其他策略（remove、null）时，只显示策略选择框 -->
                                     <div v-else class="strategy-single">
-                                        <label class="field-label">脱敏策略：</label>
+                                        <label class="field-label" :for="'strategy-else-' + pathIndex">脱敏策略：</label>
                                         <el-select
+                                            :id="'strategy-else-' + pathIndex"
                                             v-model="fieldPathConfig.strategy"
                                             style="width: 100%"
                                             @change="handleStrategyChange(fieldPathConfig, pathIndex)"
@@ -413,6 +421,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, watch, nextTick } from 'vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
+import { showMessageSuccess as showSuccess, showMessageError as showError, showMessageWarning as showWarning } from '~/utils/api';
 import { Plus, Delete, DocumentAdd, FolderOpened, ArrowRight, Warning } from '@element-plus/icons-vue';
 
 // Props
@@ -603,7 +612,7 @@ const saveRulesListToStorage = () => {
     try {
         localStorage.setItem(STORAGE_KEY, JSON.stringify(savedRulesList.value));
     } catch (error) {
-        ElMessage.error('保存规则列表失败');
+        showMessageError('保存规则列表失败');
     }
 };
 
@@ -745,7 +754,7 @@ const compareRuleContent = (rule1: MaskingRule, rule2: MaskingRule): boolean => 
 const saveCurrentRule = async () => {
     // 检查是否有有效的字段路径
     if (!currentRule.value.fieldPaths.some(fieldPath => fieldPath.fieldPath.trim())) {
-        ElMessage.warning('请至少配置一个有效的字段路径');
+        showMessageWarning('请至少配置一个有效的字段路径');
         return;
     }
     
@@ -786,7 +795,7 @@ const saveCurrentRule = async () => {
     // 验证规则的有效性
     const validation = validateRule(currentRule.value);
     if (!validation.valid) {
-        ElMessage.error(validation.error || '规则验证失败');
+        showMessageError(validation.error || '规则验证失败');
         return;
     }
     
@@ -809,7 +818,7 @@ const saveCurrentRule = async () => {
         
         // 情况1.1：同名且内容相同，直接提示保存成功
         if (compareRuleContent(existingRule, newRuleContent)) {
-            ElMessage.success(`规则"${ruleName}"已保存（与现有规则完全相同）`);
+            showMessageSuccess(`规则"${ruleName}"已保存（与现有规则完全相同）`);
             // 标记规则为已保存
             currentRule.value.isSaved = true;
             currentRule.value.name = ruleName;
@@ -838,7 +847,7 @@ const saveCurrentRule = async () => {
             
             savedRulesList.value[existingSameNameIndex] = newRule;
             saveRulesListToStorage();
-            ElMessage.success(`规则"${ruleName}"已覆盖保存`);
+            showMessageSuccess(`规则"${ruleName}"已覆盖保存`);
             
             // 标记规则为已保存
             currentRule.value.isSaved = true;
@@ -878,7 +887,7 @@ const saveCurrentRule = async () => {
             // 保存新规则
             savedRulesList.value.push(newRule);
             saveRulesListToStorage();
-            ElMessage.success(`规则"${ruleName}"已保存，旧规则"${existingSameContentRule.name}"已删除`);
+            showMessageSuccess(`规则"${ruleName}"已保存，旧规则"${existingSameContentRule.name}"已删除`);
             
             // 标记规则为已保存
             currentRule.value.isSaved = true;
@@ -892,7 +901,7 @@ const saveCurrentRule = async () => {
     
     // 情况3：不存在同名规则，也不存在相同内容的规则，检查规则数量上限
     if (savedRulesList.value.length >= 5) {
-        ElMessage.warning('脱敏规则数量已达上限（5条），无法保存新规则。请先删除旧规则后再保存。');
+        showMessageWarning('脱敏规则数量已达上限（5条），无法保存新规则。请先删除旧规则后再保存。');
         return;
     }
     
@@ -907,7 +916,7 @@ const saveCurrentRule = async () => {
     
     savedRulesList.value.push(newRule);
     saveRulesListToStorage();
-    ElMessage.success(`规则"${ruleName}"已保存`);
+    showMessageSuccess(`规则"${ruleName}"已保存`);
     
     // 标记规则为已保存
     currentRule.value.isSaved = true;
@@ -923,7 +932,7 @@ const openLoadRuleDialog = () => {
 // 加载规则（替换当前规则）
 const loadRule = (index: number) => {
     if (index < 0 || index >= savedRulesList.value.length) {
-        ElMessage.error('规则索引无效');
+        showMessageError('规则索引无效');
         return;
     }
     
@@ -977,7 +986,7 @@ const cancelDelete = () => {
 // 执行删除
 const executeDelete = (index: number) => {
     if (index < 0 || index >= savedRulesList.value.length) {
-        ElMessage.error('规则索引无效');
+        showMessageError('规则索引无效');
         return;
     }
     
@@ -2413,14 +2422,14 @@ const maskObject = (obj: any, rules: MaskingRule[], currentPath: string[] = []):
 // 确认应用
 const confirmApply = () => {
     if (!props.jsonData || !props.jsonData.trim()) {
-        ElMessage.warning('JSON 数据不能为空');
+        showMessageWarning('JSON 数据不能为空');
         return;
     }
     
     // 验证规则：至少有一个有效的字段路径
     const hasValidFieldPath = currentRule.value.fieldPaths.some(fieldPath => fieldPath.fieldPath.trim());
     if (!hasValidFieldPath) {
-        ElMessage.warning('请至少配置一个有效的字段路径');
+        showMessageWarning('请至少配置一个有效的字段路径');
         return;
     }
     
@@ -2432,7 +2441,7 @@ const confirmApply = () => {
         try {
             jsonObj = JSON.parse(props.jsonData);
         } catch (error) {
-            ElMessage.error('JSON 数据格式不正确，请先格式化 JSON 数据');
+            showMessageError('JSON 数据格式不正确，请先格式化 JSON 数据');
             applying.value = false;
             return;
         }
@@ -2448,9 +2457,9 @@ const confirmApply = () => {
         handleDialogClose();
         
         // 显示脱敏结果弹窗
-        ElMessage.success(`已成功脱敏 ${count} 个字段`);
+        showMessageSuccess(`已成功脱敏 ${count} 个字段`);
     } catch (error: any) {
-        ElMessage.error('脱敏处理失败: ' + (error.message || '未知错误'));
+        showMessageError('脱敏处理失败: ' + (error.message || '未知错误'));
     } finally {
         applying.value = false;
     }

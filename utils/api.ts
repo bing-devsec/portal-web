@@ -267,3 +267,50 @@ export function useApiData<T>(url: string, options: any = {}) {
 		})
 	};
 }
+
+// ===========================
+// 全局消息提示工具
+// ===========================
+import { ElMessage } from 'element-plus';
+
+const MESSAGE_CUSTOM_CLASS = "json-tool-message";
+type MessageType = "success" | "error" | "warning" | "info";
+
+// 获取消息偏移量
+const getGlobalMessageOffset = () => {
+    // 检查是否在JsonTool组件中，如果是则使用其特殊的偏移逻辑
+    if (typeof window !== "undefined" && window.location.pathname.includes('/tool/json')) {
+        // 检查JsonTool是否处于全屏状态
+        // 通过检查DOM中是否有fullscreen类来判断
+        const jsonToolContainer = document.querySelector('.json-tool-container');
+        if (jsonToolContainer && jsonToolContainer.classList.contains('fullscreen')) {
+            return 5; // 全屏状态下的偏移量
+        }
+        return 51.5; // 非全屏状态下的偏移量
+    }
+    return 20; // 其他页面的默认偏移量
+};
+
+// 全局消息提示函数
+export const globalNotify = (type: MessageType, message: string, duration?: number) => {
+    // 使用 CSS 变量让自定义类覆盖全局 .el-message 的 top:7px!important
+    if (typeof document !== "undefined") {
+        document.documentElement.style.setProperty(
+            "--json-message-offset",
+            `${getGlobalMessageOffset()}px`
+        );
+    }
+    ElMessage({
+        message,
+        type,
+        duration,
+        offset: getGlobalMessageOffset(),
+        customClass: MESSAGE_CUSTOM_CLASS,
+    });
+};
+
+// 便捷方法 - 使用不同的命名避免与Nuxt内置函数冲突
+export const showMessageSuccess = (message: string, duration?: number) => globalNotify("success", message, duration);
+export const showMessageError = (message: string, duration?: number) => globalNotify("error", message, duration);
+export const showMessageWarning = (message: string, duration?: number) => globalNotify("warning", message, duration);
+export const showMessageInfo = (message: string, duration?: number) => globalNotify("info", message, duration);

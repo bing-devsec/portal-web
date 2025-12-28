@@ -829,3 +829,16 @@ a {
     background: #f5f7fa;
     border-radius: 12px;
 }
+
+
+/* ===========================
+   全局消息弹窗样式
+   =========================== */
+
+.json-tool-message {
+    right: 15px !important;
+    left: auto !important;
+    transform: translateX(0) !important;
+    position: fixed !important;
+    z-index: 9999 !important;
+}
