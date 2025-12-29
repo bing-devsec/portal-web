@@ -78,8 +78,6 @@ export function useSidebarData() {
 		return Math.abs(hash % 9).toString();
 	};
 
-	// 不再缓存侧边栏数据，所有数据直接走后端请求并使用 API 返回的结果
-
 	// 计算属性：优先使用 API 数据，如果没有则使用缓存
 	const hotArticles = computed(() => hotArticleData.value?.rows || []);
 

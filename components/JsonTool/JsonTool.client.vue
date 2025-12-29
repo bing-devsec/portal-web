@@ -825,19 +825,13 @@ const currentDemoStepData = ref<any>(null);
 const demoData = ref([
     {
         "id": 1,
-        "firstName": "Dylan",
-        "lastName": "Mullins",
-        "age": 25,
+        "name": "Dylan Mullins",
         "education": [
             {
-                "degree": "Diploma",
-                "major": "Medicine",
                 "university": "MIT",
                 "graduationYear": 2003
             },
             {
-                "degree": "Master",
-                "major": "Music",
                 "university": "Harvard University",
                 "graduationYear": 1983
             }
@@ -845,21 +839,29 @@ const demoData = ref([
     },
     {
         "id": 2,
-        "firstName": "Logan",
-        "lastName": "Boyle",
-        "age": 32,
+        "name": "Logan Boyle",
         "education": [
             {
-                "degree": "Diploma",
-                "major": "Psychology",
                 "university": "Yale University",
                 "graduationYear": 2000
             },
             {
-                "degree": "Associate",
-                "major": "Engineering",
                 "university": "University of Pennsylvania",
                 "graduationYear": 2020
+            }
+        ]
+    },
+    {
+        "id": 3,
+        "name": "Emma Davis",
+        "education": [
+            {
+                "university": "Stanford University",
+                "graduationYear": 2010
+            },
+            {
+                "university": "Columbia University",
+                "graduationYear": 2015
             }
         ]
     }
@@ -1520,6 +1522,7 @@ const getEditorOptions = (
     indentSize: size, // 使用传入的大小作为缩进宽度
     wordWrap: wordWrap.value ? ("off" as const) : ("on" as const), // 字符串换行设置（反转逻辑：false=换行，true=不换行）
     fontSize: fontSize.value, // 字体大小设置
+    lineHeight: 16, // 设置行高为16px，与光标高度保持一致
     autoClosingBrackets: "languageDefined" as const, // 根据语言自动闭合括号
     autoClosingQuotes: "languageDefined" as const, // 根据语言自动闭合引号
     formatOnPaste: false, // 启用粘贴时自动格式化
@@ -5488,12 +5491,92 @@ const compressAndEscapeJSON = () => {
             return;
         }
 
-        // 使用标准压缩方法
+        // 使用标准压缩方法（不格式化）
         const compressed = JSON.stringify(parsed);
 
-        // 转义处理 - 手动转义，只转义双引号，保持所有转义字符（\n, \t, \a等）原样
-        // 只转义双引号，不转义反斜杠（保持所有转义序列如 \n, \t, \a 等原样）
-        let escaped = compressed.replace(/"/g, '\\"');
+        // 有效的JSON转义序列
+        const validEscapes = ['"', "\\", "/", "b", "f", "n", "r", "t", "u"];
+
+        // 智能转义：保留原始JSON中的转义序列（包括非法转义序列）
+        // 需要特别处理字符串值内部的转义序列，支持任意深度的嵌套
+        // 核心思想：在字符串值内部，每个反斜杠都需要被转义（\ -> \\），每个引号都需要被转义（" -> \"）
+        let escaped = "";
+        let i = 0;
+        let inString = false; // 跟踪是否在字符串值内部
+
+        while (i < compressed.length) {
+            const char = compressed[i];
+            const nextChar = compressed[i + 1] || "";
+            const nextNextChar = compressed[i + 2] || "";
+
+            if (char === "\\") {
+                // 优先处理反斜杠（避免与引号处理冲突）
+                if (inString) {
+                    // 在字符串值内部，所有反斜杠都需要被转义
+                    if (nextChar === '"') {
+                        // 字符串值内部的转义引号 \"，需要转义为 \\\"
+                        // 因为我们要转义整个JSON字符串，所以 \" 需要变成 \\\"
+                        escaped += '\\\\\\"';
+                        i += 2;
+                    } else if (nextChar === "\\") {
+                        // 连续的反斜杠 \\，需要转义为 \\\\
+                        // 检查是否是无效转义序列（如 \\a）
+                        if (nextNextChar && !validEscapes.includes(nextNextChar)) {
+                            // JSON.stringify 将无效转义序列 \a 转义成了 \\a
+                            // 我们需要将其还原为 \a（转义后变成 \\a）
+                            escaped += "\\" + nextNextChar;
+                            i += 3;
+                        } else {
+                            // 标准的 \\，转义为 \\\\
+                            escaped += "\\\\\\\\";
+                            i += 2;
+                        }
+                    } else if (
+                        nextChar === "u" &&
+                        /^[0-9a-fA-F]{4}$/i.test(compressed.substring(i + 2, i + 6))
+                    ) {
+                        // Unicode转义序列 \uXXXX，在字符串值内部需要转义反斜杠
+                        escaped += "\\\\u" + compressed.substring(i + 2, i + 6);
+                        i += 6;
+                    } else if (nextChar) {
+                        // 标准转义序列（\n, \t等），在字符串值内部需要转义反斜杠
+                        escaped += "\\\\" + nextChar;
+                        i += 2;
+                    } else {
+                        // 单独的反斜杠（字符串末尾），转义它
+                        escaped += "\\\\";
+                        i++;
+                    }
+                } else {
+                    // 不在字符串值内部，保持原样（这些是JSON结构中的转义序列）
+                    if (
+                        nextChar === "u" &&
+                        /^[0-9a-fA-F]{4}$/i.test(compressed.substring(i + 2, i + 6))
+                    ) {
+                        // Unicode转义序列 \uXXXX，保持原样
+                        escaped += compressed.substring(i, i + 6);
+                        i += 6;
+                    } else if (nextChar) {
+                        // 标准转义序列（\n, \t等），保持原样
+                        escaped += char + nextChar;
+                        i += 2;
+                    } else {
+                        // 单独的反斜杠，转义它
+                        escaped += "\\\\";
+                        i++;
+                    }
+                }
+            } else if (char === '"') {
+                // 处理引号（必须在反斜杠之后处理，避免重复处理）
+                // 所有引号都需要被转义
+                escaped += '\\"';
+                inString = !inString; // 切换字符串状态
+                i++;
+            } else {
+                escaped += char;
+                i++;
+            }
+        }
 
         outputEditor?.setValue(escaped);
 
@@ -7207,13 +7290,14 @@ const getNextLevelKeys = (jsonObj: any, contextPath: string): PathSuggestion[] =
 
         if (jsonObj && typeof jsonObj === 'object' && !Array.isArray(jsonObj)) {
             for (const [key, value] of Object.entries(jsonObj)) {
-                // 如果值是数组，添加两个建议：带[*]和不带[*]的
+                // 只为数组和对象类型的字段提供智能提示，过滤掉基础类型（string, number, boolean, null）
                 if (Array.isArray(value)) {
                     suggestions.push({ value: key, type: 'exact' });
                     suggestions.push({ value: `${key}[*]`, type: 'array-wildcard' });
-                } else {
+                } else if (value && typeof value === 'object') {
                     suggestions.push({ value: key, type: 'exact' });
                 }
+                // 基础类型字段（string, number, boolean, null）不提供智能提示
             }
         }
         return suggestions.sort((a, b) => a.value.localeCompare(b.value));
@@ -7257,12 +7341,14 @@ const getNextLevelKeys = (jsonObj: any, contextPath: string): PathSuggestion[] =
             const firstElement = targetValue[0];
             if (firstElement && typeof firstElement === 'object' && !Array.isArray(firstElement)) {
                 for (const [key, value] of Object.entries(firstElement)) {
+                    // 只为数组和对象类型的字段提供智能提示，过滤掉基础类型（string, number, boolean, null）
                     if (Array.isArray(value)) {
                         suggestions.push({ value: key, type: 'exact' });
                         suggestions.push({ value: `${key}[*]`, type: 'array-wildcard' });
-                    } else {
+                    } else if (value && typeof value === 'object') {
                         suggestions.push({ value: key, type: 'exact' });
                     }
+                    // 基础类型字段（string, number, boolean, null）不提供智能提示
                 }
             }
         }
@@ -7270,12 +7356,14 @@ const getNextLevelKeys = (jsonObj: any, contextPath: string): PathSuggestion[] =
     // 如果目标是对象，返回对象的key
     else if (typeof targetValue === 'object') {
         for (const [key, value] of Object.entries(targetValue)) {
+            // 只为数组和对象类型的字段提供智能提示，过滤掉基础类型（string, number, boolean, null）
             if (Array.isArray(value)) {
                 suggestions.push({ value: key, type: 'exact' });
                 suggestions.push({ value: `${key}[*]`, type: 'array-wildcard' });
-            } else {
+            } else if (value && typeof value === 'object') {
                 suggestions.push({ value: key, type: 'exact' });
             }
+            // 基础类型字段（string, number, boolean, null）不提供智能提示
         }
     }
 
@@ -7906,6 +7994,12 @@ const showDemoStep: (step: number) => void = (step: number) => {
     if ([1, 4, 7, 10].includes(step)) {
         sortRootPath.value = '';
         sortFieldName.value = '';
+        // 每个示例开始时清空预览区域
+        if (outputEditor) {
+            outputEditor.setValue("");
+            updateLineNumberWidth(outputEditor);
+            updateEditorHeight(outputEditor);
+        }
     }
     if (step === 7) {
         // Map — 按 id 排序示例（加载 demo 数据，但保持字段未设置）
@@ -10227,7 +10321,6 @@ const transferToInput = (e: MouseEvent) => {
 /* 调整光标样式 */
 :deep(.monaco-editor .cursor) {
     height: 16px !important;
-    margin-top: 2px;
 }
 
 :deep(.monaco-editor .indent-guide) {
@@ -10262,6 +10355,7 @@ const transferToInput = (e: MouseEvent) => {
 :deep(.monaco-editor .current-line) {
     background-color: rgba(64, 158, 255, 0.06) !important;
     border: none !important;
+    height: 16px !important; /* 设置与行高一致的高度 */
 }
 
 /* 禁用行号区域的高亮 */
