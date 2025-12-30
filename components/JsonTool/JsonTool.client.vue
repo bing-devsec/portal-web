@@ -355,18 +355,6 @@
                             <!-- 分隔线：字体大小设置和缩进指南设置之间 -->
                             <el-divider class="settings-subsection-divider" />
 
-                            <!-- 存档设置 -->
-                            <div class="settings-subsection">
-                                <div class="settings-subsection-title">存档设置</div>
-                                <div class="settings-item">
-                                    <el-switch v-model="customArchiveName" active-text="自定义名称" inactive-text="自动编号"
-                                        size="default" />
-                                </div>
-                            </div>
-
-                            <!-- 分隔线：存档设置和缩进指南设置之间 -->
-                            <el-divider class="settings-subsection-divider" />
-
                             <!-- 缩进指南设置 -->
                             <div class="settings-subsection">
                                 <div class="settings-subsection-title">缩进指南设置</div>
@@ -480,6 +468,27 @@
                             </div>
                         </div>
                     </el-collapse-item>
+
+                    <!-- 存档设置（与通用设置同级，位于去除转义之后） -->
+                    <el-collapse-item name="archive">
+                        <template #title>
+                            <div class="settings-collapse-title">
+                                <el-icon class="column-title-icon">
+                                    <Edit />
+                                </el-icon>
+                                <span>存档设置</span>
+                            </div>
+                        </template>
+                        <div class="settings-collapse-content">
+                            <div class="settings-item">
+                                <div class="settings-item-header">
+                                    <span class="settings-label">存档名称</span>
+                                </div>
+                                <el-switch v-model="customArchiveName" active-text="自定义名称" inactive-text="自动编号"
+                                    size="default" />
+                            </div>
+                        </div>
+                    </el-collapse-item>
                 </el-collapse>
             </div>
             <template #footer>
@@ -491,6 +500,14 @@
 
         <!-- 字段排序对话框 -->
         <el-dialog v-model="fieldSortDialogVisible" title="按字段值排序" width="600px" :close-on-click-modal="false">
+            <div class="form-item">
+                <div class="form-item-row">
+                    <div class="form-value-quote--compact" style="width:100%;">
+                        <span class="form-compact-line">排序方向：<span class="form-value-text">{{ sortOrder === "asc" ? "正序（升序）" : "倒序（降序）" }}</span></span>
+                    </div>
+                </div>
+            </div>
+
             <div class="form-item">
                 <label class="form-label">排序范围</label>
                 <el-autocomplete v-model="sortRootPath" :fetch-suggestions="queryRootPaths"
@@ -505,13 +522,13 @@
                         </div>
                     </template>
                 </el-autocomplete>
-                <div class="form-hint">指定要排序的数据范围，留空表示对整个数据排序</div>
+                <div class="form-hint">
+                    指定要排序的数据范围，留空表示对整个数据排序
+                </div>
             </div>
 
             <div class="form-item">
-                <label class="form-label">
-                    排序字段
-                </label>
+                <label class="form-label"> 排序字段 </label>
                 <el-autocomplete v-model="sortFieldName" :fetch-suggestions="queryFieldPathsDisabled"
                     placeholder="输入字段名，如：score 或 user.name" clearable @select="handleFieldPathSelect"
                     @input="handleFieldPathInput" @keydown="handleFieldPathKeydown">
@@ -524,7 +541,9 @@
                         </div>
                     </template>
                 </el-autocomplete>
-                <div class="form-hint">选择用于排序的字段名，支持点号分隔的嵌套字段，如 user.profile.age</div>
+                <div class="form-hint">
+                    选择用于排序的字段名，支持点号分隔的嵌套字段，如 user.profile.age
+                </div>
             </div>
 
             <template #footer>
@@ -540,7 +559,11 @@
         <div v-if="isDemoMode" class="demo-overlay" @click="endDemoMode">
             <div class="demo-content">
                 <!-- 教学弹窗 -->
-                <div v-if="demoGuideVisible && currentDemoStepData" class="demo-guide-popup" :style="{ top: popupTop + 'px', left: popupLeft + 'px', position: 'fixed' }" @click.stop>
+                <div v-if="demoGuideVisible && currentDemoStepData" class="demo-guide-popup" :style="{
+                    top: popupTop + 'px',
+                    left: popupLeft + 'px',
+                    position: 'fixed',
+                }" @click.stop>
                     <div class="demo-guide-header" @mousedown.stop.prevent="startDrag">
                         <h3>{{ currentDemoStepData.title }}</h3>
                         <button class="demo-close-btn" @click="endDemoMode">×</button>
@@ -549,27 +572,20 @@
                         <p>{{ currentDemoStepData.content }}</p>
                         <div v-if="isDemoMode" class="demo-current-settings">
                             <strong>当前设置：</strong>
-                            <span style="margin-left:8px;">排序范围：<code>{{ sortRootPath || '(留空)' }}</code></span>
-                            <span style="margin-left:12px;">排序字段：<code>{{ sortFieldName || '(未设置)' }}</code></span>
+                            <span style="margin-left: 8px">排序范围：<code>{{ sortRootPath || "(留空)" }}</code></span>
+                            <span style="margin-left: 12px">排序字段：<code>{{ sortFieldName || "(未设置)" }}</code></span>
                         </div>
                     </div>
                     <div class="demo-guide-footer">
-                        <el-button
-                            v-for="(btn, index) in currentDemoStepData.buttons"
-                            :key="index"
-                            :type="btn.action === endDemoMode ? 'primary' : 'default'"
-                            @click="btn.action()"
-                        >
+                        <el-button v-for="(btn, index) in currentDemoStepData.buttons" :key="index"
+                            :type="btn.action === endDemoMode ? 'primary' : 'default'" @click="btn.action()">
                             {{ btn.text }}
                         </el-button>
                     </div>
                     <!-- 步骤指示器 -->
                     <div class="demo-step-indicator">
-                        <span
-                            v-for="i in demoStepsCount"
-                            :key="i"
-                            :class="['step-dot', { active: i === currentDemoStep + 1 }]"
-                        ></span>
+                        <span v-for="i in demoStepsCount" :key="i"
+                            :class="['step-dot', { active: i === currentDemoStep + 1 }]"></span>
                     </div>
                 </div>
             </div>
@@ -613,7 +629,12 @@ import ShareDialog from "./ShareDialog.vue";
 import DataMaskingDialog from "./DataMaskingDialog.vue";
 import ArchiveNameDialog from "./ArchiveNameDialog.vue";
 import JSON5 from "json5";
-import { showMessageSuccess as showSuccess, showMessageError as showError, showMessageWarning as showWarning, showMessageInfo as showInfo } from '~/utils/api';
+import {
+    showMessageSuccess as showSuccess,
+    showMessageError as showError,
+    showMessageWarning as showWarning,
+    showMessageInfo as showInfo,
+} from "~/utils/api";
 
 // ==================== 设置持久化管理 ====================
 const SETTINGS_STORAGE_KEY = "json-tool-settings";
@@ -815,6 +836,19 @@ const settingsCollapseActiveNames = ref<string | number>("settings"); // 手风�
 // 字段排序对话框相关状态
 const fieldSortDialogVisible = ref(false);
 const sortRootPath = ref<string>("");
+/**
+ * 更新排序方向（用于字段排序对话框内的切换）
+ * 通过函数设置可以在切换时同步保存设置
+ */
+const setSortOrder = (v: "asc" | "desc") => {
+    sortOrder.value = v;
+    // 保存设置到 localStorage
+    try {
+        saveSettings();
+    } catch {
+        // 忽略保存错误
+    }
+};
 const sortFieldName = ref<string>("");
 
 // 字段排序演示相关状态
@@ -824,47 +858,47 @@ const demoGuideVisible = ref(false);
 const currentDemoStepData = ref<any>(null);
 const demoData = ref([
     {
-        "id": 1,
-        "name": "Dylan Mullins",
-        "education": [
+        id: 1,
+        name: "Dylan Mullins",
+        education: [
             {
-                "university": "MIT",
-                "graduationYear": 2003
+                university: "MIT",
+                graduationYear: 2003,
             },
             {
-                "university": "Harvard University",
-                "graduationYear": 1983
-            }
-        ]
+                university: "Harvard University",
+                graduationYear: 1983,
+            },
+        ],
     },
     {
-        "id": 2,
-        "name": "Logan Boyle",
-        "education": [
+        id: 2,
+        name: "Logan Boyle",
+        education: [
             {
-                "university": "Yale University",
-                "graduationYear": 2000
+                university: "Yale University",
+                graduationYear: 2000,
             },
             {
-                "university": "University of Pennsylvania",
-                "graduationYear": 2020
-            }
-        ]
+                university: "University of Pennsylvania",
+                graduationYear: 2020,
+            },
+        ],
     },
     {
-        "id": 3,
-        "name": "Emma Davis",
-        "education": [
+        id: 3,
+        name: "Emma Davis",
+        education: [
             {
-                "university": "Stanford University",
-                "graduationYear": 2010
+                university: "Stanford University",
+                graduationYear: 2010,
             },
             {
-                "university": "Columbia University",
-                "graduationYear": 2015
-            }
-        ]
-    }
+                university: "Columbia University",
+                graduationYear: 2015,
+            },
+        ],
+    },
 ]);
 const demoResults = ref<any>({});
 const currentDemoStep = ref(0);
@@ -874,31 +908,31 @@ const savedInputContent = ref<string | null>(null);
 
 // 演示用 map 数据（用于展示对 map 的排序）
 const demoMapData = ref({
-    "B": {
-        "id": 102,
-        "key": "task-B",
-        "value": { "score": 100 }
+    B: {
+        id: 102,
+        key: "task-B",
+        value: { score: 100 },
     },
-    "A": {
-        "id": 101,
-        "key": "task-A",
-        "value": { "score": 70 }
+    A: {
+        id: 101,
+        key: "task-A",
+        value: { score: 70 },
     },
-    "C": {
-        "id": 103,
-        "key": "task-C",
-        "value": { "score": 80 }
+    C: {
+        id: 103,
+        key: "task-C",
+        value: { score: 80 },
     },
-    "E": {
-        "id": 105,
-        "key": "task-E",
-        "value": { "score": 60 }
+    E: {
+        id: 105,
+        key: "task-E",
+        value: { score: 60 },
     },
-    "D": {
-        "id": 104,
-        "key": "task-D",
-        "value": { "score": null }
-    }
+    D: {
+        id: 104,
+        key: "task-D",
+        value: { score: null },
+    },
 });
 
 // 拖拽相关状态
@@ -914,7 +948,7 @@ const startDrag = (event: MouseEvent) => {
     dragOffsetX.value = event.clientX - popupLeft.value;
     dragOffsetY.value = event.clientY - popupTop.value;
     // prevent text selection
-    document.body.style.userSelect = 'none';
+    document.body.style.userSelect = "none";
 };
 
 const onMouseMove = (event: MouseEvent) => {
@@ -933,18 +967,18 @@ const onMouseMove = (event: MouseEvent) => {
 const endDrag = () => {
     if (isDragging.value) {
         isDragging.value = false;
-        document.body.style.userSelect = '';
+        document.body.style.userSelect = "";
     }
 };
 
 onMounted(() => {
-    window.addEventListener('mousemove', onMouseMove);
-    window.addEventListener('mouseup', endDrag);
+    window.addEventListener("mousemove", onMouseMove);
+    window.addEventListener("mouseup", endDrag);
 });
 
 onBeforeUnmount(() => {
-    window.removeEventListener('mousemove', onMouseMove);
-    window.removeEventListener('mouseup', endDrag);
+    window.removeEventListener("mousemove", onMouseMove);
+    window.removeEventListener("mouseup", endDrag);
 });
 
 // 字段路径建议类型
@@ -4857,18 +4891,8 @@ const unescapeJSON = (recursive: boolean = true) => {
 
         // 获取原始输入
         const originalInput = value;
-
-        // 尝试作为JSON处理
-        // 但要注意：如果输入包含转义序列（如 \n, \t），JSON.parse 会将它们转换为实际字符
-        // 为了避免这种情况，我们先检查是否包含需要保持字面形式的转义序列
         let parsedInput = null;
         let shouldPreserveEscapes = false;
-
-        // 检查输入是否包含需要保持字面形式的转义序列（除了 \" 和 \\）
-        // 查找反斜杠后跟 n, t, r, b, f 的模式（这些是会被 JSON.parse 解析的转义序列）
-        // 注意：我们不能使用后向断言，所以需要更简单的检测
-        // 检测模式：\n, \t, \r, \b, \f（但排除 \\n 这种，因为它表示字面量反斜杠+n）
-        // 简单检测：查找单数反斜杠后跟 n/t/r/b/f（前面没有另一个反斜杠）
         let hasEscapeToPreserve = false;
         for (let i = 0; i < value.length - 1; i++) {
             if (
@@ -4887,26 +4911,58 @@ const unescapeJSON = (recursive: boolean = true) => {
             shouldPreserveEscapes = true;
         }
 
-        // 如果包含需要保持字面形式的转义序列，不直接使用 JSON.parse
-        // 而是先手动处理，只处理 \" 和 \\，然后尝试解析
-        if (!shouldPreserveEscapes) {
+        // 简化解析流程：优先直接解析 -> 宽松解析 -> 迭代去除外层转义后再尝试解析
+        const tryParseJSON = (str: string) => {
             try {
-                // 先尝试直接解析
-                parsedInput = JSON.parse(value);
+                return { ok: true, value: JSON.parse(str) } as const;
             } catch {
-                // 如果直接解析失败，尝试用宽松模式处理
+                return { ok: false } as const;
+            }
+        };
+
+        const iterativeParse = (str: string, maxIter = 10) => {
+            let cand = str;
+            for (let i = 0; i < maxIter; i++) {
+                const res = tryParseJSON(cand);
+                if (res.ok) return res.value;
+                // 逐步还原常见的外层转义（\\ -> \, \" -> "）
+                const unescaped = cand.replace(/\\\\/g, "\\").replace(/\\"/g, '"');
+                if (unescaped === cand) break;
+                cand = unescaped;
+            }
+            // 如果最后仍是被引号包裹的字符串，尝试解析内部一次
+            if (
+                typeof cand === "string" &&
+                cand.startsWith('"') &&
+                cand.endsWith('"')
+            ) {
                 try {
-                    const result = preprocessJSON(value);
-                    parsedInput = result.data;
+                    const inner = JSON.parse(cand);
+                    const res2 = tryParseJSON(inner);
+                    if (res2.ok) return res2.value;
                 } catch {
-                    // 不是有效的JSON，将进行基本转义处理
+                    // ignore
                 }
             }
+            return null;
+        };
+
+        // 1. 先尝试直接解析
+        let parseAttempted = false;
+        const direct = tryParseJSON(value);
+        if (direct.ok) {
+            parsedInput = direct.value;
+            parseAttempted = true;
         } else {
-            // 包含需要保持字面形式的转义序列，手动处理
-            // 只处理 \" 和 \\，不处理其他转义序列
-            // 这种情况下，我们只进行简单的替换，不尝试解析为JSON对象
-            // 直接进入后面的手动处理逻辑
+            // 2. 宽松解析器
+            try {
+                const result = preprocessJSON(value);
+                parsedInput = result.data;
+                parseAttempted = true;
+            } catch {
+                // 3. 迭代去除外层转义再尝试解析
+                parsedInput = iterativeParse(value);
+            }
         }
 
         // 如果成功解析为对象或数组，进行递归处理
@@ -4918,6 +4974,141 @@ const unescapeJSON = (recursive: boolean = true) => {
                 if (objectDepth <= 50) {
                     // 全局 Unicode 映射收集器（在处理开始前创建，用于收集所有需要保留的 Unicode 转义序列）
                     const globalUnicodeMap = new Map<string, string>();
+
+                    // 恢复 Unicode 占位符（从 map 中恢复 \uXXXX）
+                    const restoreUnicodePlaceholders = (
+                        val: any,
+                        map: Map<string, string>
+                    ): any => {
+                        if (typeof val === "string") {
+                            let restored = val;
+                            map.forEach((unicode, char) => {
+                                const hex = unicode.replace(/\\u/, "");
+                                const placeholder = `__UNI_HEX_${hex}__`;
+                                restored = restored.replace(
+                                    new RegExp(
+                                        placeholder.replace(/[.*+?^${}()|[\\]\\\\]/g, "\\$&"),
+                                        "g"
+                                    ),
+                                    char
+                                );
+                            });
+                            return restored;
+                        } else if (Array.isArray(val)) {
+                            return val.map((item) => restoreUnicodePlaceholders(item, map));
+                        } else if (val && typeof val === "object") {
+                            const result: Record<string, any> = {};
+                            for (const key in val) {
+                                if (Object.prototype.hasOwnProperty.call(val, key)) {
+                                    result[key] = restoreUnicodePlaceholders(val[key], map);
+                                }
+                            }
+                            return result;
+                        }
+                        return val;
+                    };
+
+                    // 递归清理所有的临时 __unicodeMap__ 属性
+                    const cleanUnicodeMaps = (obj: any, depth: number = 0): void => {
+                        if (depth > 100) return;
+                        if (obj && typeof obj === "object") {
+                            if ((obj as any).__unicodeMap__) {
+                                delete (obj as any).__unicodeMap__;
+                            }
+                            if (Array.isArray(obj)) {
+                                obj.forEach((item) => cleanUnicodeMaps(item, depth + 1));
+                            } else {
+                                Object.values(obj).forEach((val) =>
+                                    cleanUnicodeMaps(val, depth + 1)
+                                );
+                            }
+                        }
+                    };
+
+                    // 自定义 stringify：保留 Unicode 转义序列
+                    const stringifyWithUnicode = (
+                        obj: any,
+                        indent: string = "",
+                        unicodeMap: Map<string, string> = globalUnicodeMap
+                    ): string => {
+                        if (obj === null) return "null";
+                        if (typeof obj === "boolean") return obj.toString();
+                        if (typeof obj === "number") return obj.toString();
+
+                        if (typeof obj === "string") {
+                            let escaped = "";
+                            for (let i = 0; i < obj.length; i++) {
+                                const char = obj[i];
+                                const code = char.charCodeAt(0);
+                                if (unicodeMap.has(char)) {
+                                    escaped += unicodeMap.get(char)!;
+                                } else if (code < 32 || code === 34 || code === 92) {
+                                    switch (char) {
+                                        case '"':
+                                            escaped += '\\"';
+                                            break;
+                                        case "\\":
+                                            escaped += "\\\\";
+                                            break;
+                                        case "\b":
+                                            escaped += "\\b";
+                                            break;
+                                        case "\f":
+                                            escaped += "\\f";
+                                            break;
+                                        case "\n":
+                                            escaped += "\\n";
+                                            break;
+                                        case "\r":
+                                            escaped += "\\r";
+                                            break;
+                                        case "\t":
+                                            escaped += "\\t";
+                                            break;
+                                        default:
+                                            escaped += "\\u" + ("0000" + code.toString(16)).slice(-4);
+                                    }
+                                } else {
+                                    escaped += char;
+                                }
+                            }
+                            return '"' + escaped + '"';
+                        }
+
+                        if (Array.isArray(obj)) {
+                            if (obj.length === 0) return "[]";
+                            const items = obj.map((item) => {
+                                const itemStr = stringifyWithUnicode(
+                                    item,
+                                    indent + "  ",
+                                    unicodeMap
+                                );
+                                return indent + "  " + itemStr;
+                            });
+                            return "[\n" + items.join(",\n") + "\n" + indent + "]";
+                        }
+
+                        if (typeof obj === "object") {
+                            const keys = Object.keys(obj);
+                            if (keys.length === 0) return "{}";
+                            const pairs = keys.map((key) => {
+                                const keyStr = stringifyWithUnicode(
+                                    key,
+                                    indent + "  ",
+                                    unicodeMap
+                                );
+                                const valueStr = stringifyWithUnicode(
+                                    obj[key],
+                                    indent + "  ",
+                                    unicodeMap
+                                );
+                                return indent + "  " + keyStr + ": " + valueStr;
+                            });
+                            return "{\n" + pairs.join(",\n") + "\n" + indent + "}";
+                        }
+
+                        return JSON.stringify(obj);
+                    };
 
                     // 递归处理所有字符串字段，检测并解析转义的JSON字段
                     const processObject = (obj: any, depth: number = 0): any => {
@@ -4972,7 +5163,7 @@ const unescapeJSON = (recursive: boolean = true) => {
                                         // 先尝试直接解析，可能已经是有效的JSON
                                         parsedValue = JSON.parse(obj);
                                         isValidJson = true;
-                                    } catch {
+                                    } catch (e: any) {
                                         // 直接解析失败，可能是包含转义的JSON，需要先去除转义
                                         // 先保存 Unicode 转义序列，避免被 JSON.parse 解码
                                         const unicodeMap = new Map<string, string>(); // 字符 -> Unicode转义序列
@@ -5034,49 +5225,6 @@ const unescapeJSON = (recursive: boolean = true) => {
                                             parsedValue = JSON.parse(unescaped);
                                             isValidJson = true;
 
-                                            // 恢复 Unicode 占位符
-                                            const restoreUnicodePlaceholders = (
-                                                val: any,
-                                                map: Map<string, string>
-                                            ): any => {
-                                                if (typeof val === "string") {
-                                                    let restored = val;
-                                                    map.forEach((unicode, char) => {
-                                                        const hex = unicode.replace(/\\u/, "");
-                                                        const placeholder = `__UNI_HEX_${hex}__`;
-                                                        restored = restored.replace(
-                                                            new RegExp(
-                                                                placeholder.replace(
-                                                                    /[.*+?^${}()|[\]\\]/g,
-                                                                    "\\$&"
-                                                                ),
-                                                                "g"
-                                                            ),
-                                                            char
-                                                        );
-                                                    });
-                                                    return restored;
-                                                } else if (Array.isArray(val)) {
-                                                    return val.map((item) =>
-                                                        restoreUnicodePlaceholders(item, map)
-                                                    );
-                                                } else if (val && typeof val === "object") {
-                                                    const result: Record<string, any> = {};
-                                                    for (const key in val) {
-                                                        if (
-                                                            Object.prototype.hasOwnProperty.call(val, key)
-                                                        ) {
-                                                            result[key] = restoreUnicodePlaceholders(
-                                                                val[key],
-                                                                map
-                                                            );
-                                                        }
-                                                    }
-                                                    return result;
-                                                }
-                                                return val;
-                                            };
-
                                             parsedValue = restoreUnicodePlaceholders(
                                                 parsedValue,
                                                 unicodeMap
@@ -5115,122 +5263,10 @@ const unescapeJSON = (recursive: boolean = true) => {
                         return obj;
                     };
 
-                    // 递归清理所有的临时 __unicodeMap__ 属性
-                    const cleanUnicodeMaps = (obj: any, depth: number = 0): void => {
-                        // 防止递归深度过大
-                        if (depth > 100) return;
-
-                        if (obj && typeof obj === "object") {
-                            if ((obj as any).__unicodeMap__) {
-                                // 删除临时属性（映射已经合并到全局映射中了）
-                                delete (obj as any).__unicodeMap__;
-                            }
-                            if (Array.isArray(obj)) {
-                                obj.forEach((item) => cleanUnicodeMaps(item, depth + 1));
-                            } else {
-                                Object.values(obj).forEach((val) =>
-                                    cleanUnicodeMaps(val, depth + 1)
-                                );
-                            }
-                        }
-                    };
-
                     // 处理整个JSON对象
                     const processedJson = processObject(parsedInput, 0);
                     // 清理临时属性
                     cleanUnicodeMaps(processedJson);
-
-                    // 自定义 stringify，保留 Unicode 转义序列
-                    const stringifyWithUnicode = (
-                        obj: any,
-                        indent: string = "",
-                        unicodeMap: Map<string, string> = globalUnicodeMap
-                    ): string => {
-                        if (obj === null) return "null";
-                        if (typeof obj === "boolean") return obj.toString();
-                        if (typeof obj === "number") return obj.toString();
-
-                        if (typeof obj === "string") {
-                            // 处理字符串转义，优先使用 unicodeMap 中的映射（保留原始 Unicode 转义序列）
-                            let escaped = "";
-                            for (let i = 0; i < obj.length; i++) {
-                                const char = obj[i];
-                                const code = char.charCodeAt(0);
-
-                                // 如果字符在 unicodeMap 中，使用映射的 Unicode 转义序列（保留原始格式）
-                                if (unicodeMap.has(char)) {
-                                    escaped += unicodeMap.get(char)!;
-                                }
-                                // 对于控制字符和需要转义的字符，使用标准JSON转义
-                                else if (code < 32 || code === 34 || code === 92) {
-                                    switch (char) {
-                                        case '"':
-                                            escaped += '\\"';
-                                            break;
-                                        case "\\":
-                                            escaped += "\\\\";
-                                            break;
-                                        case "\b":
-                                            escaped += "\\b";
-                                            break;
-                                        case "\f":
-                                            escaped += "\\f";
-                                            break;
-                                        case "\n":
-                                            escaped += "\\n";
-                                            break;
-                                        case "\r":
-                                            escaped += "\\r";
-                                            break;
-                                        case "\t":
-                                            escaped += "\\t";
-                                            break;
-                                        default:
-                                            escaped += "\\u" + ("0000" + code.toString(16)).slice(-4);
-                                    }
-                                } else {
-                                    // 其他字符（包括中文字符），如果不是在 unicodeMap 中，直接输出
-                                    // 这样 JSON.parse 可以正常解析，并且不会将原本不是 Unicode 转义的中文转换为转义序列
-                                    escaped += char;
-                                }
-                            }
-                            return '"' + escaped + '"';
-                        }
-
-                        if (Array.isArray(obj)) {
-                            if (obj.length === 0) return "[]";
-                            const items = obj.map((item) => {
-                                const itemStr = stringifyWithUnicode(
-                                    item,
-                                    indent + "  ",
-                                    unicodeMap
-                                );
-                                return indent + "  " + itemStr;
-                            });
-                            return "[\n" + items.join(",\n") + "\n" + indent + "]";
-                        }
-
-                        if (typeof obj === "object") {
-                            const keys = Object.keys(obj);
-                            if (keys.length === 0) return "{}";
-                            const pairs = keys.map((key) => {
-                                const keyStr = stringifyWithUnicode(
-                                    key,
-                                    indent + "  ",
-                                    unicodeMap
-                                );
-                                const valueStr = stringifyWithUnicode(
-                                    obj[key],
-                                    indent + "  ",
-                                    unicodeMap
-                                );
-                                return indent + "  " + keyStr + ": " + valueStr;
-                            });
-                            return "{\n" + pairs.join(",\n") + "\n" + indent + "}";
-                        }
-
-                        return JSON.stringify(obj);
-                    };
 
                     // 使用自定义格式化（保留Unicode转义序列）
                     const formatted = stringifyWithUnicode(processedJson);
@@ -5256,16 +5292,63 @@ const unescapeJSON = (recursive: boolean = true) => {
                     showMessageSuccess("去除转义成功");
                     return;
                 }
-            } catch (processError: any) {
-            }
+            } catch (processError: any) { }
         } else if (
             parsedInput !== null &&
             typeof parsedInput === "object" &&
             !recursive
         ) {
-            // 非递归模式：直接格式化解析后的对象，不进行嵌套处理
+            // 非递归模式：对顶层的字符串字段尝试一次解析（仅一层），然后格式化输出
             try {
-                const formatted = JSON.stringify(parsedInput, null, 2);
+                const tryParseTopLevelOnce = (target: any): any => {
+                    if (target === null || target === undefined) return target;
+                    if (Array.isArray(target)) {
+                        return target.map((item) => {
+                            if (typeof item === "string") {
+                                const t = item.trim();
+                                if (
+                                    (t.startsWith("{") && t.endsWith("}")) ||
+                                    (t.startsWith("[") && t.endsWith("]"))
+                                ) {
+                                    try {
+                                        return JSON.parse(item);
+                                    } catch {
+                                        return item;
+                                    }
+                                }
+                            }
+                            return item;
+                        });
+                    }
+
+                    if (typeof target === "object") {
+                        const result: Record<string, any> = {};
+                        for (const key in target) {
+                            if (!Object.prototype.hasOwnProperty.call(target, key)) continue;
+                            const val = target[key];
+                            if (typeof val === "string") {
+                                const t = val.trim();
+                                if (
+                                    (t.startsWith("{") && t.endsWith("}")) ||
+                                    (t.startsWith("[") && t.endsWith("]"))
+                                ) {
+                                    try {
+                                        result[key] = JSON.parse(val);
+                                        continue;
+                                    } catch {
+                                        // 解析失败则保留原字符串
+                                    }
+                                }
+                            }
+                            result[key] = val;
+                        }
+                        return result;
+                    }
+                    return target;
+                };
+
+                const topLevelProcessed = tryParseTopLevelOnce(parsedInput);
+                const formatted = JSON.stringify(topLevelProcessed, null, 2);
                 outputEditor?.setValue(formatted);
 
                 // 更新编辑器配置
@@ -5913,7 +5996,9 @@ const handleSaveArchive = () => {
 
     // 检查存档数量上限
     if (archives.value.length >= MAX_ARCHIVE_COUNT) {
-        showMessageError(`存档数量已达到上限（${MAX_ARCHIVE_COUNT}个），请先删除部分存档`);
+        showMessageError(
+            `存档数量已达到上限（${MAX_ARCHIVE_COUNT}个），请先删除部分存档`
+        );
         return;
     }
 
@@ -6552,7 +6637,12 @@ const loadSharedDataFromUrl = async () => {
                     // 验证JSON格式
                     const jsonData = JSON.parse(response.data.jsonData);
                     // 输入编辑器始终使用2个空格缩进，不受格式化设置影响
-                    const formattedJson = customStringify(jsonData, null, 2, response.data.jsonData);
+                    const formattedJson = customStringify(
+                        jsonData,
+                        null,
+                        2,
+                        response.data.jsonData
+                    );
                     inputEditor.setValue(formattedJson);
 
                     // 更新编辑器配置，确保使用2空格缩进
@@ -6724,47 +6814,64 @@ const compareType = (a: string, b: string): number => {
 };
 
 // 解析路径字符串，支持数组语法（如 settings[*] 或 settings[0]）
-const parsePathToParts = (path: string): Array<{ key: string; isArray?: boolean; arrayIndex?: number | string }> => {
-    const parts: Array<{ key: string; isArray?: boolean; arrayIndex?: number | string }> = [];
-    let current = '';
+const parsePathToParts = (
+    path: string
+): Array<{ key: string; isArray?: boolean; arrayIndex?: number | string }> => {
+    const parts: Array<{
+        key: string;
+        isArray?: boolean;
+        arrayIndex?: number | string;
+    }> = [];
+    let current = "";
     let inBrackets = false;
-    let bracketContent = '';
+    let bracketContent = "";
 
     for (let i = 0; i < path.length; i++) {
         const char = path[i];
 
-        if (char === '[') {
+        if (char === "[") {
             if (current) {
                 parts.push({ key: current });
-                current = '';
+                current = "";
             }
             inBrackets = true;
-            bracketContent = '';
-        } else if (char === ']') {
+            bracketContent = "";
+        } else if (char === "]") {
             if (inBrackets) {
-                if (bracketContent === '*' || /^\d+$/.test(bracketContent)) {
+                if (bracketContent === "*" || /^\d+$/.test(bracketContent)) {
                     // 数组通配符或索引
                     if (parts.length > 0) {
                         parts[parts.length - 1].isArray = true;
-                        parts[parts.length - 1].arrayIndex = bracketContent === '*' ? '*' : parseInt(bracketContent, 10);
+                        parts[parts.length - 1].arrayIndex =
+                            bracketContent === "*" ? "*" : parseInt(bracketContent, 10);
                     } else if (current) {
                         // 如果还没有添加到parts，先添加key，然后标记为数组
-                        parts.push({ key: current, isArray: true, arrayIndex: bracketContent === '*' ? '*' : parseInt(bracketContent, 10) });
-                        current = '';
+                        parts.push({
+                            key: current,
+                            isArray: true,
+                            arrayIndex:
+                                bracketContent === "*" ? "*" : parseInt(bracketContent, 10),
+                        });
+                        current = "";
                     } else {
                         // 根级别的数组访问，如 [1] 或 [*]
-                        parts.push({ key: '', isArray: true, arrayIndex: bracketContent === '*' ? '*' : parseInt(bracketContent, 10) });
+                        parts.push({
+                            key: "",
+                            isArray: true,
+                            arrayIndex:
+                                bracketContent === "*" ? "*" : parseInt(bracketContent, 10),
+                        });
                     }
                 }
                 inBrackets = false;
-                bracketContent = '';
+                bracketContent = "";
             }
         } else if (inBrackets) {
             bracketContent += char;
-        } else if (char === '.') {
+        } else if (char === ".") {
             if (current) {
                 parts.push({ key: current });
-                current = '';
+                current = "";
             }
         } else {
             current += char;
@@ -6779,7 +6886,10 @@ const parsePathToParts = (path: string): Array<{ key: string; isArray?: boolean;
 };
 
 // 根据路径获取JSON对象中的值
-const getValueByPathParts = (obj: any, parts: Array<{ key: string; isArray?: boolean; arrayIndex?: number | string }>): any => {
+const getValueByPathParts = (
+    obj: any,
+    parts: Array<{ key: string; isArray?: boolean; arrayIndex?: number | string }>
+): any => {
     let current = obj;
 
     for (const part of parts) {
@@ -6789,10 +6899,10 @@ const getValueByPathParts = (obj: any, parts: Array<{ key: string; isArray?: boo
 
         // 处理根级别的数组访问（key为空，isArray为true）
         if (part.isArray && !part.key && Array.isArray(current)) {
-            if (part.arrayIndex === '*') {
+            if (part.arrayIndex === "*") {
                 // 通配符，返回第一个元素用于获取下一级key
                 current = current.length > 0 ? current[0] : null;
-            } else if (typeof part.arrayIndex === 'number') {
+            } else if (typeof part.arrayIndex === "number") {
                 // 具体索引
                 current = current[part.arrayIndex] || null;
             } else {
@@ -6803,7 +6913,7 @@ const getValueByPathParts = (obj: any, parts: Array<{ key: string; isArray?: boo
         }
 
         if (part.key) {
-            if (typeof current === 'object' && part.key in current) {
+            if (typeof current === "object" && part.key in current) {
                 current = current[part.key];
             } else {
                 return null;
@@ -6812,10 +6922,10 @@ const getValueByPathParts = (obj: any, parts: Array<{ key: string; isArray?: boo
 
         if (part.isArray && Array.isArray(current)) {
             // 如果是数组，根据arrayIndex返回对应元素
-            if (part.arrayIndex === '*') {
+            if (part.arrayIndex === "*") {
                 // 通配符，返回第一个元素用于获取下一级key
                 current = current.length > 0 ? current[0] : null;
-            } else if (typeof part.arrayIndex === 'number') {
+            } else if (typeof part.arrayIndex === "number") {
                 // 具体索引
                 current = current[part.arrayIndex] || null;
             } else {
@@ -6856,10 +6966,10 @@ const setValueByPath = (obj: any, path: string, value: any): boolean => {
 
         // 处理根级别的数组访问（key为空，isArray为true）
         if (part.isArray && !part.key && Array.isArray(current)) {
-            if (part.arrayIndex === '*') {
+            if (part.arrayIndex === "*") {
                 // [*] 不应该出现在中间路径，只能用于叶子节点
                 return false;
-            } else if (typeof part.arrayIndex === 'number') {
+            } else if (typeof part.arrayIndex === "number") {
                 // 具体索引
                 if (part.arrayIndex < 0 || part.arrayIndex >= current.length) {
                     return false;
@@ -6873,7 +6983,7 @@ const setValueByPath = (obj: any, path: string, value: any): boolean => {
         }
 
         if (part.key) {
-            if (typeof current === 'object' && part.key in current) {
+            if (typeof current === "object" && part.key in current) {
                 current = current[part.key];
             } else {
                 return false;
@@ -6882,10 +6992,10 @@ const setValueByPath = (obj: any, path: string, value: any): boolean => {
 
         if (part.isArray && Array.isArray(current)) {
             // 如果是数组，根据arrayIndex返回对应元素
-            if (part.arrayIndex === '*') {
+            if (part.arrayIndex === "*") {
                 // [*] 不应该出现在中间路径，只能用于叶子节点
                 return false;
-            } else if (typeof part.arrayIndex === 'number') {
+            } else if (typeof part.arrayIndex === "number") {
                 // 具体索引
                 if (part.arrayIndex < 0 || part.arrayIndex >= current.length) {
                     return false;
@@ -6900,16 +7010,20 @@ const setValueByPath = (obj: any, path: string, value: any): boolean => {
 
     // 设置最后一个路径部分的值
     const lastPart = parts[parts.length - 1];
-    if (current === null || current === undefined || typeof current !== 'object') {
+    if (
+        current === null ||
+        current === undefined ||
+        typeof current !== "object"
+    ) {
         return false;
     }
 
     // 处理根级别的数组访问（key为空，isArray为true）
     if (lastPart.isArray && !lastPart.key && Array.isArray(current)) {
-        if (lastPart.arrayIndex === '*') {
+        if (lastPart.arrayIndex === "*") {
             // [*] 设置整个数组（不推荐使用）
             return false;
-        } else if (typeof lastPart.arrayIndex === 'number') {
+        } else if (typeof lastPart.arrayIndex === "number") {
             // 具体索引
             if (lastPart.arrayIndex < 0) {
                 return false;
@@ -6933,10 +7047,10 @@ const setValueByPath = (obj: any, path: string, value: any): boolean => {
 
     if (lastPart.isArray && Array.isArray(current)) {
         // 如果是数组，根据arrayIndex设置对应元素
-        if (lastPart.arrayIndex === '*') {
+        if (lastPart.arrayIndex === "*") {
             // [*] 设置整个数组（不推荐使用）
             return false;
-        } else if (typeof lastPart.arrayIndex === 'number') {
+        } else if (typeof lastPart.arrayIndex === "number") {
             // 具体索引
             if (lastPart.arrayIndex < 0) {
                 return false;
@@ -6969,7 +7083,7 @@ const sortJsonByField = (
         // 检查第一个元素是否是数组
         if (data.length > 0 && Array.isArray(data[0])) {
             // 这是一个数组的数组，对每个子数组进行排序
-            return data.map(subArray => {
+            return data.map((subArray) => {
                 if (Array.isArray(subArray)) {
                     return [...subArray].sort((a, b) => {
                         const valueA = getValueByPath(a, fieldPath);
@@ -7009,8 +7123,12 @@ const sortJsonByField = (
             }
         }
         // 如果顶层是对象且其值不是数组（比如 map），支持按 value 的子字段对键进行排序
-        const allValuesAreObjects = Object.values(data).every(v => typeof v === 'object' && v !== null && !Array.isArray(v));
-        const allValuesArePrimitive = Object.values(data).every(v => (typeof v !== 'object' || v === null) && !Array.isArray(v));
+        const allValuesAreObjects = Object.values(data).every(
+            (v) => typeof v === "object" && v !== null && !Array.isArray(v)
+        );
+        const allValuesArePrimitive = Object.values(data).every(
+            (v) => (typeof v !== "object" || v === null) && !Array.isArray(v)
+        );
 
         // 情况A：每个 value 是对象（例如 { id: 1 }），且用户填写了 fieldPath 或者可以自动回退到 value.<field>
         if (allValuesAreObjects && fieldPath) {
@@ -7021,8 +7139,8 @@ const sortJsonByField = (
                     let v = getValueByPath(obj, fieldPath);
                     if (v === undefined || v === null) {
                         // 如果 fieldPath 本身没有 value. 前缀，尝试加上
-                        if (!fieldPath.startsWith('value.')) {
-                            v = getValueByPath(obj, 'value.' + fieldPath);
+                        if (!fieldPath.startsWith("value.")) {
+                            v = getValueByPath(obj, "value." + fieldPath);
                         }
                     }
                     return v;
@@ -7031,7 +7149,7 @@ const sortJsonByField = (
                 const valueA = extractValue(a[1]);
                 const valueB = extractValue(b[1]);
                 const cmp = compareFieldValues(valueA, valueB);
-                return order === 'asc' ? cmp : -cmp;
+                return order === "asc" ? cmp : -cmp;
             });
             const sortedObj: any = {};
             for (const [k, v] of entries) {
@@ -7046,7 +7164,7 @@ const sortJsonByField = (
                 const valueA = a[1];
                 const valueB = b[1];
                 const cmp = compareFieldValues(valueA, valueB);
-                return order === 'asc' ? cmp : -cmp;
+                return order === "asc" ? cmp : -cmp;
             });
             const sortedObj: any = {};
             for (const [k, v] of entries) {
@@ -7061,18 +7179,22 @@ const sortJsonByField = (
 };
 
 // 智能路径建议生成器
-const getSmartPathSuggestions = (jsonObj: any, input: string): PathSuggestion[] => {
-
+const getSmartPathSuggestions = (
+    jsonObj: any,
+    input: string
+): PathSuggestion[] => {
     // 如果输入为空，返回根级别的key
     if (!input.trim()) {
         return getNextLevelKeys(jsonObj, "");
     }
 
     // 处理数组语法输入
-    if (input.endsWith('[')) {
+    if (input.endsWith("[")) {
         // 用户正在输入数组语法
         const pathBeforeBracket = input.slice(0, -1);
-        const targetValue = pathBeforeBracket ? getValueByPath(jsonObj, pathBeforeBracket) : jsonObj;
+        const targetValue = pathBeforeBracket
+            ? getValueByPath(jsonObj, pathBeforeBracket)
+            : jsonObj;
 
         if (Array.isArray(targetValue)) {
             // 提供数组通配符建议
@@ -7090,11 +7212,11 @@ const getSmartPathSuggestions = (jsonObj: any, input: string): PathSuggestion[] 
         const targetValue = getValueByPath(jsonObj, pathBeforeBracket);
         if (Array.isArray(targetValue)) {
             // 如果还没有输入索引内容，提供通配符建议
-            if (indexPart === '') {
+            if (indexPart === "") {
                 return [{ value: `${pathBeforeBracket}[*]`, type: "array-wildcard" }];
             }
             // 如果输入的内容能匹配通配符，提供通配符建议
-            if ('*'.startsWith(indexPart)) {
+            if ("*".startsWith(indexPart)) {
                 return [{ value: `${pathBeforeBracket}[*]`, type: "array-wildcard" }];
             }
             // 如果输入了数字，检查数组长度，提供有效的索引建议
@@ -7104,12 +7226,18 @@ const getSmartPathSuggestions = (jsonObj: any, input: string): PathSuggestion[] 
 
                 // 如果输入的数字小于数组长度，提供通配符作为备选
                 if (numIndex < targetValue.length) {
-                    suggestions.push({ value: `${pathBeforeBracket}[${indexPart}]`, type: "array-index" });
+                    suggestions.push({
+                        value: `${pathBeforeBracket}[${indexPart}]`,
+                        type: "array-index",
+                    });
                 }
 
                 // 总是提供通配符选项
-                if (!suggestions.some(s => s.value === `${pathBeforeBracket}[*]`)) {
-                    suggestions.push({ value: `${pathBeforeBracket}[*]`, type: "array-wildcard" });
+                if (!suggestions.some((s) => s.value === `${pathBeforeBracket}[*]`)) {
+                    suggestions.push({
+                        value: `${pathBeforeBracket}[*]`,
+                        type: "array-wildcard",
+                    });
                 }
 
                 return suggestions;
@@ -7119,7 +7247,7 @@ const getSmartPathSuggestions = (jsonObj: any, input: string): PathSuggestion[] 
     }
 
     // 检查是否以点结尾（表示要进入下一级）
-    if (input.endsWith('.')) {
+    if (input.endsWith(".")) {
         const pathWithoutDot = input.slice(0, -1);
         if (pathWithoutDot) {
             // 有前缀路径，解析并返回下一级
@@ -7131,8 +7259,8 @@ const getSmartPathSuggestions = (jsonObj: any, input: string): PathSuggestion[] 
     }
 
     // 解析输入，找到最后一个分隔符
-    const lastDotIndex = input.lastIndexOf('.');
-    const lastBracketIndex = input.lastIndexOf(']');
+    const lastDotIndex = input.lastIndexOf(".");
+    const lastBracketIndex = input.lastIndexOf("]");
 
     let basePath = "";
     let contextInput = input;
@@ -7140,14 +7268,14 @@ const getSmartPathSuggestions = (jsonObj: any, input: string): PathSuggestion[] 
     // 优先处理数组访问（因为数组访问可能包含点号，如 [*].age）
     if (lastBracketIndex !== -1) {
         // 检查数组访问之前是否有内容
-        const bracketStart = input.lastIndexOf('[', lastBracketIndex);
+        const bracketStart = input.lastIndexOf("[", lastBracketIndex);
         if (bracketStart !== -1) {
             const beforeBracket = input.substring(0, bracketStart);
             const afterBracket = input.substring(lastBracketIndex + 1);
 
             // 如果数组访问后有内容（如 [*].age），则basePath是 [*].，contextInput是age
-            if (afterBracket.startsWith('.')) {
-                basePath = input.substring(0, lastBracketIndex + 1) + '.';
+            if (afterBracket.startsWith(".")) {
+                basePath = input.substring(0, lastBracketIndex + 1) + ".";
                 contextInput = afterBracket.substring(1);
             } else if (afterBracket) {
                 // 如果数组访问后直接有内容（如 [*]age），这通常是无效的，但我们还是处理
@@ -7170,7 +7298,6 @@ const getSmartPathSuggestions = (jsonObj: any, input: string): PathSuggestion[] 
         contextInput = input.substring(lastDotIndex + 1);
     }
 
-
     // 获取basePath对应的下一级key
     const allSuggestions = getNextLevelKeys(jsonObj, basePath);
 
@@ -7180,7 +7307,7 @@ const getSmartPathSuggestions = (jsonObj: any, input: string): PathSuggestion[] 
     }
 
     // 过滤以当前输入开头的建议（不区分大小写）
-    const filteredSuggestions = allSuggestions.filter(suggestion =>
+    const filteredSuggestions = allSuggestions.filter((suggestion) =>
         suggestion.value.toLowerCase().startsWith(contextInput.toLowerCase())
     );
 
@@ -7192,7 +7319,6 @@ const queryRootPaths = (
     queryString: string,
     cb: (suggestions: PathSuggestion[]) => void
 ) => {
-
     // 记录当前的查询上下文，用于路径拼接
     rootPathQueryContext = queryString || "";
 
@@ -7217,7 +7343,6 @@ const queryFieldPaths = (
     queryString: string,
     cb: (suggestions: PathSuggestion[]) => void
 ) => {
-
     // 记录当前的查询上下文，用于路径拼接
     fieldPathQueryContext = queryString || "";
 
@@ -7243,7 +7368,10 @@ const queryFieldPaths = (
             if (Array.isArray(dataToAnalyze) && dataToAnalyze.length > 0) {
                 // 如果返回的是数组，取第一个元素作为提示的基础
                 const firstElement = dataToAnalyze[0];
-                if (firstElement && (Array.isArray(firstElement) || typeof firstElement === 'object')) {
+                if (
+                    firstElement &&
+                    (Array.isArray(firstElement) || typeof firstElement === "object")
+                ) {
                     // 对于 [*].education 这样的路径，education是数组，所以取第一个元素
                     if (Array.isArray(firstElement)) {
                         dataToAnalyze = firstElement;
@@ -7257,14 +7385,21 @@ const queryFieldPaths = (
             // 当数据根路径为空时，如果整个数据是数组，应该提示数组元素的字段
             if (Array.isArray(dataToAnalyze) && dataToAnalyze.length > 0) {
                 const firstElement = dataToAnalyze[0];
-                if (firstElement && typeof firstElement === 'object' && !Array.isArray(firstElement)) {
+                if (
+                    firstElement &&
+                    typeof firstElement === "object" &&
+                    !Array.isArray(firstElement)
+                ) {
                     // 对于对象数组，取第一个元素作为提示的基础
                     dataToAnalyze = firstElement;
                 }
             }
         }
 
-        const suggestions = getSmartPathSuggestions(dataToAnalyze, queryString || "");
+        const suggestions = getSmartPathSuggestions(
+            dataToAnalyze,
+            queryString || ""
+        );
         cb(suggestions);
     } catch (error) {
         cb([]);
@@ -7272,30 +7407,36 @@ const queryFieldPaths = (
 };
 
 // 禁用字段智能提示的占位函数（始终不返回建议）
-const queryFieldPathsDisabled = (queryString: string, cb: (suggestions: PathSuggestion[]) => void) => {
+const queryFieldPathsDisabled = (
+    queryString: string,
+    cb: (suggestions: PathSuggestion[]) => void
+) => {
     cb([]);
 };
 
 // 获取下一级的key建议（基于当前输入内容）
-const getNextLevelKeys = (jsonObj: any, contextPath: string): PathSuggestion[] => {
+const getNextLevelKeys = (
+    jsonObj: any,
+    contextPath: string
+): PathSuggestion[] => {
     const suggestions: PathSuggestion[] = [];
 
     // 如果输入为空，返回一级key
     if (!contextPath || !contextPath.trim()) {
         // 如果数据本身是数组，直接提示 [*]
         if (Array.isArray(jsonObj)) {
-            suggestions.push({ value: '[*]', type: 'array-wildcard' });
+            suggestions.push({ value: "[*]", type: "array-wildcard" });
             return suggestions;
         }
 
-        if (jsonObj && typeof jsonObj === 'object' && !Array.isArray(jsonObj)) {
+        if (jsonObj && typeof jsonObj === "object" && !Array.isArray(jsonObj)) {
             for (const [key, value] of Object.entries(jsonObj)) {
                 // 只为数组和对象类型的字段提供智能提示，过滤掉基础类型（string, number, boolean, null）
                 if (Array.isArray(value)) {
-                    suggestions.push({ value: key, type: 'exact' });
-                    suggestions.push({ value: `${key}[*]`, type: 'array-wildcard' });
-                } else if (value && typeof value === 'object') {
-                    suggestions.push({ value: key, type: 'exact' });
+                    suggestions.push({ value: key, type: "exact" });
+                    suggestions.push({ value: `${key}[*]`, type: "array-wildcard" });
+                } else if (value && typeof value === "object") {
+                    suggestions.push({ value: key, type: "exact" });
                 }
                 // 基础类型字段（string, number, boolean, null）不提供智能提示
             }
@@ -7307,13 +7448,13 @@ const getNextLevelKeys = (jsonObj: any, contextPath: string): PathSuggestion[] =
     const trimmedPath = contextPath.trim();
 
     // 检查是否以点结尾，如果是，去掉点
-    const pathToParse = trimmedPath.endsWith('.')
+    const pathToParse = trimmedPath.endsWith(".")
         ? trimmedPath.slice(0, -1)
         : trimmedPath;
 
     // 如果路径为空（去掉点后），返回一级key
     if (!pathToParse) {
-        return getNextLevelKeys(jsonObj, '');
+        return getNextLevelKeys(jsonObj, "");
     }
 
     // 解析路径
@@ -7331,7 +7472,7 @@ const getNextLevelKeys = (jsonObj: any, contextPath: string): PathSuggestion[] =
     if (Array.isArray(targetValue)) {
         // 如果路径以 "." 结尾，且前面不是数组访问（如 "数组名."），这是无效的语法
         // 不应该提示数组元素的key，应该返回空数组
-        if (trimmedPath.endsWith('.') && !endsWithArrayAccess) {
+        if (trimmedPath.endsWith(".") && !endsWithArrayAccess) {
             return [];
         }
 
@@ -7339,14 +7480,18 @@ const getNextLevelKeys = (jsonObj: any, contextPath: string): PathSuggestion[] =
         // 这种情况下，应该返回数组元素的key
         if (targetValue.length > 0) {
             const firstElement = targetValue[0];
-            if (firstElement && typeof firstElement === 'object' && !Array.isArray(firstElement)) {
+            if (
+                firstElement &&
+                typeof firstElement === "object" &&
+                !Array.isArray(firstElement)
+            ) {
                 for (const [key, value] of Object.entries(firstElement)) {
                     // 只为数组和对象类型的字段提供智能提示，过滤掉基础类型（string, number, boolean, null）
                     if (Array.isArray(value)) {
-                        suggestions.push({ value: key, type: 'exact' });
-                        suggestions.push({ value: `${key}[*]`, type: 'array-wildcard' });
-                    } else if (value && typeof value === 'object') {
-                        suggestions.push({ value: key, type: 'exact' });
+                        suggestions.push({ value: key, type: "exact" });
+                        suggestions.push({ value: `${key}[*]`, type: "array-wildcard" });
+                    } else if (value && typeof value === "object") {
+                        suggestions.push({ value: key, type: "exact" });
                     }
                     // 基础类型字段（string, number, boolean, null）不提供智能提示
                 }
@@ -7354,14 +7499,14 @@ const getNextLevelKeys = (jsonObj: any, contextPath: string): PathSuggestion[] =
         }
     }
     // 如果目标是对象，返回对象的key
-    else if (typeof targetValue === 'object') {
+    else if (typeof targetValue === "object") {
         for (const [key, value] of Object.entries(targetValue)) {
             // 只为数组和对象类型的字段提供智能提示，过滤掉基础类型（string, number, boolean, null）
             if (Array.isArray(value)) {
-                suggestions.push({ value: key, type: 'exact' });
-                suggestions.push({ value: `${key}[*]`, type: 'array-wildcard' });
-            } else if (value && typeof value === 'object') {
-                suggestions.push({ value: key, type: 'exact' });
+                suggestions.push({ value: key, type: "exact" });
+                suggestions.push({ value: `${key}[*]`, type: "array-wildcard" });
+            } else if (value && typeof value === "object") {
+                suggestions.push({ value: key, type: "exact" });
             }
             // 基础类型字段（string, number, boolean, null）不提供智能提示
         }
@@ -7523,10 +7668,8 @@ const sortJsonObject = (
 
 // 处理根路径选择
 const handleRootPathSelect = (item: Record<string, any>) => {
-
     const contextInput = rootPathQueryContext || "";
     const selectedValue = item.value;
-
 
     // 如果上下文输入已经是选择的项目，直接使用（避免重复拼接）
     if (contextInput === selectedValue) {
@@ -7541,27 +7684,30 @@ const handleRootPathSelect = (item: Record<string, any>) => {
     // 如果上下文输入不为空，需要智能拼接
     if (contextInput && contextInput !== selectedValue) {
         // 检查当前输入的状态来决定如何拼接
-        if (contextInput.endsWith('.') || contextInput.endsWith('[')) {
+        if (contextInput.endsWith(".") || contextInput.endsWith("[")) {
             // 直接追加选择的项目
             newPath = contextInput + selectedValue;
-        } else if (contextInput.match(/\[\d*\]$/) || contextInput.endsWith(']')) {
+        } else if (contextInput.match(/\[\d*\]$/) || contextInput.endsWith("]")) {
             // 以数组访问结尾，追加点号和选择的项目
-            newPath = contextInput + '.' + selectedValue;
+            newPath = contextInput + "." + selectedValue;
         } else {
             // 找到最后一个完整路径部分，替换当前输入的部分
-            const lastDotIndex = contextInput.lastIndexOf('.');
-            const lastBracketIndex = contextInput.lastIndexOf('[');
+            const lastDotIndex = contextInput.lastIndexOf(".");
+            const lastBracketIndex = contextInput.lastIndexOf("[");
 
-            if (lastDotIndex !== -1 && (lastBracketIndex === -1 || lastDotIndex > lastBracketIndex)) {
+            if (
+                lastDotIndex !== -1 &&
+                (lastBracketIndex === -1 || lastDotIndex > lastBracketIndex)
+            ) {
                 // 以点分隔，取点之前的内容加上选择的项目
                 const basePath = contextInput.substring(0, lastDotIndex + 1);
                 newPath = basePath + selectedValue;
             } else if (lastBracketIndex !== -1) {
                 // 处理数组相关的路径
-                const bracketEndIndex = contextInput.indexOf(']', lastBracketIndex);
+                const bracketEndIndex = contextInput.indexOf("]", lastBracketIndex);
                 if (bracketEndIndex !== -1) {
                     const basePath = contextInput.substring(0, bracketEndIndex + 1);
-                    newPath = basePath + '.' + selectedValue;
+                    newPath = basePath + "." + selectedValue;
                 } else {
                     // 不完整的数组语法，直接替换
                     newPath = selectedValue;
@@ -7578,26 +7724,24 @@ const handleRootPathSelect = (item: Record<string, any>) => {
 };
 
 // 用于保存上一次的输入路径，用于路径补全
-let lastRootPathInput = '';
-let lastFieldPathInput = '';
+let lastRootPathInput = "";
+let lastFieldPathInput = "";
 
 // 用于跟踪根路径输入的上下文（autocomplete查询时的字符串）
-let rootPathQueryContext = '';
-let fieldPathQueryContext = '';
+let rootPathQueryContext = "";
+let fieldPathQueryContext = "";
 
 // 处理根路径输入
 const handleRootPathInput = (value: string | number) => {
-    const stringValue = typeof value === 'string' ? value : String(value);
+    const stringValue = typeof value === "string" ? value : String(value);
     lastRootPathInput = stringValue;
     sortRootPath.value = stringValue;
 };
 
 // 处理字段路径选择
 const handleFieldPathSelect = (item: Record<string, any>) => {
-
     const contextInput = fieldPathQueryContext || "";
     const selectedValue = item.value;
-
 
     // 如果上下文输入已经是选择的项目，直接使用（避免重复拼接）
     if (contextInput === selectedValue) {
@@ -7612,27 +7756,30 @@ const handleFieldPathSelect = (item: Record<string, any>) => {
     // 如果上下文输入不为空，需要智能拼接
     if (contextInput && contextInput !== selectedValue) {
         // 检查当前输入的状态来决定如何拼接
-        if (contextInput.endsWith('.') || contextInput.endsWith('[')) {
+        if (contextInput.endsWith(".") || contextInput.endsWith("[")) {
             // 直接追加选择的项目
             newPath = contextInput + selectedValue;
-        } else if (contextInput.match(/\[\d*\]$/) || contextInput.endsWith(']')) {
+        } else if (contextInput.match(/\[\d*\]$/) || contextInput.endsWith("]")) {
             // 以数组访问结尾，追加点号和选择的项目
-            newPath = contextInput + '.' + selectedValue;
+            newPath = contextInput + "." + selectedValue;
         } else {
             // 找到最后一个完整路径部分，替换当前输入的部分
-            const lastDotIndex = contextInput.lastIndexOf('.');
-            const lastBracketIndex = contextInput.lastIndexOf('[');
+            const lastDotIndex = contextInput.lastIndexOf(".");
+            const lastBracketIndex = contextInput.lastIndexOf("[");
 
-            if (lastDotIndex !== -1 && (lastBracketIndex === -1 || lastDotIndex > lastBracketIndex)) {
+            if (
+                lastDotIndex !== -1 &&
+                (lastBracketIndex === -1 || lastDotIndex > lastBracketIndex)
+            ) {
                 // 以点分隔，取点之前的内容加上选择的项目
                 const basePath = contextInput.substring(0, lastDotIndex + 1);
                 newPath = basePath + selectedValue;
             } else if (lastBracketIndex !== -1) {
                 // 处理数组相关的路径
-                const bracketEndIndex = contextInput.indexOf(']', lastBracketIndex);
+                const bracketEndIndex = contextInput.indexOf("]", lastBracketIndex);
                 if (bracketEndIndex !== -1) {
                     const basePath = contextInput.substring(0, bracketEndIndex + 1);
-                    newPath = basePath + '.' + selectedValue;
+                    newPath = basePath + "." + selectedValue;
                 } else {
                     // 不完整的数组语法，直接替换
                     newPath = selectedValue;
@@ -7650,14 +7797,14 @@ const handleFieldPathSelect = (item: Record<string, any>) => {
 
 // 处理字段路径输入
 const handleFieldPathInput = (value: string | number) => {
-    const stringValue = typeof value === 'string' ? value : String(value);
+    const stringValue = typeof value === "string" ? value : String(value);
     lastFieldPathInput = stringValue;
     sortFieldName.value = stringValue;
 };
 
 // 处理根路径键盘事件
 const handleRootPathKeydown = (event: KeyboardEvent) => {
-    if (event.key === 'Enter') {
+    if (event.key === "Enter") {
         // 回车键处理：只有当有建议且输入框内容不完整时才自动完成
         event.preventDefault();
 
@@ -7671,7 +7818,10 @@ const handleRootPathKeydown = (event: KeyboardEvent) => {
             const suggestions = getSmartPathSuggestions(jsonObj, lastRootPathInput);
 
             // 如果当前输入已经是一个完整的有效路径，不进行自动完成
-            if (lastRootPathInput && suggestions.some((s: PathSuggestion) => s.value === lastRootPathInput)) {
+            if (
+                lastRootPathInput &&
+                suggestions.some((s: PathSuggestion) => s.value === lastRootPathInput)
+            ) {
                 // 当前输入已经是有效路径，不做处理
                 return;
             }
@@ -7681,8 +7831,9 @@ const handleRootPathKeydown = (event: KeyboardEvent) => {
                 handleRootPathSelect(suggestions[0]);
             } else if (suggestions.length > 1) {
                 // 多个建议，选择最匹配的（如果当前输入完全匹配）
-                const exactMatch = suggestions.find((s: PathSuggestion) =>
-                    s.value.toLowerCase() === lastRootPathInput.toLowerCase()
+                const exactMatch = suggestions.find(
+                    (s: PathSuggestion) =>
+                        s.value.toLowerCase() === lastRootPathInput.toLowerCase()
                 );
                 if (exactMatch) {
                     handleRootPathSelect(exactMatch);
@@ -7691,14 +7842,13 @@ const handleRootPathKeydown = (event: KeyboardEvent) => {
                     handleRootPathSelect(suggestions[0]);
                 }
             }
-        } catch (error) {
-        }
+        } catch (error) { }
     }
 };
 
 // 处理字段路径键盘事件
 const handleFieldPathKeydown = (event: KeyboardEvent) => {
-    if (event.key === 'Enter') {
+    if (event.key === "Enter") {
         // 回车键处理：只有当有建议且输入框内容不完整时才自动完成
         event.preventDefault();
 
@@ -7719,10 +7869,16 @@ const handleFieldPathKeydown = (event: KeyboardEvent) => {
                 }
             }
 
-            const suggestions = getSmartPathSuggestions(dataToAnalyze, lastFieldPathInput);
+            const suggestions = getSmartPathSuggestions(
+                dataToAnalyze,
+                lastFieldPathInput
+            );
 
             // 如果当前输入已经是一个完整的有效路径，不进行自动完成
-            if (lastFieldPathInput && suggestions.some((s: PathSuggestion) => s.value === lastFieldPathInput)) {
+            if (
+                lastFieldPathInput &&
+                suggestions.some((s: PathSuggestion) => s.value === lastFieldPathInput)
+            ) {
                 // 当前输入已经是有效路径，不做处理
                 return;
             }
@@ -7732,8 +7888,9 @@ const handleFieldPathKeydown = (event: KeyboardEvent) => {
                 handleFieldPathSelect(suggestions[0]);
             } else if (suggestions.length > 1) {
                 // 多个建议，选择最匹配的（如果当前输入完全匹配）
-                const exactMatch = suggestions.find((s: PathSuggestion) =>
-                    s.value.toLowerCase() === lastFieldPathInput.toLowerCase()
+                const exactMatch = suggestions.find(
+                    (s: PathSuggestion) =>
+                        s.value.toLowerCase() === lastFieldPathInput.toLowerCase()
                 );
                 if (exactMatch) {
                     handleFieldPathSelect(exactMatch);
@@ -7742,8 +7899,7 @@ const handleFieldPathKeydown = (event: KeyboardEvent) => {
                     handleFieldPathSelect(suggestions[0]);
                 }
             }
-        } catch (error) {
-        }
+        } catch (error) { }
     }
 };
 
@@ -7756,9 +7912,9 @@ const showFieldSortDemo = () => {
     // 保存原始输入内容（如果尚未保存）
     if (inputEditor && savedInputContent.value === null) {
         try {
-            savedInputContent.value = inputEditor.getValue() || '';
+            savedInputContent.value = inputEditor.getValue() || "";
         } catch (e) {
-            savedInputContent.value = '';
+            savedInputContent.value = "";
         }
     }
     if (inputEditor) {
@@ -7779,22 +7935,38 @@ const startDemoMode = () => {
     // 记录演示开始前的输入内容（如果尚未记录）
     if (inputEditor && savedInputContent.value === null) {
         try {
-            savedInputContent.value = inputEditor.getValue() || '';
+            savedInputContent.value = inputEditor.getValue() || "";
         } catch (e) {
-            savedInputContent.value = '';
+            savedInputContent.value = "";
         }
     }
 
     // 预先计算演示结果
-    demoResults.value['id'] = performFieldSort(JSON.parse(JSON.stringify(demoData.value)), '', 'id');
-    demoResults.value['education'] = performFieldSort(JSON.parse(JSON.stringify(demoData.value)), '[*].education', 'graduationYear');
+    demoResults.value["id"] = performFieldSort(
+        JSON.parse(JSON.stringify(demoData.value)),
+        "",
+        "id"
+    );
+    demoResults.value["education"] = performFieldSort(
+        JSON.parse(JSON.stringify(demoData.value)),
+        "[*].education",
+        "graduationYear"
+    );
     // map 演示结果
-    demoResults.value['map_id'] = performFieldSort(JSON.parse(JSON.stringify(demoMapData.value)), '', 'id');
-    demoResults.value['map_value_score'] = performFieldSort(JSON.parse(JSON.stringify(demoMapData.value)), '', 'value.score');
+    demoResults.value["map_id"] = performFieldSort(
+        JSON.parse(JSON.stringify(demoMapData.value)),
+        "",
+        "id"
+    );
+    demoResults.value["map_value_score"] = performFieldSort(
+        JSON.parse(JSON.stringify(demoMapData.value)),
+        "",
+        "value.score"
+    );
 
     // 显示第一个教学弹窗
     // 初始化弹窗位置（居中偏上）
-    if (typeof window !== 'undefined') {
+    if (typeof window !== "undefined") {
         popupLeft.value = Math.max(8, (window.innerWidth - DEMO_POPUP_WIDTH) / 2);
         popupTop.value = 100;
     }
@@ -7811,8 +7983,19 @@ const setAndNext = (rootPath: string, fieldName: string, nextStep: number) => {
 const execAndNext = (rootPath: string, fieldName: string, nextStep: number) => {
     // 在演示中直接使用预计算/即时计算结果并写入输出编辑器（默认使用 demoData）
     const dataToUse = demoData.value;
-    const result = performFieldSort(JSON.parse(JSON.stringify(dataToUse)), rootPath, fieldName);
-    const formatted = customStringify(result, null, 2, JSON.stringify(dataToUse), 0, true);
+    const result = performFieldSort(
+        JSON.parse(JSON.stringify(dataToUse)),
+        rootPath,
+        fieldName
+    );
+    const formatted = customStringify(
+        result,
+        null,
+        2,
+        JSON.stringify(dataToUse),
+        0,
+        true
+    );
     const finalOutput = formatted.replace(/\\u([0-9a-fA-F]{4})/g, "\\\\u$1");
     if (outputEditor) {
         outputEditor.setValue(finalOutput);
@@ -7822,10 +8005,25 @@ const execAndNext = (rootPath: string, fieldName: string, nextStep: number) => {
 };
 
 // 针对 demoMapData 的执行函数
-const execAndNextMap = (rootPath: string, fieldName: string, nextStep: number) => {
+const execAndNextMap = (
+    rootPath: string,
+    fieldName: string,
+    nextStep: number
+) => {
     const dataToUse = demoMapData.value;
-    const result = performFieldSort(JSON.parse(JSON.stringify(dataToUse)), rootPath, fieldName);
-    const formatted = customStringify(result, null, 2, JSON.stringify(dataToUse), 0, true);
+    const result = performFieldSort(
+        JSON.parse(JSON.stringify(dataToUse)),
+        rootPath,
+        fieldName
+    );
+    const formatted = customStringify(
+        result,
+        null,
+        2,
+        JSON.stringify(dataToUse),
+        0,
+        true
+    );
     const finalOutput = formatted.replace(/\\u([0-9a-fA-F]{4})/g, "\\\\u$1");
     if (outputEditor) {
         outputEditor.setValue(finalOutput);
@@ -7835,15 +8033,27 @@ const execAndNextMap = (rootPath: string, fieldName: string, nextStep: number) =
 };
 
 // 将 demoMapData 加载到输入编辑器并设置参数，然后跳转
-const loadDemoMapAndNext = (rootPath: string, fieldName: string, nextStep: number) => {
+const loadDemoMapAndNext = (
+    rootPath: string,
+    fieldName: string,
+    nextStep: number
+) => {
     if (inputEditor) {
         const demoJson = JSON.stringify(demoMapData.value, null, 2);
         inputEditor.setValue(demoJson);
         updateEditorHeight(inputEditor);
     }
     // 重新计算预览结果
-    demoResults.value['map_id'] = performFieldSort(JSON.parse(JSON.stringify(demoMapData.value)), '', 'id');
-    demoResults.value['map_value_score'] = performFieldSort(JSON.parse(JSON.stringify(demoMapData.value)), '', 'value.score');
+    demoResults.value["map_id"] = performFieldSort(
+        JSON.parse(JSON.stringify(demoMapData.value)),
+        "",
+        "id"
+    );
+    demoResults.value["map_value_score"] = performFieldSort(
+        JSON.parse(JSON.stringify(demoMapData.value)),
+        "",
+        "value.score"
+    );
 
     setDemoParams(rootPath, fieldName);
     showDemoStep(nextStep);
@@ -7857,8 +8067,16 @@ const loadDemoMapNoAdvance = (rootPath: string, fieldName: string) => {
         updateEditorHeight(inputEditor);
     }
     // 重新计算预览结果
-    demoResults.value['map_id'] = performFieldSort(JSON.parse(JSON.stringify(demoMapData.value)), '', 'id');
-    demoResults.value['map_value_score'] = performFieldSort(JSON.parse(JSON.stringify(demoMapData.value)), '', 'value.score');
+    demoResults.value["map_id"] = performFieldSort(
+        JSON.parse(JSON.stringify(demoMapData.value)),
+        "",
+        "id"
+    );
+    demoResults.value["map_value_score"] = performFieldSort(
+        JSON.parse(JSON.stringify(demoMapData.value)),
+        "",
+        "value.score"
+    );
     // 不自动设置参数，保持示例初始为未设置状态
 };
 
@@ -7869,18 +8087,20 @@ const showDemoStep: (step: number) => void = (step: number) => {
     const steps = [
         {
             title: "📊 演示开始",
-            content: "已自动填入演示数据，现在可以拖动演示弹窗的位置，让我们学习如何使用字段排序功能。",
+            content:
+                "已自动填入演示数据，现在可以拖动演示弹窗的位置，让我们学习如何使用字段排序功能。",
             highlight: ".json-input-container",
-            buttons: [{ text: "开始学习", action: () => showDemoStep(1) }]
+            buttons: [{ text: "开始学习", action: () => showDemoStep(1) }],
         },
         {
             title: "🔢 示例1：Array - 按 id 排序",
-            content: "由于按照 id 字段排序的对象就是最外层数组的元素，所以排序范围就是整个 JSON 数据，因此排序范围可以留空，排序字段参数填入 id 即可。",
+            content:
+                "由于按照 id 字段排序的对象就是最外层数组的元素，所以排序范围就是整个 JSON 数据，因此排序范围可以留空，排序字段参数填入 id 即可。",
             highlight: ".sort-fields-button",
             buttons: [
                 { text: "上一步", action: () => showDemoStep(0) },
-                { text: "设置参数", action: () => setAndNext('', 'id', 2) }
-            ]
+                { text: "设置参数", action: () => setAndNext("", "id", 2) },
+            ],
         },
         {
             title: "🎯 执行排序",
@@ -7888,26 +8108,31 @@ const showDemoStep: (step: number) => void = (step: number) => {
             highlight: ".sort-fields-button",
             buttons: [
                 { text: "上一步", action: () => showDemoStep(1) },
-                { text: "执行排序", action: () => execAndNext('', 'id', 3) }
-            ]
+                { text: "执行排序", action: () => execAndNext("", "id", 3) },
+            ],
         },
         {
             title: "✅ 排序完成",
-            content: "排序已完成，结果已写入预览区域。你可以返回上一步重新查看，或者进入下一个示例。",
+            content:
+                "排序已完成，结果已写入预览区域。你可以返回上一步重新查看，或者进入下一个示例。",
             highlight: null,
             buttons: [
                 { text: "上一步", action: () => showDemoStep(2) },
-                { text: "下一个示例", action: () => showDemoStep(4) }
-            ]
+                { text: "下一个示例", action: () => showDemoStep(4) },
+            ],
         },
         {
             title: "🔢 示例2：Array - 按毕业年份排序每个人的教育经历",
-            content: "当我们要对嵌套内部的数组排序时，需要指定排序范围：[*].education，表示每个人的教育经历，那么排序字段就是毕业年份： graduationYear。",
+            content:
+                "当我们要对嵌套内部的数组排序时，需要指定排序范围：[*].education，表示每个人的教育经历，那么排序字段就是毕业年份： graduationYear。",
             highlight: ".sort-fields-button",
             buttons: [
                 { text: "上一步", action: () => showDemoStep(3) },
-                { text: "设置参数", action: () => setAndNext('[*].education', 'graduationYear', 5) }
-            ]
+                {
+                    text: "设置参数",
+                    action: () => setAndNext("[*].education", "graduationYear", 5),
+                },
+            ],
         },
         {
             title: "🎯 执行排序",
@@ -7915,62 +8140,74 @@ const showDemoStep: (step: number) => void = (step: number) => {
             highlight: ".sort-fields-button",
             buttons: [
                 { text: "上一步", action: () => showDemoStep(4) },
-                { text: "执行排序", action: () => execAndNext('[*].education', 'graduationYear', 6) }
-            ]
+                {
+                    text: "执行排序",
+                    action: () => execAndNext("[*].education", "graduationYear", 6),
+                },
+            ],
         },
         {
             title: "✅ 排序完成（Array - education）",
-            content: "排序已完成，结果已写入预览区域。你可以返回上一步重新设置，或者进入 Map 示例。",
+            content:
+                "排序已完成，结果已写入预览区域。你可以返回上一步重新设置，或者进入 Map 示例。",
             highlight: null,
             buttons: [
                 { text: "上一步", action: () => showDemoStep(5) },
-                { text: "下一个示例", action: () => showDemoStep(7) }
-            ]
+                { text: "下一个示例", action: () => showDemoStep(7) },
+            ],
         },
         {
             title: "🔢 示例3：Map — 按 id 排序",
-            content: "下面我们切换到 map 示例数据，示范如何对 map 按 id 排序。需要注意的是排序字段不需要输入 map 的 Key，直接输入 Value 内部的排序字段就行",
+            content:
+                "下面我们切换到 map 示例数据，示范如何对 map 按 id 排序。需要注意的是排序字段不需要输入 map 的 Key，直接输入 Value 内部的排序字段就行",
             highlight: ".sort-fields-button",
             buttons: [
                 { text: "上一步", action: () => showDemoStep(6) },
-                { text: "设置参数", action: () => setAndNext('', 'id', 8) }
-            ]
+                { text: "设置参数", action: () => setAndNext("", "id", 8) },
+            ],
         },
         {
             title: "🎯 执行排序",
-            content: "参数设置完成，点击“执行排序”将对 map 进行排序并进入结果查看步骤。",
+            content:
+                "参数设置完成，点击“执行排序”将对 map 进行排序并进入结果查看步骤。",
             highlight: ".sort-fields-button",
             buttons: [
                 { text: "上一步", action: () => showDemoStep(7) },
-                { text: "执行排序", action: () => execAndNextMap('', 'id', 9) }
-            ]
+                { text: "执行排序", action: () => execAndNextMap("", "id", 9) },
+            ],
         },
         {
             title: "✅ 排序完成（Map - id）",
-            content: "Map 排序已完成，结果已写入预览区域。你可以返回上一步重新设置，或者进入下一个示例。",
+            content:
+                "Map 排序已完成，结果已写入预览区域。你可以返回上一步重新设置，或者进入下一个示例。",
             highlight: null,
             buttons: [
                 { text: "上一步", action: () => showDemoStep(8) },
-                { text: "下一个示例", action: () => showDemoStep(10) }
-            ]
+                { text: "下一个示例", action: () => showDemoStep(10) },
+            ],
         },
         {
             title: "🔢 示例4：Map — 按 value.score 排序",
-            content: "同样可以按 map 内部字段排序，例如填写 value.score 来按 score 排序。",
+            content:
+                "同样可以按 map 内部字段排序，例如填写 value.score 来按 score 排序。",
             highlight: ".sort-fields-button",
             buttons: [
                 { text: "上一步", action: () => showDemoStep(9) },
-                { text: "设置参数", action: () => setAndNext('', 'value.score', 11) }
-            ]
+                { text: "设置参数", action: () => setAndNext("", "value.score", 11) },
+            ],
         },
         {
             title: "🎯 执行排序",
-            content: "参数设置完成，点击“执行排序”将应用 map 内部字段排序并进入结果查看步骤。",
+            content:
+                "参数设置完成，点击“执行排序”将应用 map 内部字段排序并进入结果查看步骤。",
             highlight: ".sort-fields-button",
             buttons: [
                 { text: "上一步", action: () => showDemoStep(10) },
-                { text: "执行排序", action: () => execAndNextMap('', 'value.score', 12) }
-            ]
+                {
+                    text: "执行排序",
+                    action: () => execAndNextMap("", "value.score", 12),
+                },
+            ],
         },
         {
             title: "✅ 排序完成（Map - value.score）",
@@ -7978,9 +8215,9 @@ const showDemoStep: (step: number) => void = (step: number) => {
             highlight: null,
             buttons: [
                 { text: "再试一次", action: () => startDemoMode() },
-                { text: "结束演示", action: () => endDemoMode() }
-            ]
-        }
+                { text: "结束演示", action: () => endDemoMode() },
+            ],
+        },
     ];
     // 更新步骤数量（用于指示器渲染）
     demoStepsCount.value = steps.length;
@@ -7992,8 +8229,8 @@ const showDemoStep: (step: number) => void = (step: number) => {
     // 自动切换 demo 数据：当进入 Map 示例步时，加载 map 示例到输入编辑器并设置默认字段（不跳转）
     // 每个示例开始时清空当前参数（范围留空，字段未设置）
     if ([1, 4, 7, 10].includes(step)) {
-        sortRootPath.value = '';
-        sortFieldName.value = '';
+        sortRootPath.value = "";
+        sortFieldName.value = "";
         // 每个示例开始时清空预览区域
         if (outputEditor) {
             outputEditor.setValue("");
@@ -8003,10 +8240,10 @@ const showDemoStep: (step: number) => void = (step: number) => {
     }
     if (step === 7) {
         // Map — 按 id 排序示例（加载 demo 数据，但保持字段未设置）
-        loadDemoMapNoAdvance('', '');
+        loadDemoMapNoAdvance("", "");
     } else if (step === 10) {
         // Map — 按 value.score 排序示例（加载 demo 数据，但保持字段未设置）
-        loadDemoMapNoAdvance('', '');
+        loadDemoMapNoAdvance("", "");
     }
 };
 
@@ -8021,8 +8258,19 @@ const executeDemoSort = (rootPath: string, fieldName: string) => {
     setDemoParams(rootPath, fieldName);
 
     // 模拟执行排序（在演示模式下，我们直接显示预计算的结果）
-    const result = performFieldSort(JSON.parse(JSON.stringify(demoData.value)), rootPath, fieldName);
-    const formatted = customStringify(result, null, 2, JSON.stringify(demoData.value), 0, true);
+    const result = performFieldSort(
+        JSON.parse(JSON.stringify(demoData.value)),
+        rootPath,
+        fieldName
+    );
+    const formatted = customStringify(
+        result,
+        null,
+        2,
+        JSON.stringify(demoData.value),
+        0,
+        true
+    );
     const finalOutput = formatted.replace(/\\u([0-9a-fA-F]{4})/g, "\\u$1");
 
     if (outputEditor) {
@@ -8042,12 +8290,13 @@ const endDemoMode = () => {
     // 清空演示数据
     if (inputEditor) {
         // 恢复开始演示前的输入内容（如果有保存），否则清空
-        const restored = savedInputContent.value !== null ? savedInputContent.value : '';
+        const restored =
+            savedInputContent.value !== null ? savedInputContent.value : "";
         inputEditor.setValue(restored);
         updateEditorHeight(inputEditor);
     }
     if (outputEditor) {
-        outputEditor.setValue('');
+        outputEditor.setValue("");
         updateEditorHeight(outputEditor);
     }
     // 清除缓存的原始内容
@@ -8063,9 +8312,7 @@ const runDemoSort = (rootPath: string, fieldName: string) => {
         const result = performFieldSort(data, rootPath, fieldName);
 
         demoResults.value[`${rootPath}_${fieldName}`] = result;
-    } catch (error) {
-        console.error('演示排序失败:', error);
-    }
+    } catch (error) { }
 };
 
 // 执行字段排序的核心逻辑（提取为独立函数）
@@ -8073,16 +8320,16 @@ const performFieldSort = (data: any, rootPath: string, fieldName: string) => {
     let result = JSON.parse(JSON.stringify(data));
 
     // 处理嵌套数组排序的情况
-    if (rootPath && rootPath.includes('[*]')) {
+    if (rootPath && rootPath.includes("[*]")) {
         if (!Array.isArray(result)) {
             throw new Error("根数据必须是数组才能使用 [*] 路径");
         }
 
         // 对每个数组元素进行排序
-        result.forEach(item => {
-            if (item && typeof item === 'object') {
+        result.forEach((item) => {
+            if (item && typeof item === "object") {
                 // 提取 [*].path 中的 path 部分
-                const pathParts = rootPath.split('[*].');
+                const pathParts = rootPath.split("[*].");
                 if (pathParts.length === 2) {
                     const subPath = pathParts[1];
                     const subData = getValueByPath(item, subPath);
@@ -8121,7 +8368,10 @@ const executeFieldSort = () => {
         originalString = result.originalString;
 
         // 处理嵌套数组排序的情况
-        if (sortRootPath.value.trim() && sortRootPath.value.trim().includes('[*]')) {
+        if (
+            sortRootPath.value.trim() &&
+            sortRootPath.value.trim().includes("[*]")
+        ) {
             // 对于 [*].path 这样的路径，需要直接修改原始数据
             const rootPath = sortRootPath.value.trim();
             if (!Array.isArray(parsed)) {
@@ -8130,10 +8380,10 @@ const executeFieldSort = () => {
             }
 
             // 对每个数组元素进行排序
-            parsed.forEach(item => {
-                if (item && typeof item === 'object') {
+            parsed.forEach((item) => {
+                if (item && typeof item === "object") {
                     // 提取 [*].path 中的 path 部分
-                    const pathParts = rootPath.split('[*].');
+                    const pathParts = rootPath.split("[*].");
                     if (pathParts.length === 2) {
                         const subPath = pathParts[1];
                         const subData = getValueByPath(item, subPath);
@@ -8164,7 +8414,9 @@ const executeFieldSort = () => {
             outputEditor?.setValue(finalOutput);
             updateEditorHeight(outputEditor);
 
-            showMessageSuccess(`按字段 "${sortFieldName.value}" 对路径 "${rootPath}" 下的数组排序成功`);
+            showMessageSuccess(
+                `按字段 "${sortFieldName.value}" 对路径 "${rootPath}" 下的数组排序成功`
+            );
             return;
         }
 
@@ -9889,7 +10141,6 @@ const transferToInput = (e: MouseEvent) => {
 </script>
 
 <style scoped>
-
 /* 折叠信息文本样式 */
 :deep(.folding-info-text) {
     color: #909399;
@@ -10355,7 +10606,8 @@ const transferToInput = (e: MouseEvent) => {
 :deep(.monaco-editor .current-line) {
     background-color: rgba(64, 158, 255, 0.06) !important;
     border: none !important;
-    height: 16px !important; /* 设置与行高一致的高度 */
+    height: 16px !important;
+    /* 设置与行高一致的高度 */
 }
 
 /* 禁用行号区域的高亮 */
@@ -10528,6 +10780,44 @@ const transferToInput = (e: MouseEvent) => {
     margin-left: 20px;
 }
 
+/* 排序弹窗：只读值样式 */
+.form-value-text {
+    color: #2f3b45;
+    font-weight: 600;
+    font-size: 15px;
+    display: inline-block;
+    margin-top: 0;
+    line-height: 1;
+    letter-spacing: 0.2px;
+}
+
+.form-item .form-label {
+    font-weight: 500;
+    color: #606266;
+    margin-bottom: 6px;
+}
+
+.form-item-row {
+    display: flex;
+    align-items: center;
+}
+
+/* 极简单行展示：紧凑无间距，像 '排序方向：正序（升序）' */
+.form-value-quote--compact {
+    padding: 12px 16px;
+    border-radius: 8px;
+    background: #f6f7f9;
+    border: 1px solid rgba(20,30,40,0.04);
+    box-sizing: border-box;
+}
+.form-compact-line {
+    font-weight: 600;
+    color: #394149;
+    font-size: 15px;
+    display: inline-block;
+    white-space: nowrap;
+}
+
 :deep(.el-dialog__header) {
     padding: 16px 20px 12px;
     border-bottom: 1px solid #e4e7ed;
@@ -10606,11 +10896,14 @@ const transferToInput = (e: MouseEvent) => {
 }
 
 .settings-dialog-content :deep(.el-collapse-item__header) {
-    box-sizing: border-box;           /* 避免 padding 改变元素总宽度 */
-    display: flex;                    /* 使用 flex 布局，标题在左，箭头在右 */
+    box-sizing: border-box;
+    /* 避免 padding 改变元素总宽度 */
+    display: flex;
+    /* 使用 flex 布局，标题在左，箭头在右 */
     align-items: center;
     justify-content: space-between;
-    padding: 0;                        /* 内边距交给内部容器 .settings-collapse-title 控制 */
+    padding: 0;
+    /* 内边距交给内部容器 .settings-collapse-title 控制 */
 
     background-color: #f5f7fa;
     border-radius: 4px;
@@ -10649,9 +10942,12 @@ const transferToInput = (e: MouseEvent) => {
     display: flex;
     align-items: center;
     gap: 8px;
-    width: auto;           /* 不再占满整行，避免把箭头推远 */
-    flex: 0 1 auto;        /* 保持自适应且允许换行收缩 */
-    padding: 12px 24px;    /* 与折叠项的内部间距一致，保证左右对称视觉 */
+    width: auto;
+    /* 不再占满整行，避免把箭头推远 */
+    flex: 0 1 auto;
+    /* 保持自适应且允许换行收缩 */
+    padding: 12px 24px;
+    /* 与折叠项的内部间距一致，保证左右对称视觉 */
 }
 
 .settings-collapse-content {
@@ -10989,7 +11285,7 @@ const transferToInput = (e: MouseEvent) => {
     background: #f1f3f4;
     padding: 2px 6px;
     border-radius: 3px;
-    font-family: 'Monaco', 'Menlo', monospace;
+    font-family: "Monaco", "Menlo", monospace;
     font-size: 13px;
     color: #d73a49;
 }
@@ -11031,6 +11327,7 @@ const transferToInput = (e: MouseEvent) => {
         opacity: 0;
         transform: scale(0.9) translateY(-20px);
     }
+
     to {
         opacity: 1;
         transform: scale(1) translateY(0);
@@ -11125,7 +11422,7 @@ const transferToInput = (e: MouseEvent) => {
 }
 
 .demo-highlight::before {
-    content: '';
+    content: "";
     position: absolute;
     top: -4px;
     left: -4px;
@@ -11138,9 +11435,12 @@ const transferToInput = (e: MouseEvent) => {
 }
 
 @keyframes highlightPulse {
-    0%, 100% {
+
+    0%,
+    100% {
         opacity: 0.3;
     }
+
     50% {
         opacity: 0.8;
     }
