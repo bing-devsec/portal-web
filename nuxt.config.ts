@@ -177,10 +177,6 @@ export default defineNuxtConfig({
 
   // ==================== Nitro配置 ====================
   nitro: {
-    compressPublicAssets: {
-      gzip: true,
-      brotli: true,
-    },
     prerender: {
       crawlLinks: false,
     },

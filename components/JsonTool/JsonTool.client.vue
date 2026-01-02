@@ -278,37 +278,37 @@
                             <div class="settings-subsection">
                                 <div class="settings-subsection-title">菜单栏功能设置</div>
                                 <div class="button-visibility-list">
-                                    <!-- 第一行 -->
+                                    <!-- 第一行：数据获取与基础处理 -->
                                     <div class="button-visibility-item" style="grid-column: 1; grid-row: 1">
-                                        <el-checkbox v-model="buttonVisibility.compress">压缩</el-checkbox>
+                                        <el-checkbox v-model="buttonVisibility.fetchJson">获取JSON</el-checkbox>
                                     </div>
                                     <div class="button-visibility-item" style="grid-column: 2; grid-row: 1">
-                                        <el-checkbox v-model="buttonVisibility.escape">转义</el-checkbox>
+                                        <el-checkbox v-model="buttonVisibility.compress">压缩</el-checkbox>
                                     </div>
                                     <div class="button-visibility-item" style="grid-column: 3; grid-row: 1">
-                                        <el-checkbox v-model="buttonVisibility.unescape">去除转义</el-checkbox>
+                                        <el-checkbox v-model="buttonVisibility.escape">转义</el-checkbox>
                                     </div>
                                     <div class="button-visibility-item" style="grid-column: 4; grid-row: 1">
-                                        <el-checkbox v-model="buttonVisibility.compressEscape">压缩并转义</el-checkbox>
+                                        <el-checkbox v-model="buttonVisibility.unescape">去除转义</el-checkbox>
                                     </div>
                                     <div class="button-visibility-item" style="grid-column: 5; grid-row: 1">
-                                        <el-checkbox v-model="buttonVisibility.sort">排序</el-checkbox>
+                                        <el-checkbox v-model="buttonVisibility.compressEscape">压缩并转义</el-checkbox>
                                     </div>
-                                    <!-- 第二行 -->
+                                    <!-- 第二行：数据处理与管理 -->
                                     <div class="button-visibility-item" style="grid-column: 1; grid-row: 2">
                                         <el-checkbox v-model="buttonVisibility.masking">脱敏</el-checkbox>
                                     </div>
                                     <div class="button-visibility-item" style="grid-column: 2; grid-row: 2">
-                                        <el-checkbox v-model="buttonVisibility.share">分享</el-checkbox>
+                                        <el-checkbox v-model="buttonVisibility.sort">排序</el-checkbox>
                                     </div>
                                     <div class="button-visibility-item" style="grid-column: 3; grid-row: 2">
-                                        <el-checkbox v-model="buttonVisibility.fetchJson">获取JSON</el-checkbox>
+                                        <el-checkbox v-model="buttonVisibility.archive">存档</el-checkbox>
                                     </div>
                                     <div class="button-visibility-item" style="grid-column: 4; grid-row: 2">
                                         <el-checkbox v-model="buttonVisibility.dataConvert">数据转换</el-checkbox>
                                     </div>
                                     <div class="button-visibility-item" style="grid-column: 5; grid-row: 2">
-                                        <el-checkbox v-model="buttonVisibility.archive">存档</el-checkbox>
+                                        <el-checkbox v-model="buttonVisibility.share">分享</el-checkbox>
                                     </div>
                                 </div>
                             </div>
@@ -10499,7 +10499,7 @@ const transferToInput = (e: MouseEvent) => {
     justify-content: space-between;
     align-items: center;
     flex-shrink: 0;
-    padding: 10px 15px;
+    padding: 5px 15px;
     background: linear-gradient(to bottom, #fafbfc, #f6f8fa);
     border-bottom: 1px solid #e4e7ed;
     transition: none !important;
