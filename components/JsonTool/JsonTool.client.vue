@@ -3499,8 +3499,8 @@ function customStringify(
             if (!map.has(parsedValue)) {
                 // 第一次遇到这个值
                 if (currentEncodingMode === 0) {
-                    // 模式0：使用数组存储，以便为每个出现位置保留其原始形式
-                    map.set(parsedValue, [finalEscaped]);
+                    // 模式0：使用数组存储原始转义形式，以便为每个出现位置保留其原始形式
+                    map.set(parsedValue, [originalEscaped]);
                 } else {
                     // 模式1和2：直接保存单个值
                     map.set(parsedValue, finalEscaped);
@@ -3513,10 +3513,10 @@ function customStringify(
                     // 模式0（保持原样）：将新的原始形式添加到数组中
                     // 这样可以确保每个出现位置都能保留其原始形式
                     if (Array.isArray(existingEscape)) {
-                        existingEscape.push(finalEscaped);
+                        existingEscape.push(originalEscaped);
                     } else {
                         // 如果之前不是数组（不应该发生），转换为数组
-                        map.set(parsedValue, [existingEscape as string, finalEscaped]);
+                        map.set(parsedValue, [existingEscape as string, originalEscaped]);
                     }
                 } else {
                     // 模式1和2：优先保留Unicode转义形式
@@ -5306,18 +5306,29 @@ const unescapeJSON = (recursive: boolean = true) => {
                         return target.map((item) => {
                             if (typeof item === "string") {
                                 const t = item.trim();
+                                // 检查是否包含转义字符或看起来像JSON结构
                                 if (
                                     (t.startsWith("{") && t.endsWith("}")) ||
-                                    (t.startsWith("[") && t.endsWith("]"))
+                                    (t.startsWith("[") && t.endsWith("]")) ||
+                                    t.includes('\\"') ||
+                                    t.includes("\\\\")
                                 ) {
+                                    // 先尝试直接解析
                                     try {
                                         return JSON.parse(item);
                                     } catch {
-                                        return item;
+                                        // 如果直接解析失败，尝试去除转义后再解析
+                                        try {
+                                            const unescaped = item.replace(/\\"/g, '"').replace(/\\\\/g, '\\');
+                                            return JSON.parse(unescaped);
+                                        } catch {
+                                            // 解析失败则保留原字符串
+                                            return item;
+                                        }
                                     }
                                 }
                             }
-                            return item;
+                            return tryParseTopLevelOnce(item);
                         });
                     }
 
@@ -5328,19 +5339,30 @@ const unescapeJSON = (recursive: boolean = true) => {
                             const val = target[key];
                             if (typeof val === "string") {
                                 const t = val.trim();
+                                // 检查是否包含转义字符或看起来像JSON结构
                                 if (
                                     (t.startsWith("{") && t.endsWith("}")) ||
-                                    (t.startsWith("[") && t.endsWith("]"))
+                                    (t.startsWith("[") && t.endsWith("]")) ||
+                                    t.includes('\\"') ||
+                                    t.includes("\\\\")
                                 ) {
+                                    // 先尝试直接解析
                                     try {
                                         result[key] = JSON.parse(val);
                                         continue;
                                     } catch {
-                                        // 解析失败则保留原字符串
+                                        // 如果直接解析失败，尝试去除转义后再解析
+                                        try {
+                                            const unescaped = val.replace(/\\"/g, '"').replace(/\\\\/g, '\\');
+                                            result[key] = JSON.parse(unescaped);
+                                            continue;
+                                        } catch {
+                                            // 解析失败则保留原字符串
+                                        }
                                     }
                                 }
                             }
-                            result[key] = val;
+                            result[key] = tryParseTopLevelOnce(val);
                         }
                         return result;
                     }
@@ -9542,30 +9564,53 @@ const handleFileUpload = async (uploadFile: UploadFile) => {
             return;
         }
 
-        // 直接使用文件原始内容，不进行格式化
-        // 更新编辑器 - 将文件原始内容展示到输入区域
+        // 格式化JSON内容为2个空格缩进
+        let formattedContent = content;
+        let isValidJson = false;
+
+        try {
+            // 尝试解析并重新格式化为2个空格缩进
+            const parsed = JSON.parse(content);
+            formattedContent = JSON.stringify(parsed, null, 2);
+            isValidJson = true;
+        } catch (error) {
+            // 如果不是有效的JSON，保持原始内容
+            formattedContent = content;
+        }
+
+        // 更新编辑器 - 将格式化后的内容展示到输入区域
         if (inputEditor) {
-            inputEditor.setValue(content);
+            inputEditor.setValue(formattedContent);
 
-            // 根据文件内容推断缩进宽度（默认 2）
-            const detectIndentSize = (
-                text: string
-            ): { size: number; insertSpaces: boolean } => {
-                const lines = text.split("\n");
-                for (const line of lines) {
-                    const match = line.match(/^[ \t]+(?=\S)/);
-                    if (match) {
-                        const indentStr = match[0];
-                        if (indentStr.includes("\t")) {
-                            return { size: 4, insertSpaces: false };
+            // 根据内容类型设置缩进配置
+            let size: number;
+            let insertSpaces: boolean;
+
+            if (isValidJson) {
+                // 对于有效的JSON，统一使用2个空格缩进
+                size = 2;
+                insertSpaces = true;
+            } else {
+                // 对于无效JSON或纯文本，根据内容自动检测缩进
+                const detectIndentSize = (text: string): { size: number; insertSpaces: boolean } => {
+                    const lines = text.split("\n");
+                    for (const line of lines) {
+                        const match = line.match(/^[ \t]+(?=\S)/);
+                        if (match) {
+                            const indentStr = match[0];
+                            if (indentStr.includes("\t")) {
+                                return { size: 4, insertSpaces: false };
+                            }
+                            return { size: indentStr.length || 2, insertSpaces: true };
                         }
-                        return { size: indentStr.length || 2, insertSpaces: true };
                     }
-                }
-                return { size: 2, insertSpaces: true };
-            };
+                    return { size: 2, insertSpaces: true };
+                };
 
-            const { size, insertSpaces } = detectIndentSize(content);
+                const detected = detectIndentSize(formattedContent);
+                size = detected.size;
+                insertSpaces = detected.insertSpaces;
+            }
 
             updateLineNumberWidth(inputEditor);
             updateEditorHeight(inputEditor);

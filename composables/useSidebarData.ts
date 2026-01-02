@@ -37,12 +37,6 @@ interface LinkResponse {
 	rows: BaseLink[];
 }
 
-// （已移除缓存实现，侧边栏数据不再使用 localStorage 缓存）
-
-/**
- * 统一的侧边栏数据 composable
- * 使用 localStorage 实现缓存，强制刷新时重新请求，页面跳转时使用缓存
- */
 export function useSidebarData() {
 	// 使用统一的缓存 key，确保所有页面共享数据
 	const HOT_ARTICLES_KEY = 'sidebar-hot-articles-api';
