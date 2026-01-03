@@ -70,9 +70,7 @@
                                 </el-table>
                                 <div class="my-shares-actions">
                                     <el-button size="small" @click="toggleMyShares">收起</el-button>
-                                    <el-button size="small" type="primary" @click="fetchMyShares" :disabled="mySharesLoading" class="no-jitter">
-                                        刷新
-                                    </el-button>
+                                    <el-button size="small" type="primary" @click="fetchMyShares" :disabled="mySharesLoading" class="no-jitter"> 刷新 </el-button>
                                 </div>
                             </div>
                         </el-collapse-transition>

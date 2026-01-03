@@ -76,8 +76,7 @@
                         <div class="textarea-footer">
                             <div v-if="requestBodyError" class="field-error">{{ requestBodyError }}</div>
                             <div class="textarea-counter">
-                                字符数：{{ fetchJsonBody.length }} | 字节数：{{ requestBodyByteSize }} /
-                                {{ (MAX_REQUEST_BODY_SIZE / 1024 / 1024).toFixed(0) }} MB
+                                字符数：{{ fetchJsonBody.length }} | 字节数：{{ requestBodyByteSize }} / {{ (MAX_REQUEST_BODY_SIZE / 1024 / 1024).toFixed(0) }} MB
                             </div>
                         </div>
                     </div>
@@ -186,32 +185,14 @@
         </el-dialog>
 
         <!-- 保存配置对话框 -->
-        <el-dialog
-            v-model="showConfigDialog"
-            title="保存配置"
-            width="600px"
-            class="config-save-dialog-wrapper"
-            :close-on-click-modal="false"
-            :align-center="false"
-            top="20vh"
-        >
+        <el-dialog v-model="showConfigDialog" title="保存配置" width="600px" class="config-save-dialog-wrapper" :close-on-click-modal="false" :align-center="false" top="20vh">
             <div class="config-save-dialog">
-                <div
-                    v-if="saveConfigError"
-                    style="color: #f56c6c; font-size: 12px; margin-bottom: 15px; padding: 10px; background-color: #fef0f0; border-radius: 4px"
-                >
+                <div v-if="saveConfigError" style="color: #f56c6c; font-size: 12px; margin-bottom: 15px; padding: 10px; background-color: #fef0f0; border-radius: 4px">
                     {{ saveConfigError }}
                 </div>
                 <div class="form-item">
                     <label class="form-label" for="config-name">配置名称：</label>
-                    <el-input
-                        id="config-name"
-                        v-model="configName"
-                        placeholder="请输入配置名称，例如：API测试环境"
-                        clearable
-                        :maxlength="MAX_CONFIG_NAME_LENGTH"
-                        show-word-limit
-                    />
+                    <el-input id="config-name" v-model="configName" placeholder="请输入配置名称，例如：API测试环境" clearable :maxlength="MAX_CONFIG_NAME_LENGTH" show-word-limit />
                     <div v-if="configNameError" class="field-error">{{ configNameError }}</div>
                 </div>
                 <div class="form-item">
@@ -254,10 +235,7 @@
             top="20vh"
         >
             <div class="config-load-dialog">
-                <div
-                    v-if="loadConfigError"
-                    style="color: #f56c6c; font-size: 12px; margin-bottom: 15px; padding: 10px; background-color: #fef0f0; border-radius: 4px"
-                >
+                <div v-if="loadConfigError" style="color: #f56c6c; font-size: 12px; margin-bottom: 15px; padding: 10px; background-color: #fef0f0; border-radius: 4px">
                     {{ loadConfigError }}
                 </div>
                 <div v-if="savedConfigs.length === 0" class="empty-configs">

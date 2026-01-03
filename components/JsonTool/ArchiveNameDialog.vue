@@ -1,14 +1,5 @@
 <template>
-    <el-dialog
-        v-model="dialogVisible"
-        :title="title"
-        :close-on-click-modal="false"
-        :show-close="true"
-        :align-center="false"
-        top="30vh"
-        width="450px"
-        @close="handleClose"
-    >
+    <el-dialog v-model="dialogVisible" :title="title" :close-on-click-modal="false" :show-close="true" :align-center="false" top="30vh" width="450px" @close="handleClose">
         <div class="archive-name-dialog">
             <div class="form-item">
                 <el-input

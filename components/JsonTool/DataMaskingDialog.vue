@@ -22,20 +22,14 @@
                             </p>
                             <div style="margin-top: 8px">
                                 <el-button text type="primary" size="small" @click="togglePathHelp" style="padding: 0; font-size: 12px; height: auto">
-                                    <el-icon
-                                        style="margin-right: 4px; transition: transform 0.3s"
-                                        :style="{ transform: showPathHelp ? 'rotate(90deg)' : 'rotate(0deg)' }"
-                                    >
+                                    <el-icon style="margin-right: 4px; transition: transform 0.3s" :style="{ transform: showPathHelp ? 'rotate(90deg)' : 'rotate(0deg)' }">
                                         <ArrowRight />
                                     </el-icon>
                                     {{ showPathHelp ? '收起' : '展开' }}路径字段匹配规则说明
                                 </el-button>
                             </div>
                             <el-collapse-transition>
-                                <div
-                                    v-show="showPathHelp"
-                                    style="margin-top: 12px; padding: 12px; background-color: #f5f7fa; border-radius: 4px; border-left: 3px solid #409eff"
-                                >
+                                <div v-show="showPathHelp" style="margin-top: 12px; padding: 12px; background-color: #f5f7fa; border-radius: 4px; border-left: 3px solid #409eff">
                                     <div style="font-size: 12px; line-height: 1.8; color: #606266">
                                         <p style="margin: 0 0 10px 0; font-weight: 600; color: #303133">字段路径匹配规则：</p>
 
@@ -80,9 +74,7 @@
                                                 >
                                             </p>
                                             <p style="margin: 0; padding-left: 12px; color: #909399; font-size: 11px">
-                                                示例：<code style="background: #fff; padding: 2px 6px; border-radius: 2px"
-                                                    >company.employees[*].personalInfo.phone</code
-                                                >
+                                                示例：<code style="background: #fff; padding: 2px 6px; border-radius: 2px">company.employees[*].personalInfo.phone</code>
                                                 会匹配数组中所有员工的手机号
                                             </p>
                                         </div>
@@ -95,8 +87,8 @@
                                                 连接多个路径，多个路径的结果去重后取并集
                                             </p>
                                             <p style="margin: 0; padding-left: 12px; color: #909399; font-size: 11px">
-                                                示例：<code style="background: #fff; padding: 2px 6px; border-radius: 2px">name | settings[*].name</code>
-                                                匹配根层级的 <code style="background: #fff; padding: 2px 6px; border-radius: 2px">name</code> 和数组中的所有
+                                                示例：<code style="background: #fff; padding: 2px 6px; border-radius: 2px">name | settings[*].name</code> 匹配根层级的
+                                                <code style="background: #fff; padding: 2px 6px; border-radius: 2px">name</code> 和数组中的所有
                                                 <code style="background: #fff; padding: 2px 6px; border-radius: 2px">name</code>
                                             </p>
                                         </div>
@@ -117,9 +109,7 @@
                                 size="small"
                                 @click="saveCurrentRule"
                                 :disabled="!canSaveNewRule"
-                                :title="
-                                    savedRulesList.length >= 5 && !canSaveNewRule ? '脱敏规则数量已达上限（5条），无法保存新规则。请先删除旧规则后再保存。' : ''
-                                "
+                                :title="savedRulesList.length >= 5 && !canSaveNewRule ? '脱敏规则数量已达上限（5条），无法保存新规则。请先删除旧规则后再保存。' : ''"
                             >
                                 <el-icon style="margin-right: 3px"><DocumentAdd /></el-icon>保存规则
                             </el-button>
@@ -154,9 +144,7 @@
                                 <div class="priority-hint">
                                     <el-alert type="info" :closable="false" show-icon>
                                         <template #title>
-                                            <span style="font-size: 12px"
-                                                >优先级说明：从上到下执行，下面的优先级更高（如果多个字段路径都匹配，将应用最后一个匹配的配置）</span
-                                            >
+                                            <span style="font-size: 12px">优先级说明：从上到下执行，下面的优先级更高（如果多个字段路径都匹配，将应用最后一个匹配的配置）</span>
                                         </template>
                                     </el-alert>
                                 </div>
@@ -350,9 +338,7 @@
                         <div class="saved-rule-info">
                             <div class="saved-rule-name">{{ savedRule.name }}</div>
                             <div class="saved-rule-meta">保存时间：{{ savedRule.saveTime }}</div>
-                            <div class="saved-rule-meta">
-                                字段路径：{{ savedRule.fieldPaths?.map((fp, idx) => `${idx + 1}. ${fp.fieldPath || '(空)'}`).join('; ') || '(无)' }}
-                            </div>
+                            <div class="saved-rule-meta">字段路径：{{ savedRule.fieldPaths?.map((fp, idx) => `${idx + 1}. ${fp.fieldPath || '(空)'}`).join('; ') || '(无)' }}</div>
                         </div>
                         <el-icon class="select-icon"><ArrowRight /></el-icon>
                     </div>
@@ -716,11 +702,7 @@ const compareFieldPathConfig = (config1: FieldPathConfig, config2: FieldPathConf
     // 根据策略类型比较相关参数
     if (config1.strategy === 'partial') {
         // partial 策略需要比较 prefixLength, suffixLength, maskChar
-        if (
-            config1.prefixLength !== config2.prefixLength ||
-            config1.suffixLength !== config2.suffixLength ||
-            (config1.maskChar || '*') !== (config2.maskChar || '*')
-        ) {
+        if (config1.prefixLength !== config2.prefixLength || config1.suffixLength !== config2.suffixLength || (config1.maskChar || '*') !== (config2.maskChar || '*')) {
             return false;
         }
     } else if (config1.strategy === 'fixed') {
@@ -834,9 +816,10 @@ const saveCurrentRule = async () => {
             });
 
             const now = new Date();
-            const saveTime = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')} ${String(
-                now.getHours()
-            ).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+            const saveTime = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')} ${String(now.getHours()).padStart(
+                2,
+                '0'
+            )}:${String(now.getMinutes()).padStart(2, '0')}`;
 
             const newRule: SavedRule = {
                 ...newRuleContent,
@@ -873,9 +856,10 @@ const saveCurrentRule = async () => {
 
             // 用户确认：删除旧规则，保存新规则
             const now = new Date();
-            const saveTime = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')} ${String(
-                now.getHours()
-            ).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+            const saveTime = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')} ${String(now.getHours()).padStart(
+                2,
+                '0'
+            )}:${String(now.getMinutes()).padStart(2, '0')}`;
 
             const newRule: SavedRule = {
                 ...newRuleContent,
@@ -907,9 +891,10 @@ const saveCurrentRule = async () => {
 
     // 正常保存新规则
     const now = new Date();
-    const saveTime = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')} ${String(
-        now.getHours()
-    ).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+    const saveTime = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')} ${String(now.getHours()).padStart(
+        2,
+        '0'
+    )}:${String(now.getMinutes()).padStart(2, '0')}`;
 
     const newRule: SavedRule = {
         ...newRuleContent,

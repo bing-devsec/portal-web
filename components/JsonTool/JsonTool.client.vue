@@ -617,22 +617,7 @@ import type { UploadFile } from 'element-plus';
 import * as monaco from 'monaco-editor';
 import editorWorker from 'monaco-editor/esm/vs/editor/editor.worker?worker';
 import jsonWorker from 'monaco-editor/esm/vs/language/json/json.worker?worker';
-import {
-    Loading,
-    ArrowLeft,
-    ArrowRight,
-    ArrowDown,
-    CopyDocument,
-    Download,
-    Upload,
-    Delete,
-    Setting,
-    WarningFilled,
-    Document,
-    Sort,
-    Edit,
-    Refresh,
-} from '@element-plus/icons-vue';
+import { Loading, ArrowLeft, ArrowRight, ArrowDown, CopyDocument, Download, Upload, Delete, Setting, WarningFilled, Document, Sort, Edit, Refresh } from '@element-plus/icons-vue';
 import FetchJsonDialog from './FetchJsonDialog.vue';
 import ShareDialog from './ShareDialog.vue';
 import DataMaskingDialog from './DataMaskingDialog.vue';
@@ -730,10 +715,6 @@ const saveSettings = () => {
 };
 
 // ==================== 设置持久化管理结束 ====================
-
-const getMessageOffset = () => {
-    return isFullscreen.value ? 5 : 51.5;
-};
 const MAX_FILE_SIZE = 5 * 1024 * 1024; // 文件大小限制：5MB
 const MAX_LINES = 100000; // 最大行数限制
 
@@ -835,23 +816,9 @@ const settingsCollapseActiveNames = ref<string | number>('settings'); // 手风�
 // 字段排序对话框相关状态
 const fieldSortDialogVisible = ref(false);
 const sortRootPath = ref<string>('');
-/**
- * 更新排序方向（用于字段排序对话框内的切换）
- * 通过函数设置可以在切换时同步保存设置
- */
-const setSortOrder = (v: 'asc' | 'desc') => {
-    sortOrder.value = v;
-    // 保存设置到 localStorage
-    try {
-        saveSettings();
-    } catch {
-        // 忽略保存错误
-    }
-};
 const sortFieldName = ref<string>('');
 
 // 字段排序演示相关状态
-const fieldSortDemoVisible = ref(false);
 const isDemoMode = ref(false);
 const demoGuideVisible = ref(false);
 const currentDemoStepData = ref<any>(null);
@@ -2136,22 +2103,6 @@ const setupFoldingInfoDisplay = (editor: monaco.editor.IStandaloneCodeEditor) =>
     (editor as any).__enableFoldingInfoUpdateAndRefresh = enableUpdateAndRefresh;
 };
 
-// 提取 JSON 字符串内容（去除引号和转义字符）
-const extractStringValue = (text: string): string | null => {
-    // 移除首尾的引号
-    if ((text.startsWith('"') && text.endsWith('"')) || (text.startsWith("'") && text.endsWith("'"))) {
-        const inner = text.slice(1, -1);
-        try {
-            // 使用 JSON.parse 来处理转义字符
-            return JSON.parse(`"${inner}"`);
-        } catch {
-            // 如果解析失败，直接返回去掉引号的内容
-            return inner;
-        }
-    }
-    return null;
-};
-
 // 查找字符串的完整范围（包括引号）
 const findStringRange = (model: monaco.editor.ITextModel, position: monaco.Position): monaco.Range | null => {
     const lineNumber = position.lineNumber;
@@ -3042,14 +2993,7 @@ const checkLinesAndDepth = (content: string): { isValid: boolean; error?: string
 };
 
 // 自定义 JSON 字符串化函数
-function customStringify(
-    obj: any,
-    replacer: null,
-    space: number,
-    originalString?: string,
-    encodingModeOverride?: number,
-    arrayNewLineOverride?: boolean
-): string {
+function customStringify(obj: any, replacer: null, space: number, originalString?: string, encodingModeOverride?: number, arrayNewLineOverride?: boolean): string {
     const indent = ' '.repeat(space);
     // 如果提供了编码模式覆盖值，使用它；否则使用全局设置
     const currentEncodingMode = encodingModeOverride !== undefined ? encodingModeOverride : encodingMode.value;
@@ -4837,8 +4781,7 @@ const unescapeJSON = (recursive: boolean = true) => {
                             // 1. 包含转义字符（可能是转义的JSON）
                             // 2. 或者看起来像JSON结构（以{或[开始，可能以}或]结束）
                             const hasEscapes = obj.includes('\\"') || obj.includes('\\\\');
-                            const looksLikeJson =
-                                (obj.trim().startsWith('{') || obj.trim().startsWith('[')) && (obj.trim().endsWith('}') || obj.trim().endsWith(']'));
+                            const looksLikeJson = (obj.trim().startsWith('{') || obj.trim().startsWith('[')) && (obj.trim().endsWith('}') || obj.trim().endsWith(']'));
 
                             if (hasEscapes || looksLikeJson) {
                                 try {
@@ -4900,12 +4843,7 @@ const unescapeJSON = (recursive: boolean = true) => {
                                         // 检查 unescaped 中是否包含实际的控制字符
                                         const hasActualControlChars = /[\n\r\t\b\f]/.test(unescaped);
                                         if (hasActualControlChars) {
-                                            unescaped = unescaped
-                                                .replace(/\n/g, '\\n')
-                                                .replace(/\t/g, '\\t')
-                                                .replace(/\r/g, '\\r')
-                                                .replace(/\b/g, '\\b')
-                                                .replace(/\f/g, '\\f');
+                                            unescaped = unescaped.replace(/\n/g, '\\n').replace(/\t/g, '\\t').replace(/\r/g, '\\r').replace(/\b/g, '\\b').replace(/\f/g, '\\f');
                                         }
 
                                         // 尝试解析去除转义后的字符串
@@ -4983,12 +4921,7 @@ const unescapeJSON = (recursive: boolean = true) => {
                             if (typeof item === 'string') {
                                 const t = item.trim();
                                 // 检查是否包含转义字符或看起来像JSON结构
-                                if (
-                                    (t.startsWith('{') && t.endsWith('}')) ||
-                                    (t.startsWith('[') && t.endsWith(']')) ||
-                                    t.includes('\\"') ||
-                                    t.includes('\\\\')
-                                ) {
+                                if ((t.startsWith('{') && t.endsWith('}')) || (t.startsWith('[') && t.endsWith(']')) || t.includes('\\"') || t.includes('\\\\')) {
                                     // 先尝试直接解析
                                     try {
                                         return JSON.parse(item);
@@ -5016,12 +4949,7 @@ const unescapeJSON = (recursive: boolean = true) => {
                             if (typeof val === 'string') {
                                 const t = val.trim();
                                 // 检查是否包含转义字符或看起来像JSON结构
-                                if (
-                                    (t.startsWith('{') && t.endsWith('}')) ||
-                                    (t.startsWith('[') && t.endsWith(']')) ||
-                                    t.includes('\\"') ||
-                                    t.includes('\\\\')
-                                ) {
+                                if ((t.startsWith('{') && t.endsWith('}')) || (t.startsWith('[') && t.endsWith(']')) || t.includes('\\"') || t.includes('\\\\')) {
                                     // 先尝试直接解析
                                     try {
                                         result[key] = JSON.parse(val);
@@ -6386,17 +6314,6 @@ const openSettingsDialog = () => {
     settingsDialogVisible.value = true;
 };
 
-// 检查Key是否为纯数字
-const isNumericKey = (key: string): boolean => {
-    // 检查是否为纯数字（包括负数、小数）
-    return /^-?\d+(\.\d+)?$/.test(key);
-};
-
-// 获取Key的类型（数字或字符串）
-const getKeyType = (key: string): 'number' | 'string' => {
-    return isNumericKey(key) ? 'number' : 'string';
-};
-
 // 比较函数：字典序
 const compareDictionary = (a: string, b: string): number => {
     return a.localeCompare(b, undefined, { numeric: false, sensitivity: 'base' });
@@ -6408,42 +6325,6 @@ const compareLength = (a: string, b: string): number => {
         return a.length - b.length;
     }
     return compareDictionary(a, b);
-};
-
-// 比较函数：按Key数值
-const compareNumeric = (a: string, b: string): number => {
-    const aIsNumeric = isNumericKey(a);
-    const bIsNumeric = isNumericKey(b);
-
-    if (aIsNumeric && bIsNumeric) {
-        // 都是数字，按数值比较
-        const aNum = parseFloat(a);
-        const bNum = parseFloat(b);
-        return aNum - bNum;
-    } else if (aIsNumeric && !bIsNumeric) {
-        // a是数字，b不是，数字在前
-        return -1;
-    } else if (!aIsNumeric && bIsNumeric) {
-        // a不是数字，b是，数字在前
-        return 1;
-    } else {
-        // 都不是数字，按字典序
-        return compareDictionary(a, b);
-    }
-};
-
-// 比较函数：按Key类型分组
-const compareType = (a: string, b: string): number => {
-    const aType = getKeyType(a);
-    const bType = getKeyType(b);
-
-    if (aType !== bType) {
-        // 类型不同，数字在前
-        return aType === 'number' ? -1 : 1;
-    } else {
-        // 类型相同，按字典序
-        return compareDictionary(a, b);
-    }
 };
 
 // 解析路径字符串，支持数组语法（如 settings[*] 或 settings[0]）
@@ -6935,61 +6816,6 @@ const queryRootPaths = (queryString: string, cb: (suggestions: PathSuggestion[])
         const jsonObj = JSON.parse(jsonData);
 
         const suggestions = getSmartPathSuggestions(jsonObj, queryString || '');
-        cb(suggestions);
-    } catch (error) {
-        cb([]);
-    }
-};
-
-// 获取字段路径建议
-const queryFieldPaths = (queryString: string, cb: (suggestions: PathSuggestion[]) => void) => {
-    // 记录当前的查询上下文，用于路径拼接
-    fieldPathQueryContext = queryString || '';
-
-    if (!inputEditor?.getValue()?.trim()) {
-        cb([]);
-        return;
-    }
-
-    try {
-        const jsonData = inputEditor.getValue();
-        const jsonObj = JSON.parse(jsonData);
-
-        // 获取数据根路径指向的数据
-        let dataToAnalyze = jsonObj;
-        if (sortRootPath.value.trim()) {
-            dataToAnalyze = getValueByPath(jsonObj, sortRootPath.value.trim());
-            if (dataToAnalyze === undefined) {
-                cb([]);
-                return;
-            }
-
-            // 处理 [*].path 这样的路径，获取数组元素的内部结构
-            if (Array.isArray(dataToAnalyze) && dataToAnalyze.length > 0) {
-                // 如果返回的是数组，取第一个元素作为提示的基础
-                const firstElement = dataToAnalyze[0];
-                if (firstElement && (Array.isArray(firstElement) || typeof firstElement === 'object')) {
-                    // 对于 [*].education 这样的路径，education是数组，所以取第一个元素
-                    if (Array.isArray(firstElement)) {
-                        dataToAnalyze = firstElement;
-                    } else {
-                        // 如果是对象数组，保持原样
-                        dataToAnalyze = firstElement;
-                    }
-                }
-            }
-        } else {
-            // 当数据根路径为空时，如果整个数据是数组，应该提示数组元素的字段
-            if (Array.isArray(dataToAnalyze) && dataToAnalyze.length > 0) {
-                const firstElement = dataToAnalyze[0];
-                if (firstElement && typeof firstElement === 'object' && !Array.isArray(firstElement)) {
-                    // 对于对象数组，取第一个元素作为提示的基础
-                    dataToAnalyze = firstElement;
-                }
-            }
-        }
-
-        const suggestions = getSmartPathSuggestions(dataToAnalyze, queryString || '');
         cb(suggestions);
     } catch (error) {
         cb([]);
@@ -7539,21 +7365,6 @@ const execAndNextMap = (rootPath: string, fieldName: string, nextStep: number) =
     showDemoStep(nextStep);
 };
 
-// 将 demoMapData 加载到输入编辑器并设置参数，然后跳转
-const loadDemoMapAndNext = (rootPath: string, fieldName: string, nextStep: number) => {
-    if (inputEditor) {
-        const demoJson = JSON.stringify(demoMapData.value, null, 2);
-        inputEditor.setValue(demoJson);
-        updateEditorHeight(inputEditor);
-    }
-    // 重新计算预览结果
-    demoResults.value['map_id'] = performFieldSort(JSON.parse(JSON.stringify(demoMapData.value)), '', 'id');
-    demoResults.value['map_value_score'] = performFieldSort(JSON.parse(JSON.stringify(demoMapData.value)), '', 'value.score');
-
-    setDemoParams(rootPath, fieldName);
-    showDemoStep(nextStep);
-};
-
 // 将 demoMapData 加载到输入编辑器并设置参数（不跳转）
 const loadDemoMapNoAdvance = (rootPath: string, fieldName: string) => {
     if (inputEditor) {
@@ -7730,23 +7541,6 @@ const setDemoParams = (rootPath: string, fieldName: string) => {
     sortFieldName.value = fieldName;
 };
 
-// 执行演示排序
-const executeDemoSort = (rootPath: string, fieldName: string) => {
-    setDemoParams(rootPath, fieldName);
-
-    // 模拟执行排序（在演示模式下，我们直接显示预计算的结果）
-    const result = performFieldSort(JSON.parse(JSON.stringify(demoData.value)), rootPath, fieldName);
-    const formatted = customStringify(result, null, 2, JSON.stringify(demoData.value), 0, true);
-    const finalOutput = formatted.replace(/\\u([0-9a-fA-F]{4})/g, '\\u$1');
-
-    if (outputEditor) {
-        outputEditor.setValue(finalOutput);
-        updateEditorHeight(outputEditor);
-    }
-
-    showDemoStep(currentDemoStep.value + 1);
-};
-
 // 结束演示模式
 const endDemoMode = () => {
     isDemoMode.value = false;
@@ -7766,18 +7560,6 @@ const endDemoMode = () => {
     }
     // 清除缓存的原始内容
     savedInputContent.value = null;
-};
-
-// 执行演示排序
-const runDemoSort = (rootPath: string, fieldName: string) => {
-    try {
-        const data = JSON.parse(JSON.stringify(demoData.value));
-
-        // 执行排序逻辑
-        const result = performFieldSort(data, rootPath, fieldName);
-
-        demoResults.value[`${rootPath}_${fieldName}`] = result;
-    } catch (error) {}
 };
 
 // 执行字段排序的核心逻辑（提取为独立函数）
@@ -8100,12 +7882,7 @@ const convertToTOML = (obj: any, prefix: string = '', processedObjects = new Wea
     // 判断是否为简单数组（只包含基本类型）
     const isSimpleArray = (arr: any[]): boolean => {
         return arr.every(
-            item =>
-                typeof item === 'string' ||
-                typeof item === 'number' ||
-                typeof item === 'boolean' ||
-                item === null ||
-                (Array.isArray(item) && isSimpleArray(item))
+            item => typeof item === 'string' || typeof item === 'number' || typeof item === 'boolean' || item === null || (Array.isArray(item) && isSimpleArray(item))
         );
     };
 
@@ -8438,10 +8215,7 @@ const convertToGo = (obj: any): string => {
         // 如果前缀或后缀足够长，认为有模式
         if (commonPrefix.length >= 3 || commonSuffix.length >= 3) {
             // 构建正则模式（简化版：前缀+可变部分+后缀）
-            const pattern =
-                commonPrefix.length >= 3
-                    ? `^${commonPrefix.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}.*`
-                    : `.*${commonSuffix.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`;
+            const pattern = commonPrefix.length >= 3 ? `^${commonPrefix.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}.*` : `.*${commonSuffix.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`;
             return { pattern, similarity: 0.7 };
         }
 
@@ -8615,11 +8389,7 @@ const convertToGo = (obj: any): string => {
                         // 如果 isRoot，使用 structName 作为最终类型名；否则使用 elementTypeName
                         const finalTypeName = isRoot ? structName : elementTypeName;
                         const mapTypeName = elementTypeName;
-                        return (
-                            valueStructDef +
-                            `type ${mapTypeName} map[string]${valueTypeName}\n\n` +
-                            (isRoot ? `type ${finalTypeName} []${mapTypeName}\n\n` : '')
-                        );
+                        return valueStructDef + `type ${mapTypeName} map[string]${valueTypeName}\n\n` + (isRoot ? `type ${finalTypeName} []${mapTypeName}\n\n` : '');
                     } else {
                         // Value 结构不一致，使用 map[string]interface{}
                         const finalTypeName = isRoot ? structName : elementTypeName;
