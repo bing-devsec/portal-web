@@ -366,6 +366,17 @@
                                     <el-switch v-model="showIndentGuide" active-text="显示" inactive-text="隐藏" size="default" @change="updateIndentGuides" />
                                 </div>
                             </div>
+
+                            <!-- 分隔线：缩进指南设置和同步滚动设置之间 -->
+                            <el-divider class="settings-subsection-divider" />
+
+                            <!-- 同步滚动设置 -->
+                            <div class="settings-subsection">
+                                <div class="settings-subsection-title">同步滚动设置</div>
+                                <div class="settings-item">
+                                    <el-switch v-model="syncScrollEnabled" active-text="启用" inactive-text="禁用" size="default" />
+                                </div>
+                            </div>
                         </div>
                     </el-collapse-item>
 
@@ -655,6 +666,8 @@ const defaultSettings = {
     showIndentGuide: true,
     // 默认进入页面时是否全屏
     startInFullscreen: false,
+    // 同步滚动设置
+    syncScrollEnabled: false,
     // 格式化设置
     indentSize: 2,
     encodingMode: 0,
@@ -703,6 +716,7 @@ const saveSettings = () => {
             fontSize: fontSize.value,
             showIndentGuide: showIndentGuide.value,
             startInFullscreen: startInFullscreen.value,
+            syncScrollEnabled: syncScrollEnabled.value,
             indentSize: indentSize.value,
             encodingMode: encodingMode.value,
             arrayNewLine: arrayNewLine.value,
@@ -714,17 +728,12 @@ const saveSettings = () => {
     } catch (error) {}
 };
 
-// ==================== 设置持久化管理结束 ====================
 const MAX_FILE_SIZE = 5 * 1024 * 1024; // 文件大小限制：5MB
 const MAX_LINES = 100000; // 最大行数限制
-
-// 从 localStorage 加载设置
-const savedSettings = loadSettings();
-
+const savedSettings = loadSettings(); // 从 localStorage 加载设置
 const indentSize = ref(savedSettings.indentSize); // 缩进大小
 const maxLevel = ref(0); // 最大层级
 const selectedLevel = ref(0); // 当前选中的层级
-
 const recursiveUnescape = ref(savedSettings.recursiveUnescape ?? true); // 递归去除转义设置
 const wordWrap = ref(savedSettings.wordWrap); // 字符串换行设置
 const fontSize = ref(savedSettings.fontSize || 14); // 字体大小设置
@@ -737,31 +746,19 @@ const leftPanelWidth = ref(50); // 添加面板宽度控制（实时值，用于
 const stableLeftPanelWidth = ref(50); // 稳定宽度值，用于计算按钮显示状态（防抖更新）
 const encodingMode = ref(savedSettings.encodingMode); // 添加编码处理模式：0-保持原样，1-转中文，2-转Unicode
 const outputType = ref<'json' | 'yaml' | 'toml' | 'xml' | 'go'>('json'); // 添加当前输出类型的状态
-
-// 获取JSON数据对话框相关状态
-const fetchJsonDialogVisible = ref(false);
-
-// 分享对话框相关状态
-const shareDialogVisible = ref(false);
-
-// 数据脱敏对话框相关状态
-const dataMaskingDialogVisible = ref(false);
-
-// 存档名称输入对话框相关状态
-const archiveNameDialogVisible = ref(false);
-const archiveNameDialogTitle = ref('保存存档');
-const archiveNameDialogInputValue = ref('');
-const archiveNameDialogPlaceholder = ref('例如：测试数据1');
-const archiveNameDialogExcludeId = ref<string>(''); // 编辑时排除的存档ID
-const archiveNameDialogCallback = ref<((name: string) => void) | null>(null);
-
-// 排序相关状态
-const sortMethod = ref<'dictionary' | 'length' | 'field'>(savedSettings.sortMethod);
-const sortOrder = ref<'asc' | 'desc'>(savedSettings.sortOrder);
+const fetchJsonDialogVisible = ref(false); // 获取JSON数据对话框相关状态
+const shareDialogVisible = ref(false); // 分享对话框相关状态
+const dataMaskingDialogVisible = ref(false); // 数据脱敏对话框相关状态
+const archiveNameDialogVisible = ref(false); // 是否显示“保存存档”对话框
+const archiveNameDialogTitle = ref('保存存档'); // 对话框标题文本（默认显示 “保存存档”）
+const archiveNameDialogInputValue = ref(''); // 对话框输入的当前值（存档名称）
+const archiveNameDialogPlaceholder = ref('例如：测试数据1'); // 对话框输入框的占位符文本示例
+const archiveNameDialogExcludeId = ref<string>(''); // 编辑时排除的存档ID（用于避免与自身重复）
+const archiveNameDialogCallback = ref<((name: string) => void) | null>(null); // 确认时调用的回调函数，接收最终的存档名称；若为 null 则表示未设置
+const sortMethod = ref<'dictionary' | 'length' | 'field'>(savedSettings.sortMethod); // 排序方法
+const sortOrder = ref<'asc' | 'desc'>(savedSettings.sortOrder); // 排序方向
 const customArchiveName = ref<boolean>(savedSettings.customArchiveName ?? false); // 是否自定义存档名称
-
-// 菜单栏按钮显示控制状态
-const buttonVisibility = ref(savedSettings.buttonVisibility);
+const buttonVisibility = ref(savedSettings.buttonVisibility); // 菜单栏按钮显示控制状态
 
 // ==================== JSON 存档管理 ====================
 interface JsonArchive {
@@ -960,6 +957,7 @@ const editorContainerWidth = ref(0); // 编辑器容器宽度，用于计算按�
 const toolBarRef = ref<HTMLElement | null>(null); // 工具栏容器引用
 const canScrollLeft = ref(false); // 是否可以向左滚动
 const canScrollRight = ref(false); // 是否可以向右滚动
+const syncScrollEnabled = ref(savedSettings.syncScrollEnabled ?? false); // 是否启用输入和预览区域的同步滚动
 let inputEditor: monaco.editor.IStandaloneCodeEditor | null = null; // 输入编辑器实例
 let outputEditor: monaco.editor.IStandaloneCodeEditor | null = null; // 输出编辑器实例
 let inputEditorResizeObserver: ResizeObserver | null = null; // 输入编辑器容器大小监听器
@@ -983,12 +981,9 @@ let asyncComputeTask: {
     cancelToken: boolean;
 } | null = null;
 
-/**
- * 预先计算所有可折叠区域的信息（异步版本）
- * 使用分批处理，避免阻塞UI，优先计算可见区域
- * @param formattedText 格式化后的JSON文本
- * @param priorityLines 优先计算的行号范围（可选，用于优先计算可见区域）
- */
+// 预先计算所有可折叠区域的信息（异步版本）。使用分批处理，避免阻塞UI，优先计算可见区域
+// @param formattedText 格式化后的JSON文本
+// @param priorityLines 优先计算的行号范围（可选，用于优先计算可见区域）
 const precomputeFoldingInfo = async (formattedText: string, priorityLines?: { start: number; end: number }): Promise<void> => {
     // 取消之前的计算任务
     if (asyncComputeTask) {
@@ -2542,6 +2537,7 @@ watch(
         fontSize.value,
         showIndentGuide.value,
         startInFullscreen.value,
+        syncScrollEnabled.value,
         indentSize.value,
         encodingMode.value,
         arrayNewLine.value,
@@ -2714,12 +2710,156 @@ const configureOutputEditor: () => void = () => {
     setupFoldingInfoDisplay(outputEditor);
 };
 
+// 设置同步滚动功能
+const setupSyncScroll = () => {
+    if (!inputEditor || !outputEditor) return;
+
+    let isSyncing = false; // 防止递归同步
+
+    // 输入编辑器滚动监听
+    inputEditor.onDidScrollChange((e) => {
+        if (!syncScrollEnabled.value || isSyncing) return;
+
+        if (!outputEditor) return;
+
+        isSyncing = true;
+
+        try {
+            // 获取可见区域信息进行更准确的同步
+            const inputVisibleRanges = inputEditor?.getVisibleRanges();
+            const outputVisibleRanges = outputEditor.getVisibleRanges();
+
+            if (inputVisibleRanges && inputVisibleRanges.length > 0 && outputVisibleRanges && outputVisibleRanges.length > 0) {
+                // 获取输入编辑器的可见区域中心
+                const inputVisibleRange = inputVisibleRanges[0];
+                const inputVisibleCenter = (inputVisibleRange.startLineNumber + inputVisibleRange.endLineNumber) / 2;
+
+                // 获取总行数比例
+                const inputModel = inputEditor?.getModel();
+                const outputModel = outputEditor.getModel();
+                if (inputModel && outputModel) {
+                    const inputTotalLines = inputModel.getLineCount();
+                    const outputTotalLines = outputModel.getLineCount();
+
+                    // 计算对应的输出编辑器行号
+                    const outputTargetLine = Math.round((inputVisibleCenter / inputTotalLines) * outputTotalLines);
+
+                    // 滚动到对应的行
+                    if (outputTargetLine > 0 && outputTargetLine <= outputTotalLines) {
+                        outputEditor.revealLine(outputTargetLine, 1); // 1表示居中显示
+                        outputEditor.setScrollLeft(e.scrollLeft);
+                    }
+                }
+            } else {
+                // 降级到基于滚动高度的比例同步
+                const inputScrollHeight = inputEditor?.getScrollHeight() || 0;
+                const outputScrollHeight = outputEditor.getScrollHeight();
+
+                if (inputScrollHeight > 0 && outputScrollHeight > 0) {
+                    const scrollRatio = e.scrollTop / inputScrollHeight;
+                    const targetScrollTop = Math.min(scrollRatio * outputScrollHeight, outputScrollHeight - (outputEditor.getDomNode()?.clientHeight || 0));
+
+                    outputEditor.setScrollTop(targetScrollTop);
+                    outputEditor.setScrollLeft(e.scrollLeft);
+                }
+            }
+        } catch (error) {
+            // 如果出错，使用简单的比例同步作为fallback
+            const inputScrollHeight = inputEditor?.getScrollHeight() || 0;
+            const outputScrollHeight = outputEditor.getScrollHeight();
+
+            if (inputScrollHeight > 0 && outputScrollHeight > 0) {
+                const scrollRatio = e.scrollTop / inputScrollHeight;
+                const targetScrollTop = Math.min(scrollRatio * outputScrollHeight, outputScrollHeight - (outputEditor.getDomNode()?.clientHeight || 0));
+
+                outputEditor.setScrollTop(targetScrollTop);
+                outputEditor.setScrollLeft(e.scrollLeft);
+            }
+        }
+
+        // 延迟重置同步标志，避免递归
+        setTimeout(() => {
+            isSyncing = false;
+        }, 10);
+    });
+
+    // 输出编辑器滚动监听
+    outputEditor.onDidScrollChange((e) => {
+        if (!syncScrollEnabled.value || isSyncing) return;
+
+        if (!inputEditor) return;
+
+        isSyncing = true;
+
+        try {
+            // 获取可见区域信息进行更准确的同步
+            const inputVisibleRanges = inputEditor.getVisibleRanges();
+            const outputVisibleRanges = outputEditor?.getVisibleRanges();
+
+            if (inputVisibleRanges && inputVisibleRanges.length > 0 && outputVisibleRanges && outputVisibleRanges.length > 0) {
+                // 获取输出编辑器的可见区域中心
+                const outputVisibleRange = outputVisibleRanges[0];
+                const outputVisibleCenter = (outputVisibleRange.startLineNumber + outputVisibleRange.endLineNumber) / 2;
+
+                // 获取总行数比例
+                const inputModel = inputEditor.getModel();
+                const outputModel = outputEditor?.getModel();
+                if (inputModel && outputModel) {
+                    const inputTotalLines = inputModel.getLineCount();
+                    const outputTotalLines = outputModel.getLineCount();
+
+                    // 计算对应的输入编辑器行号
+                    const inputTargetLine = Math.round((outputVisibleCenter / outputTotalLines) * inputTotalLines);
+
+                    // 滚动到对应的行
+                    if (inputTargetLine > 0 && inputTargetLine <= inputTotalLines) {
+                        inputEditor.revealLine(inputTargetLine, 1); // 1表示居中显示
+                        inputEditor.setScrollLeft(e.scrollLeft);
+                    }
+                }
+            } else {
+                // 降级到基于滚动高度的比例同步
+                const inputScrollHeight = inputEditor.getScrollHeight();
+                const outputScrollHeight = outputEditor?.getScrollHeight() || 0;
+
+                if (inputScrollHeight > 0 && outputScrollHeight > 0) {
+                    const scrollRatio = e.scrollTop / outputScrollHeight;
+                    const targetScrollTop = Math.min(scrollRatio * inputScrollHeight, inputScrollHeight - (inputEditor.getDomNode()?.clientHeight || 0));
+
+                    inputEditor.setScrollTop(targetScrollTop);
+                    inputEditor.setScrollLeft(e.scrollLeft);
+                }
+            }
+        } catch (error) {
+            // 如果出错，使用简单的比例同步作为fallback
+            const inputScrollHeight = inputEditor.getScrollHeight();
+            const outputScrollHeight = outputEditor?.getScrollHeight() || 0;
+
+            if (inputScrollHeight > 0 && outputScrollHeight > 0) {
+                const scrollRatio = e.scrollTop / outputScrollHeight;
+                const targetScrollTop = Math.min(scrollRatio * inputScrollHeight, inputScrollHeight - (inputEditor.getDomNode()?.clientHeight || 0));
+
+                inputEditor.setScrollTop(targetScrollTop);
+                inputEditor.setScrollLeft(e.scrollLeft);
+            }
+        }
+
+        // 延迟重置同步标志，避免递归
+        setTimeout(() => {
+            isSyncing = false;
+        }, 10);
+    });
+};
+
 // 初始化编辑器布局
 const initializeEditorLayout = () => {
     updateLineNumberWidth(inputEditor);
     updateLineNumberWidth(outputEditor);
     updateEditorHeight(inputEditor);
     updateEditorHeight(outputEditor);
+
+    // 设置同步滚动
+    setupSyncScroll();
 
     // 设置初始化成功标志
     editorsInitialized.value = true;
@@ -5186,10 +5326,6 @@ const compressAndEscapeJSON = () => {
 
         // 有效的JSON转义序列
         const validEscapes = ['"', '\\', '/', 'b', 'f', 'n', 'r', 't', 'u'];
-
-        // 智能转义：保留原始JSON中的转义序列（包括非法转义序列）
-        // 需要特别处理字符串值内部的转义序列，支持任意深度的嵌套
-        // 核心思想：在字符串值内部，每个反斜杠都需要被转义（\ -> \\），每个引号都需要被转义（" -> \"）
         let escaped = '';
         let i = 0;
         let inString = false; // 跟踪是否在字符串值内部
@@ -5313,12 +5449,6 @@ const handleLevelAction = () => {
         // 格式化JSON以确保结构正确
         const formatted = JSON.stringify(parsedData, null, 2);
 
-        // 异步计算折叠区域信息（不阻塞，立即返回）
-        // 先不计算，等折叠完成后再按需计算可见区域
-        precomputeFoldingInfo(formatted).catch(error => {
-            // 静默处理错误，不影响主流程
-        });
-
         // 更新预览区域内容
         outputEditor.setValue(formatted);
 
@@ -5338,25 +5468,20 @@ const handleLevelAction = () => {
             updateEditorHeight(outputEditor);
         }
 
-        // 等待编辑器渲染完成后执行折叠操作
-        // 对于大数据量，需要更长的等待时间确保编辑器完全渲染
-        // 使用渐进式延迟：根据行数动态调整延迟时间，确保10万行文件也能正常处理
+        // 根据行数动态调整延迟时间
         const currentLineCount = outputEditor?.getModel()?.getLineCount() || 0;
         let delayTime: number;
         let unfoldDelay: number;
 
         if (currentLineCount > 80000) {
-            // 8万行以上：使用较长的延迟（支持10万行）
-            delayTime = 1000;
-            unfoldDelay = 600;
+            delayTime = 1000; // 1秒
+            unfoldDelay = 600; // 0.6秒
         } else if (currentLineCount > 50000) {
-            // 5-8万行：使用中等延迟
-            delayTime = 600;
-            unfoldDelay = 400;
+            delayTime = 600; // 0.6秒
+            unfoldDelay = 400; // 0.4秒
         } else {
-            // 5万行以下：使用较短延迟
-            delayTime = 200;
-            unfoldDelay = 100;
+            delayTime = 200; // 0.2秒
+            unfoldDelay = 100; // 0.1秒
         }
 
         setTimeout(() => {
@@ -5380,29 +5505,19 @@ const handleLevelAction = () => {
                                 if (range.endLineNumber > maxLine) maxLine = range.endLineNumber;
                             });
                             if (minLine !== Infinity && maxLine > 0) {
-                                // 扩展可见区域范围（上下各扩展100行）
+                                // 扩展可见区域范围（上下各扩展200行，提高滚动体验）
                                 const model = outputEditor.getModel();
                                 if (model) {
                                     const totalLines = model.getLineCount();
-                                    const priorityStart = Math.max(1, minLine - 100);
-                                    const priorityEnd = Math.min(totalLines, maxLine + 100);
+                                    const priorityStart = Math.max(1, minLine - 200);
+                                    const priorityEnd = Math.min(totalLines, maxLine + 200);
 
                                     // 重新触发计算，优先计算可见区域
-                                    precomputeFoldingInfo(formatted, {
-                                        start: priorityStart,
-                                        end: priorityEnd,
-                                    }).catch(() => {
-                                        // 静默处理错误
-                                    });
+                                    precomputeFoldingInfo(formatted, { start: priorityStart, end: priorityEnd }).catch(() => {});
                                 }
                             }
                         }
-                    } catch (e) {
-                        // 如果获取可见区域失败，继续后台计算所有区域
-                        precomputeFoldingInfo(formatted).catch(error => {
-                            // 静默处理错误
-                        });
-                    }
+                    } catch (e) {}
                 }, 300); // 等待折叠动画完成
             }, unfoldDelay);
         }, delayTime);
@@ -5779,7 +5894,7 @@ let archiveResizeState: {
 let archiveLayoutRaf: number | null = null;
 
 // 使用 DOM 实际测量文本宽度（更准确）
-const measureTextWidth = (text: string): number => {
+function measureTextWidth(text: string): number {
     if (typeof document === 'undefined') {
         // SSR 环境，使用估算
         let width = 0;
@@ -5808,7 +5923,7 @@ const measureTextWidth = (text: string): number => {
     const width = measureEl.offsetWidth;
     document.body.removeChild(measureEl);
     return width;
-};
+}
 
 // 动态计算存档侧边栏的最大宽度（使用 DOM 实际测量）
 const calculateArchiveMaxWidth = (): number => {
@@ -9465,6 +9580,7 @@ const transferToInput = (e: MouseEvent) => {
     border-color: #a16207 !important;
 }
 
+/* 同步滚动按钮自定义为蓝色 */
 .editor-container {
     display: flex;
     flex: 1;
