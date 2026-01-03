@@ -222,8 +222,18 @@
                             <div ref="outputEditorContainer" class="monaco-editor-instance"></div>
                         </div>
                         <!-- 预览区域状态栏 -->
-                        <div class="editor-status-bar" v-if="outputEditorStatus">
-                            <span class="status-text">{{ outputEditorStatus }}</span>
+                        <div class="editor-status-bar">
+                            <template v-if="foldProgressVisible">
+                                <div class="fold-progress">
+                                    <div class="fold-progress-bar">
+                                        <div class="fold-progress-fill" :style="{ width: foldPercent + '%' }"></div>
+                                    </div>
+                                    <span class="status-text">折叠进度：{{ foldPercent }}% （{{ foldCurrentLine }} / {{ foldTotalLines }}）</span>
+                                </div>
+                            </template>
+                            <template v-else-if="outputEditorStatus">
+                                <span class="status-text">{{ outputEditorStatus }}</span>
+                            </template>
                         </div>
                     </div>
                 </div>
@@ -965,6 +975,8 @@ let inputEditorResizeObserver: ResizeObserver | null = null; // 输入编辑器�
 // 预先计算的折叠信息：Map<行号, {type: 'object' | 'array', count: number}>
 // 在格式化时一次性计算，避免实时计算的高成本
 const precomputedFoldingInfo = new Map<number, { type: 'object' | 'array'; count: number }>();
+// 预先计算的折叠区域范围（用于在展示时进行同步补偿计算）：Map<startLine, { endLine, type }>
+const precomputedFoldingRanges = new Map<number, { endLine: number; type: 'object' | 'array' }>();
 
 // 用于存储待计算的折叠区域信息（异步计算时使用）
 interface PendingFoldingItem {
@@ -1089,6 +1101,11 @@ const precomputeFoldingInfo = async (formattedText: string, priorityLines?: { st
         normalItems.push(...pendingItems);
     }
 
+    // 将所有待处理区域的范围先记录下来，便于展示时进行同步补偿（可见区域即时计算）
+    pendingItems.forEach(item => {
+        precomputedFoldingRanges.set(item.startLine, { endLine: item.endLine, type: item.type });
+    });
+
     // 创建异步计算任务
     const task = {
         pendingItems: [...priorityItems, ...normalItems], // 优先项在前
@@ -1118,12 +1135,10 @@ const precomputeFoldingInfo = async (formattedText: string, priorityLines?: { st
             currentIndex++;
 
             // 计算该区域的keys或items数量
-            const count = calculateFoldingCount(
-                task.lines,
-                item.startLine - 1, // 转换为0-based索引
-                item.endLine - 1,
-                item.type
-            );
+            const count = calculateFoldingCount(task.lines, item.startLine - 1, item.endLine - 1, item.type);
+
+            // 记录范围（再次确保）
+            precomputedFoldingRanges.set(item.startLine, { endLine: item.endLine, type: item.type });
 
             // 只存储非空的折叠区域
             if (count > 0) {
@@ -1320,6 +1335,17 @@ let stableWidthUpdateTimer: ReturnType<typeof setTimeout> | null = null; // 稳�
 // 编辑器状态栏信息
 const inputEditorStatus = ref('');
 const outputEditorStatus = ref('');
+
+// 折叠进度显示
+const foldProgress = ref(0); // 0..1
+const foldProgressVisible = ref(false);
+const foldTotalLines = ref(0);
+const foldPercent = computed(() => Math.round(foldProgress.value * 100));
+const foldCurrentLine = computed(() => Math.min(foldTotalLines.value, Math.round(foldProgress.value * foldTotalLines.value)));
+// 平滑耗时估算（EMA）
+let avgMsPerRange = 2; // 初始每个 range 估算耗时（毫秒）
+let avgMsPerLine = 0.02; // 初始每行估算耗时（毫秒）
+const EMA_ALPHA = 0.12;
 
 // 初始化存档数据（该组件为 .client，确保只在客户端执行）
 loadArchives();
@@ -1830,18 +1856,18 @@ const setupFoldingInfoDisplay = (editor: monaco.editor.IStandaloneCodeEditor) =>
                     return;
                 }
 
-                // 检查这一行是否是折叠起始行（直接检查precomputedFoldingInfo，因为它已经包含了所有折叠起始行）
+                // 检查这一行是否是折叠起始行（优先使用预计算的范围，因为范围已在第一阶段记录）
                 // 注意：折叠起始行可能是 "key": { 或 "key": [ 的形式，不一定以 { 或 [ 开头
                 // originalLineNumber 已在上面声明
-                if (precomputedFoldingInfo.has(lineNumber)) {
-                    // 当前行就是折叠起始行
+                if (precomputedFoldingRanges.has(lineNumber)) {
+                    // 当前行就是折叠起始行（范围信息已存在）
                     currentFoldedLines.add(lineNumber);
                 } else {
-                    // 如果不是，向上查找最近的折叠起始行（最多向上查找20行）
+                    // 如果不是，向上查找最近的折叠起始行（最多向上查找20行），使用范围信息进行匹配
                     let found = false;
                     for (let i = lineNumber - 1; i >= Math.max(1, lineNumber - 20); i--) {
-                        if (precomputedFoldingInfo.has(i)) {
-                            // 找到了折叠起始行
+                        if (precomputedFoldingRanges.has(i)) {
+                            // 找到了折叠起始行范围
                             lineNumber = i;
                             found = true;
                             break;
@@ -1849,7 +1875,23 @@ const setupFoldingInfoDisplay = (editor: monaco.editor.IStandaloneCodeEditor) =>
                     }
 
                     if (!found) {
-                        // 如果找不到，跳过这个折叠元素
+                        // 如果向上近邻查找不到，尝试在所有预计算范围中查找一个包裹 originalLineNumber 的范围（更稳健）
+                        let enclosingStart: number | null = null;
+                        for (const [start, range] of precomputedFoldingRanges.entries()) {
+                            if (range.endLine >= originalLineNumber! && start <= originalLineNumber!) {
+                                if (enclosingStart === null || start > enclosingStart) {
+                                    enclosingStart = start;
+                                }
+                            }
+                        }
+                        if (enclosingStart !== null) {
+                            lineNumber = enclosingStart;
+                            found = true;
+                        }
+                    }
+
+                    if (!found) {
+                        // 如果仍然找不到，跳过这个折叠元素
                         return;
                     }
 
@@ -1871,9 +1913,28 @@ const setupFoldingInfoDisplay = (editor: monaco.editor.IStandaloneCodeEditor) =>
                 }
 
                 // 获取折叠信息（直接从预先计算的数据中获取）
-                const info = getFoldingInfo(lineNumber);
+                let info = getFoldingInfo(lineNumber);
+                // 如果没有预计算结果或计数为0，尝试使用已记录的范围进行同步计算（只在可见区域执行）
                 if (!info || info.count === 0) {
-                    return;
+                    const range = precomputedFoldingRanges.get(lineNumber) || null;
+                    if (range) {
+                        try {
+                            const model = editor.getModel();
+                            if (model && !model.isDisposed()) {
+                                const lines = model.getValue().split('\n');
+                                const count = calculateFoldingCount(lines, lineNumber - 1, range.endLine - 1, range.type);
+                                if (count > 0) {
+                                    precomputedFoldingInfo.set(lineNumber, { type: range.type, count });
+                                    info = getFoldingInfo(lineNumber);
+                                }
+                            }
+                        } catch (e) {
+                            // ignore and fallthrough to skip display
+                        }
+                    }
+                    if (!info || info.count === 0) {
+                        return;
+                    }
                 }
 
                 // 构建显示文本
@@ -2717,7 +2778,7 @@ const setupSyncScroll = () => {
     let isSyncing = false; // 防止递归同步
 
     // 输入编辑器滚动监听
-    inputEditor.onDidScrollChange((e) => {
+    inputEditor.onDidScrollChange(e => {
         if (!syncScrollEnabled.value || isSyncing) return;
 
         if (!outputEditor) return;
@@ -2784,7 +2845,7 @@ const setupSyncScroll = () => {
     });
 
     // 输出编辑器滚动监听
-    outputEditor.onDidScrollChange((e) => {
+    outputEditor.onDidScrollChange(e => {
         if (!syncScrollEnabled.value || isSyncing) return;
 
         if (!inputEditor) return;
@@ -4226,12 +4287,13 @@ const foldByIndentation = () => {
 
                 // 设置折叠状态标志
                 isFolding.value = true;
-
                 const model = outputEditor.getModel();
                 if (!model) {
                     isFolding.value = false;
                     return;
                 }
+                // 如果文件行数较大，显示折叠进度条（按当前处理位置 / 总行数）
+                // foldProgressVisible will be decided after preparedRanges and estimatedMs are computed
 
                 // 并发配置（可根据性能调整）
                 // 注意：由于 Monaco Editor 的状态操作（setPosition/setSelection）需要顺序执行，
@@ -4314,50 +4376,71 @@ const foldByIndentation = () => {
 
                 let foldedCount = 0;
                 let failedCount = 0;
+                // 估算与进度控制（基于预计耗时）
+                const totalRanges = preparedRanges.length;
+                const totalWeightedLines = preparedRanges.reduce((s, r) => s + Math.max(0, r.end - r.start), 0);
+                const estimatedMs = totalRanges * avgMsPerRange + totalWeightedLines * avgMsPerLine;
+                const SHOW_PROGRESS_MS = 1500; // 1.5秒阈值
+                let processedRanges = 0;
+                let processedLines = 0;
+                if (estimatedMs > SHOW_PROGRESS_MS) {
+                    foldTotalLines.value = totalRanges;
+                    foldProgress.value = 0;
+                    foldProgressVisible.value = true;
+                } else {
+                    foldProgressVisible.value = false;
+                }
 
                 // 从后向前分批处理（避免行号变化影响）
                 // 注意：折叠操作必须顺序执行，因为 Monaco Editor 的状态操作不是线程安全的
                 for (let batchStart = preparedRanges.length - 1; batchStart >= 0; batchStart -= BATCH_SIZE) {
                     const batchEnd = Math.max(0, batchStart - BATCH_SIZE + 1);
                     const batchRanges = preparedRanges.slice(batchEnd, batchStart + 1).reverse(); // 反转以保持从后向前的顺序
-
                     // 顺序执行折叠操作（避免状态冲突）
+                    // 批次计时用于更新平均耗时（EMA）
+                    const batchStartTime = performance.now();
+                    let batchProcessedRanges = 0;
+                    let batchProcessedLines = 0;
                     for (const range of batchRanges) {
                         try {
-                            // 关键修复：在折叠之前，确保目标位置是可见的
-                            // 由于我们已经在开始时执行了 editor.unfoldAll，理论上所有折叠都已展开
-                            // 但为了确保，我们在折叠前再次展开目标位置附近的折叠
-
-                            // 定位到目标层级的开始括号位置
+                            // 更新进度（基于已处理的 ranges / 总 ranges）
+                            if (foldProgressVisible.value && foldTotalLines.value > 0) {
+                                foldProgress.value = Math.min(1, processedRanges / Math.max(1, totalRanges));
+                            }
+                            // 定位到目标层级的开始括号位置，确保可见
                             outputEditor.setPosition({
                                 lineNumber: range.start,
                                 column: range.startCol,
                             });
-
-                            // 展开当前光标位置的折叠（如果存在，可能是之前折叠操作留下的）
-                            // 这确保目标位置是可见的，不会被外层折叠影响
                             outputEditor.trigger('unfold', 'editor.unfold', null);
-
                             // 小延迟，确保展开完成
                             await new Promise(resolve => setTimeout(resolve, DELAY_BETWEEN_FOLDS));
-
-                            // 关键：Monaco Editor 的 fold 命令会折叠光标所在的最小代码块
-                            // 问题：如果光标位置在外层块内，会折叠外层块
-                            // 解决方案：我们需要确保光标位置精确在目标层级的开始括号处
-                            // 并且该位置不在任何外层块内（通过展开所有外层折叠来保证）
 
                             // 使用 getAction 获取折叠操作
                             const foldAction = outputEditor.getAction('editor.fold');
                             if (foldAction && foldAction.isSupported()) {
-                                // 执行折叠操作
-                                // 注意：由于我们已经展开了所有折叠（在开始时执行了 unfoldAll），
-                                // 并且目标位置是目标层级的开始括号，这里应该只折叠目标层级
+                                const t0 = performance.now();
                                 await foldAction.run();
+                                const t1 = performance.now();
+                                const elapsed = t1 - t0;
+                                // 更新统计
                                 foldedCount++;
+                                processedRanges++;
+                                const rangeLines = Math.max(0, range.end - range.start);
+                                processedLines += rangeLines;
+                                batchProcessedRanges++;
+                                batchProcessedLines += rangeLines;
                             } else {
-                                // 备用方案：使用 trigger 命令
+                                const t0 = performance.now();
                                 outputEditor.trigger('fold', 'editor.fold', null);
+                                const t1 = performance.now();
+                                const elapsed = t1 - t0;
                                 foldedCount++;
+                                processedRanges++;
+                                const rangeLines = Math.max(0, range.end - range.start);
+                                processedLines += rangeLines;
+                                batchProcessedRanges++;
+                                batchProcessedLines += rangeLines;
                             }
                         } catch (err) {
                             failedCount++;
@@ -4369,6 +4452,16 @@ const foldByIndentation = () => {
                             await new Promise(resolve => setTimeout(resolve, 5));
                         }
                     }
+                    // 批次结束，更新 EMA 估时
+                    const batchElapsed = performance.now() - batchStartTime;
+                    if (batchProcessedRanges > 0) {
+                        const perRangeMs = batchElapsed / batchProcessedRanges;
+                        avgMsPerRange = EMA_ALPHA * perRangeMs + (1 - EMA_ALPHA) * avgMsPerRange;
+                    }
+                    if (batchProcessedLines > 0) {
+                        const perLineMs = batchElapsed / batchProcessedLines;
+                        avgMsPerLine = EMA_ALPHA * perLineMs + (1 - EMA_ALPHA) * avgMsPerLine;
+                    }
 
                     // 批次之间的延迟，让浏览器有机会渲染
                     if (batchStart > BATCH_SIZE) {
@@ -4378,6 +4471,9 @@ const foldByIndentation = () => {
 
                 // 清除选择
                 if (outputEditor) {
+                    // 折叠完成后隐藏进度
+                    foldProgressVisible.value = false;
+                    foldProgress.value = 0;
                     outputEditor.setSelection({
                         startLineNumber: 1,
                         startColumn: 1,
@@ -4408,6 +4504,29 @@ const foldByIndentation = () => {
 
             // 等待展开完成后再开始折叠
             setTimeout(() => {
+                try {
+                    // 在开始批量折叠前，将视图定位到最后一行，确保滚动条和光标初始位于文档末尾
+                    const model = outputEditor?.getModel();
+                    if (outputEditor && model) {
+                        const totalLines = model.getLineCount();
+                        // 将光标移动到最后一行末尾并滚动到该行（确保可见）
+                        outputEditor.setPosition({
+                            lineNumber: totalLines,
+                            column: model.getLineMaxColumn(totalLines),
+                        });
+                        // revealLine 保证滚动到指定行（使用居中显示）
+                        try {
+                            // @ts-ignore - 使用Monaco的revealLine API
+                            outputEditor.revealLine(totalLines, 1);
+                        } catch (e) {
+                            // 回退：直接设置 scrollTop 到底部
+                            const scrollHeight = outputEditor.getScrollHeight();
+                            outputEditor.setScrollTop(Math.max(0, scrollHeight - (outputEditor.getDomNode()?.clientHeight || 0)));
+                        }
+                    }
+                } catch (err) {
+                    // 忽略定位错误，继续折叠流程
+                }
                 concurrentBatchFold();
             }, 150);
         } else {
@@ -9732,6 +9851,28 @@ const transferToInput = (e: MouseEvent) => {
     font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', 'Consolas', 'source-code-pro', monospace;
 }
 
+/* 折叠进度条样式 */
+.fold-progress {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+}
+.fold-progress-bar {
+    flex: 1;
+    height: 8px;
+    background: #eef2ff;
+    border-radius: 4px;
+    overflow: hidden;
+    box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.04);
+}
+.fold-progress-fill {
+    height: 100%;
+    background: linear-gradient(90deg, #1e3a8a, #06b6d4);
+    width: 0%;
+    transition: width 120ms linear;
+}
+
 /* 确保Monaco编辑器内部元素也有正确的背景色 */
 :deep(.monaco-editor .monaco-editor-background) {
     background-color: white;
@@ -10524,9 +10665,9 @@ const transferToInput = (e: MouseEvent) => {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 20px 24px 0;
+    padding: 10px 24px;
     border-bottom: 1px solid #f0f0f0;
-    margin-bottom: 16px;
+    margin-bottom: 12px;
 }
 
 .demo-guide-header h3 {
@@ -10552,10 +10693,6 @@ const transferToInput = (e: MouseEvent) => {
     transition: all 0.2s;
 }
 
-.demo-close-btn:hover {
-    background: #f5f5f5;
-    color: #606266;
-}
 
 .demo-guide-header {
     cursor: move;
