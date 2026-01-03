@@ -121,6 +121,8 @@ export default defineNuxtConfig({
           manualChunks: {
             // 将 md-editor-v3 单独打包
             'md-editor': ['md-editor-v3'],
+            // 将 JsonTool 组件单独打包（避免主包过大）
+            'json-tool': ['./components/JsonTool/JsonTool.client.vue'],
           },
         },
       },
