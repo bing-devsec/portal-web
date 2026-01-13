@@ -129,6 +129,9 @@
                                         <el-icon class="archive-action-icon" @click.stop="handleRenameArchive(item)">
                                             <Edit />
                                         </el-icon>
+                                        <el-icon class="archive-action-icon" @click.stop="handleRefreshArchive(item)" title="更新存档内容">
+                                            <Refresh />
+                                        </el-icon>
                                         <el-icon class="archive-action-icon" @click.stop="handleDeleteArchive(item)">
                                             <Delete />
                                         </el-icon>
@@ -2710,8 +2713,8 @@ const configureInputEditor: () => void = () => {
                 showMessageError(checkResult.error || '内容不符合要求');
                 maxLevel.value = 0;
                 selectedLevel.value = 0;
-                // 如果深度超过99层，自动清空输入区域内容
-                if (checkResult.error && checkResult.error.includes('深度超过99层')) {
+                // 如果层级超过99层，自动清空输入区域内容
+                if (checkResult.error && checkResult.error.includes('层级超过99层')) {
                     // 延迟清空，避免在内容变化监听中直接修改编辑器内容导致的问题
                     setTimeout(() => {
                         if (inputEditor) {
@@ -2771,72 +2774,57 @@ const configureOutputEditor: () => void = () => {
     setupFoldingInfoDisplay(outputEditor);
 };
 
+// 使用Monaco Editor原生API的简单同步滚动
+const syncScrollByNativeAPI = (sourceEditor: monaco.editor.IStandaloneCodeEditor, targetEditor: monaco.editor.IStandaloneCodeEditor) => {
+    if (!sourceEditor || !targetEditor) return;
+
+    try {
+        // 获取源编辑器的滚动信息
+        const sourceScrollTop = sourceEditor.getScrollTop();
+        const sourceScrollLeft = sourceEditor.getScrollLeft();
+        const sourceScrollHeight = sourceEditor.getScrollHeight();
+        const targetScrollHeight = targetEditor.getScrollHeight();
+
+        // 计算比例并同步滚动位置
+        if (sourceScrollHeight > 0 && targetScrollHeight > 0) {
+            const scrollRatio = sourceScrollTop / sourceScrollHeight;
+            const targetScrollTop = Math.min(scrollRatio * targetScrollHeight, targetScrollHeight - (targetEditor.getDomNode()?.clientHeight || 0));
+
+            // 使用Monaco Editor的原生API直接设置滚动位置
+            targetEditor.setScrollTop(targetScrollTop);
+            targetEditor.setScrollLeft(sourceScrollLeft);
+        }
+    } catch (error) {
+        console.warn('同步滚动失败:', error);
+    }
+};
+
 // 设置同步滚动功能
 const setupSyncScroll = () => {
     if (!inputEditor || !outputEditor) return;
 
     let isSyncing = false; // 防止递归同步
+    let scrollThrottleTimer: ReturnType<typeof setTimeout> | null = null; // 节流定时器
 
     // 输入编辑器滚动监听
-    inputEditor.onDidScrollChange(e => {
+    inputEditor.onDidScrollChange(() => {
         if (!syncScrollEnabled.value || isSyncing) return;
-
         if (!outputEditor) return;
+
+        // 使用节流控制同步频率，避免快速滚动时的性能问题
+        if (scrollThrottleTimer) return;
 
         isSyncing = true;
 
-        try {
-            // 获取可见区域信息进行更准确的同步
-            const inputVisibleRanges = inputEditor?.getVisibleRanges();
-            const outputVisibleRanges = outputEditor.getVisibleRanges();
-
-            if (inputVisibleRanges && inputVisibleRanges.length > 0 && outputVisibleRanges && outputVisibleRanges.length > 0) {
-                // 获取输入编辑器的可见区域中心
-                const inputVisibleRange = inputVisibleRanges[0];
-                const inputVisibleCenter = (inputVisibleRange.startLineNumber + inputVisibleRange.endLineNumber) / 2;
-
-                // 获取总行数比例
-                const inputModel = inputEditor?.getModel();
-                const outputModel = outputEditor.getModel();
-                if (inputModel && outputModel) {
-                    const inputTotalLines = inputModel.getLineCount();
-                    const outputTotalLines = outputModel.getLineCount();
-
-                    // 计算对应的输出编辑器行号
-                    const outputTargetLine = Math.round((inputVisibleCenter / inputTotalLines) * outputTotalLines);
-
-                    // 滚动到对应的行
-                    if (outputTargetLine > 0 && outputTargetLine <= outputTotalLines) {
-                        outputEditor.revealLine(outputTargetLine, 1); // 1表示居中显示
-                        outputEditor.setScrollLeft(e.scrollLeft);
-                    }
-                }
-            } else {
-                // 降级到基于滚动高度的比例同步
-                const inputScrollHeight = inputEditor?.getScrollHeight() || 0;
-                const outputScrollHeight = outputEditor.getScrollHeight();
-
-                if (inputScrollHeight > 0 && outputScrollHeight > 0) {
-                    const scrollRatio = e.scrollTop / inputScrollHeight;
-                    const targetScrollTop = Math.min(scrollRatio * outputScrollHeight, outputScrollHeight - (outputEditor.getDomNode()?.clientHeight || 0));
-
-                    outputEditor.setScrollTop(targetScrollTop);
-                    outputEditor.setScrollLeft(e.scrollLeft);
-                }
-            }
-        } catch (error) {
-            // 如果出错，使用简单的比例同步作为fallback
-            const inputScrollHeight = inputEditor?.getScrollHeight() || 0;
-            const outputScrollHeight = outputEditor.getScrollHeight();
-
-            if (inputScrollHeight > 0 && outputScrollHeight > 0) {
-                const scrollRatio = e.scrollTop / inputScrollHeight;
-                const targetScrollTop = Math.min(scrollRatio * outputScrollHeight, outputScrollHeight - (outputEditor.getDomNode()?.clientHeight || 0));
-
-                outputEditor.setScrollTop(targetScrollTop);
-                outputEditor.setScrollLeft(e.scrollLeft);
-            }
+        // 使用Monaco Editor原生API进行简单同步
+        if (inputEditor && outputEditor) {
+            syncScrollByNativeAPI(inputEditor, outputEditor);
         }
+
+        // 设置节流定时器（4ms ≈ 240fps）
+        scrollThrottleTimer = setTimeout(() => {
+            scrollThrottleTimer = null;
+        }, 4);
 
         // 延迟重置同步标志，避免递归
         setTimeout(() => {
@@ -2845,65 +2833,24 @@ const setupSyncScroll = () => {
     });
 
     // 输出编辑器滚动监听
-    outputEditor.onDidScrollChange(e => {
+    outputEditor.onDidScrollChange(() => {
         if (!syncScrollEnabled.value || isSyncing) return;
-
         if (!inputEditor) return;
+
+        // 使用节流控制同步频率
+        if (scrollThrottleTimer) return;
 
         isSyncing = true;
 
-        try {
-            // 获取可见区域信息进行更准确的同步
-            const inputVisibleRanges = inputEditor.getVisibleRanges();
-            const outputVisibleRanges = outputEditor?.getVisibleRanges();
-
-            if (inputVisibleRanges && inputVisibleRanges.length > 0 && outputVisibleRanges && outputVisibleRanges.length > 0) {
-                // 获取输出编辑器的可见区域中心
-                const outputVisibleRange = outputVisibleRanges[0];
-                const outputVisibleCenter = (outputVisibleRange.startLineNumber + outputVisibleRange.endLineNumber) / 2;
-
-                // 获取总行数比例
-                const inputModel = inputEditor.getModel();
-                const outputModel = outputEditor?.getModel();
-                if (inputModel && outputModel) {
-                    const inputTotalLines = inputModel.getLineCount();
-                    const outputTotalLines = outputModel.getLineCount();
-
-                    // 计算对应的输入编辑器行号
-                    const inputTargetLine = Math.round((outputVisibleCenter / outputTotalLines) * inputTotalLines);
-
-                    // 滚动到对应的行
-                    if (inputTargetLine > 0 && inputTargetLine <= inputTotalLines) {
-                        inputEditor.revealLine(inputTargetLine, 1); // 1表示居中显示
-                        inputEditor.setScrollLeft(e.scrollLeft);
-                    }
-                }
-            } else {
-                // 降级到基于滚动高度的比例同步
-                const inputScrollHeight = inputEditor.getScrollHeight();
-                const outputScrollHeight = outputEditor?.getScrollHeight() || 0;
-
-                if (inputScrollHeight > 0 && outputScrollHeight > 0) {
-                    const scrollRatio = e.scrollTop / outputScrollHeight;
-                    const targetScrollTop = Math.min(scrollRatio * inputScrollHeight, inputScrollHeight - (inputEditor.getDomNode()?.clientHeight || 0));
-
-                    inputEditor.setScrollTop(targetScrollTop);
-                    inputEditor.setScrollLeft(e.scrollLeft);
-                }
-            }
-        } catch (error) {
-            // 如果出错，使用简单的比例同步作为fallback
-            const inputScrollHeight = inputEditor.getScrollHeight();
-            const outputScrollHeight = outputEditor?.getScrollHeight() || 0;
-
-            if (inputScrollHeight > 0 && outputScrollHeight > 0) {
-                const scrollRatio = e.scrollTop / outputScrollHeight;
-                const targetScrollTop = Math.min(scrollRatio * inputScrollHeight, inputScrollHeight - (inputEditor.getDomNode()?.clientHeight || 0));
-
-                inputEditor.setScrollTop(targetScrollTop);
-                inputEditor.setScrollLeft(e.scrollLeft);
-            }
+        // 使用Monaco Editor原生API进行简单同步
+        if (inputEditor && outputEditor) {
+            syncScrollByNativeAPI(outputEditor, inputEditor);
         }
+
+        // 设置节流定时器（4ms ≈ 240fps）
+        scrollThrottleTimer = setTimeout(() => {
+            scrollThrottleTimer = null;
+        }, 4);
 
         // 延迟重置同步标志，避免递归
         setTimeout(() => {
@@ -3176,876 +3123,21 @@ const checkLinesAndDepth = (content: string): { isValid: boolean; error?: string
         };
     }
 
-    // 检查JSON深度（仅在JSON有效时检查）
+    // 检查JSON层级（仅在JSON有效时检查）
     try {
         const { data: jsonData } = preprocessJSON(content);
-        const depth = getObjectDepth(jsonData);
-        if (depth > 99) {
+        const level = calculateMaxLevel(jsonData);
+        if (level > 99) {
             return {
                 isValid: false,
-                error: 'JSON深度超过99层, 拒绝处理此JSON数据',
+                error: 'JSON层级超过99层, 拒绝处理此JSON数据',
             };
         }
     } catch (e) {
-        // 解析失败，可能不是有效的JSON，不进行深度检查
+        // 解析失败，可能不是有效的JSON，不进行层级检查
     }
 
     return { isValid: true };
-};
-
-// 自定义 JSON 字符串化函数
-function customStringify(obj: any, replacer: null, space: number, originalString?: string, encodingModeOverride?: number, arrayNewLineOverride?: boolean): string {
-    const indent = ' '.repeat(space);
-    // 如果提供了编码模式覆盖值，使用它；否则使用全局设置
-    const currentEncodingMode = encodingModeOverride !== undefined ? encodingModeOverride : encodingMode.value;
-    // 如果提供了数组样式覆盖值，使用它；否则使用全局设置
-    const currentArrayNewLine = arrayNewLineOverride !== undefined ? arrayNewLineOverride : arrayNewLine.value;
-
-    const isPrimitiveArray = (arr: any[]): boolean => {
-        return arr.every(item => typeof item === 'string' || typeof item === 'number' || typeof item === 'boolean' || item === null);
-    };
-
-    // 智能处理十六进制转义序列，转换为标准JSON转义序列以保持合法性和可读性
-    const convertHexToJsonEscape = (hex: string): string => {
-        const codePoint = parseInt(hex, 16);
-
-        // 标准JSON转义序列（使用简写形式，提高可读性）
-        switch (codePoint) {
-            case 0x08:
-                return '\\b'; // 退格
-            case 0x09:
-                return '\\t'; // 制表符
-            case 0x0a:
-                return '\\n'; // 换行符
-            case 0x0c:
-                return '\\f'; // 换页
-            case 0x0d:
-                return '\\r'; // 回车符
-            case 0x22:
-                return '\\"'; // 双引号
-            case 0x5c:
-                return '\\\\'; // 反斜杠
-        }
-
-        // 其他控制字符（\x00, \x01-\x07, \x0B, \x0E-\x1F, \x7F-\x9F）转换为 \uXXXX 形式
-        if (codePoint <= 0x1f || (codePoint >= 0x7f && codePoint <= 0x9f)) {
-            return '\\u' + ('0000' + codePoint.toString(16)).slice(-4).toLowerCase();
-        }
-
-        // 可打印字符（如 \x20 空格）保持为实际字符
-        return String.fromCharCode(codePoint);
-    };
-
-    // 预构建字符串值到原始转义形式的映射（只扫描一次原始字符串）
-    // 支持双引号和单引号字符串（JSON5支持单引号）
-    // 在模式0（保持原样）下，使用数组存储所有出现的原始形式，以便为每个出现位置保留其原始形式
-    const buildStringEscapeMap = (originalJSON: string): Map<string, string | string[]> => {
-        const map = new Map<string, string | string[]>();
-        if (!originalJSON) return map;
-
-        const validEscapes = ['"', "'", '\\', '/', 'b', 'f', 'n', 'r', 't', 'u', '0', 'v'];
-        // 匹配双引号和单引号字符串
-        const regex = /(["'])((?:\\.|(?!\1)[^\\])*?)\1/g;
-        let match;
-
-        while ((match = regex.exec(originalJSON)) !== null) {
-            const quote = match[1]; // 引号类型（" 或 '）
-            let originalEscaped = match[2]; // 原始转义形式（不含引号）
-            let parsedValue: string;
-            let finalEscaped = originalEscaped; // 最终使用的转义形式（可能被修正）
-
-            // 尝试解析这个原始字符串（使用对应的引号）
-            try {
-                parsedValue = JSON5.parse(`${quote}${originalEscaped}${quote}`);
-                // JSON5.parse 成功时，需要将 \xXX 智能转换为标准JSON转义序列
-                // 方法：基于解析后的字符值重新构建转义形式，确保控制字符被正确转换
-                // 遍历解析后的字符串，对于每个字符：
-                // 1. 如果是控制字符（0x7F-0x9F），转换为 \uXXXX
-                // 2. 如果是标准转义字符，使用标准转义（\n, \t 等）
-                // 3. 其他字符保持原样
-                finalEscaped = '';
-                for (let i = 0; i < parsedValue.length; i++) {
-                    const char = parsedValue[i];
-                    const codePoint = char.charCodeAt(0);
-
-                    // 控制字符（0x7F-0x9F）必须转换为 \uXXXX
-                    if (codePoint >= 0x7f && codePoint <= 0x9f) {
-                        finalEscaped += '\\u' + ('0000' + codePoint.toString(16)).slice(-4).toLowerCase();
-                    } else {
-                        // 标准转义字符
-                        switch (codePoint) {
-                            case 0x08:
-                                finalEscaped += '\\b';
-                                break; // 退格
-                            case 0x09:
-                                finalEscaped += '\\t';
-                                break; // 制表符
-                            case 0x0a:
-                                finalEscaped += '\\n';
-                                break; // 换行符
-                            case 0x0c:
-                                finalEscaped += '\\f';
-                                break; // 换页
-                            case 0x0d:
-                                finalEscaped += '\\r';
-                                break; // 回车符
-                            case 0x22:
-                                finalEscaped += '\\"';
-                                break; // 双引号
-                            case 0x5c:
-                                finalEscaped += '\\\\';
-                                break; // 反斜杠
-                            default:
-                                // 其他控制字符（0x00-0x1F）转换为 \uXXXX
-                                if (codePoint <= 0x1f) {
-                                    finalEscaped += '\\u' + ('0000' + codePoint.toString(16)).slice(-4).toLowerCase();
-                                } else {
-                                    // 可打印字符保持原样
-                                    finalEscaped += char;
-                                }
-                        }
-                    }
-                }
-            } catch {
-                // 解析失败，说明包含无效转义序列，手动解析
-                parsedValue = '';
-                let correctedEscaped = ''; // 用于存储修正后的转义形式
-                let i = 0;
-                let escaped = false;
-
-                while (i < originalEscaped.length) {
-                    if (escaped) {
-                        const char = originalEscaped[i];
-                        if (validEscapes.includes(char)) {
-                            // 有效转义序列，按照标准处理
-                            if (char === 'u' && i + 4 < originalEscaped.length) {
-                                const hex = originalEscaped.substring(i, i + 4);
-                                if (/^[0-9a-fA-F]{4}$/i.test(hex)) {
-                                    parsedValue += String.fromCharCode(parseInt(hex, 16));
-                                    correctedEscaped += '\\u' + hex;
-                                    i += 4;
-                                    escaped = false;
-                                    continue;
-                                }
-                            } else if (char === 'x' && i + 2 < originalEscaped.length) {
-                                // \xXX 序列：智能转换为标准JSON转义序列
-                                // 控制字符转换为标准转义（\n, \t等），可打印字符保持为实际字符
-                                const hex = originalEscaped.substring(i, i + 2);
-                                if (/^[0-9a-fA-F]{2}$/i.test(hex)) {
-                                    const codePoint = parseInt(hex, 16);
-                                    const actualChar = String.fromCharCode(codePoint);
-                                    parsedValue += actualChar;
-                                    // 使用智能转换函数，保持JSON合法性和可读性
-                                    correctedEscaped += convertHexToJsonEscape(hex);
-                                    i += 2;
-                                    escaped = false;
-                                    continue;
-                                }
-                            } else if (char === 'n') {
-                                parsedValue += '\n';
-                                correctedEscaped += '\\n';
-                                i++;
-                                escaped = false;
-                                continue;
-                            } else if (char === 'r') {
-                                parsedValue += '\r';
-                                correctedEscaped += '\\r';
-                                i++;
-                                escaped = false;
-                                continue;
-                            } else if (char === 't') {
-                                parsedValue += '\t';
-                                correctedEscaped += '\\t';
-                                i++;
-                                escaped = false;
-                                continue;
-                            } else if (char === 'b') {
-                                parsedValue += '\b';
-                                correctedEscaped += '\\b';
-                                i++;
-                                escaped = false;
-                                continue;
-                            } else if (char === 'f') {
-                                parsedValue += '\f';
-                                correctedEscaped += '\\f';
-                                i++;
-                                escaped = false;
-                                continue;
-                            } else if (char === '\\') {
-                                parsedValue += '\\';
-                                correctedEscaped += '\\\\';
-                                i++;
-                                escaped = false;
-                                continue;
-                            } else if (char === '"' || char === "'") {
-                                parsedValue += char;
-                                correctedEscaped += '\\' + char;
-                                i++;
-                                escaped = false;
-                                continue;
-                            } else if (char === '/') {
-                                parsedValue += '/';
-                                correctedEscaped += '\\/';
-                                i++;
-                                escaped = false;
-                                continue;
-                            } else if (char === '0') {
-                                // 检查是否是单独的 \0 还是多位数字序列
-                                let digits = '0';
-                                let j = i + 1;
-                                // 检查后续是否还有数字（最多3位）
-                                while (j < originalEscaped.length && /^[0-7]$/.test(originalEscaped[j]) && digits.length < 3) {
-                                    digits += originalEscaped[j];
-                                    j++;
-                                }
-                                if (digits === '0' && j === i + 1) {
-                                    // \0 单独出现，这是有效的
-                                    parsedValue += '\0';
-                                    correctedEscaped += '\\0';
-                                    i++;
-                                    escaped = false;
-                                    continue;
-                                } else {
-                                    // 多位数字序列，需要转义
-                                    // 注意：correctedEscaped 已经在第2121行加了一个反斜杠，所以这里只需要再加一个反斜杠
-                                    parsedValue += '\\' + digits;
-                                    correctedEscaped += '\\' + digits;
-                                    i += digits.length;
-                                    escaped = false;
-                                    continue;
-                                }
-                            } else if (char === 'v') {
-                                parsedValue += '\v';
-                                correctedEscaped += '\\v';
-                                i++;
-                                escaped = false;
-                                continue;
-                            }
-                        }
-                        // 无效转义序列（如 \1, \2, ..., \9, \a, \c 等）
-                        // 需要检查是否是多位数字序列
-                        if (/^[0-9]$/.test(char)) {
-                            let digits = char;
-                            let j = i + 1;
-                            // 无效的数字转义序列，需要转义为 \\1, \\2, ..., \\123 等
-                            // 注意：correctedEscaped 已经在第2121行加了一个反斜杠，所以这里只需要再加一个反斜杠
-                            parsedValue += '\\' + digits;
-                            correctedEscaped += '\\' + digits;
-                            i += digits.length;
-                            escaped = false;
-                            continue;
-                        } else {
-                            // 其他无效转义序列（如 \a, \c 等），需要转义
-                            // 注意：correctedEscaped 已经在第2121行加了一个反斜杠，所以这里只需要再加一个反斜杠
-                            parsedValue += '\\' + char;
-                            correctedEscaped += '\\' + char;
-                            i++;
-                            escaped = false;
-                            continue;
-                        }
-                    }
-
-                    if (originalEscaped[i] === '\\') {
-                        escaped = true;
-                        correctedEscaped += '\\';
-                        i++;
-                    } else {
-                        parsedValue += originalEscaped[i];
-                        correctedEscaped += originalEscaped[i];
-                        i++;
-                    }
-                }
-                // 使用修正后的转义形式
-                finalEscaped = correctedEscaped;
-            }
-
-            // 根据编码模式决定保存策略
-            // 模式0（保持原样）：为每个字符串值保留所有出现的原始形式（使用数组）
-            // 模式1和2：优先保留Unicode转义形式（使用单个值）
-            if (!map.has(parsedValue)) {
-                // 第一次遇到这个值
-                if (currentEncodingMode === 0) {
-                    // 模式0：使用数组存储原始转义形式，以便为每个出现位置保留其原始形式
-                    map.set(parsedValue, [originalEscaped]);
-                } else {
-                    // 模式1和2：直接保存单个值
-                    map.set(parsedValue, finalEscaped);
-                }
-            } else {
-                // 如果映射已存在，根据编码模式决定是否更新
-                const existingEscape = map.get(parsedValue)!;
-
-                if (currentEncodingMode === 0) {
-                    // 模式0（保持原样）：将新的原始形式添加到数组中
-                    // 这样可以确保每个出现位置都能保留其原始形式
-                    if (Array.isArray(existingEscape)) {
-                        existingEscape.push(originalEscaped);
-                    } else {
-                        // 如果之前不是数组（不应该发生），转换为数组
-                        map.set(parsedValue, [existingEscape as string, originalEscaped]);
-                    }
-                } else {
-                    // 模式1和2：优先保留Unicode转义形式
-                    const hasUnicodeEscape = /\\u[0-9a-fA-F]{4}/.test(finalEscaped);
-                    const existingEscapeStr = Array.isArray(existingEscape) ? existingEscape[0] : (existingEscape as string);
-                    const existingHasUnicodeEscape = /\\u[0-9a-fA-F]{4}/.test(existingEscapeStr);
-
-                    // 如果当前形式包含 Unicode 转义，而现有形式不包含，则更新
-                    if (hasUnicodeEscape && !existingHasUnicodeEscape) {
-                        map.set(parsedValue, finalEscaped);
-                    }
-                    // 如果两者都包含或都不包含 Unicode 转义，保持第一次遇到的（避免覆盖）
-                }
-            }
-        }
-
-        return map;
-    };
-
-    // 预先构建映射（如果提供了原始字符串）
-    const stringEscapeMap = originalString ? buildStringEscapeMap(originalString) : null;
-
-    // 在模式0下，用于跟踪每个字符串值的使用次数（按出现顺序）
-    // 每次格式化时都会重置，确保从第一个出现位置开始
-    const stringUsageCount = new Map<string, number>();
-
-    const escapeString = (str: string, index?: number): string => {
-        // 如果有预构建的映射，直接查找
-        if (stringEscapeMap) {
-            const originalEscape = stringEscapeMap.get(str);
-            if (originalEscape !== undefined) {
-                if (currentEncodingMode === 0 && Array.isArray(originalEscape)) {
-                    // 模式0：使用数组，按出现顺序使用
-                    const usageIndex = index !== undefined ? index : stringUsageCount.get(str) || 0;
-                    const escapeForm = originalEscape[usageIndex] || originalEscape[0];
-                    stringUsageCount.set(str, usageIndex + 1);
-                    return escapeForm;
-                } else {
-                    // 模式1和2：使用单个值
-                    const escapeForm = Array.isArray(originalEscape) ? originalEscape[0] : (originalEscape as string);
-                    return escapeForm;
-                }
-            }
-        }
-
-        // 没有原始形式或找不到匹配，使用标准转义
-        // 注意：标准转义不会将中文字符转换为 Unicode 转义（除非是控制字符）
-        // 所以当 encodingMode === 0 时，如果找不到映射，中文字符会保持为中文
-        return str
-            .replace(/\\/g, '\\\\') // 必须首先处理反斜杠
-            .replace(/"/g, '\\"') // 处理双引号
-            .replace(/[\b]/g, '\\b') // 处理退格
-            .replace(/\f/g, '\\f') // 处理换页
-            .replace(/\n/g, '\\n') // 处理换行
-            .replace(/\r/g, '\\r') // 处理回车
-            .replace(/\t/g, '\\t') // 处理制表符
-            .replace(/[\u0000-\u001F\u007F-\u009F]/g, c => {
-                return '\\u' + ('0000' + c.charCodeAt(0).toString(16)).slice(-4);
-            });
-    };
-
-    // 处理中文到Unicode的转换
-    const handleChineseToUnicode = (str: string): string => {
-        if (currentEncodingMode !== 2) return str; // 如果不是转Unicode模式，直接返回
-
-        return str.replace(/[\u0080-\uFFFF]/g, char => {
-            const codePoint = char.charCodeAt(0);
-
-            // 对于控制字符和特殊字符，一定要转换为Unicode
-            if (
-                codePoint < 32 ||
-                (codePoint >= 127 && codePoint <= 159) ||
-                // 特别处理双向文本控制字符
-                (codePoint >= 0x202a && codePoint <= 0x202e) ||
-                (codePoint >= 0x2066 && codePoint <= 0x2069) ||
-                codePoint === 0x061c
-            ) {
-                return '\\u' + ('0000' + codePoint.toString(16)).slice(-4);
-            }
-
-            // 对于其他非ASCII字符
-            return '\\u' + ('0000' + codePoint.toString(16)).slice(-4);
-        });
-    };
-
-    // 处理Unicode到中文的转换
-    const handleUnicodeToChiness = (str: string): string => {
-        if (currentEncodingMode !== 1) return str; // 如果不是转中文模式，直接返回
-
-        // 先处理十六进制转义 \xXX
-        let processed = str.replace(/\\x([0-9a-fA-F]{2})/gi, (match, hex) => {
-            const codePoint = parseInt(hex, 16);
-            return String.fromCharCode(codePoint);
-        });
-
-        // 然后处理Unicode转义 \uXXXX
-        processed = processed.replace(/\\u([0-9a-fA-F]{4})/g, (match, hex) => {
-            const codePoint = parseInt(hex, 16);
-
-            // 检测特殊控制字符，保持它们的转义形式
-            if ((codePoint >= 0x202a && codePoint <= 0x202e) || (codePoint >= 0x2066 && codePoint <= 0x2069) || codePoint === 0x061c) {
-                return match; // 保持原样
-            }
-
-            // 其他Unicode字符正常转换为中文
-            return String.fromCharCode(codePoint);
-        });
-
-        return processed;
-    };
-
-    const processString = (str: string): string => {
-        // 根据编码模式处理字符串
-        if (currentEncodingMode === 0) {
-            // 模式0：保持原样
-            // 如果有映射，使用映射中的原始转义形式
-            // 如果没有映射，使用标准转义（不会将中文转为Unicode）
-            return escapeString(str);
-        } else if (currentEncodingMode === 1) {
-            // 模式1：转中文
-            // 先转义字符串（如果有映射，会使用映射中的Unicode转义形式）
-            let processed = escapeString(str);
-            // 然后将Unicode转义转换为中文
-            processed = handleUnicodeToChiness(processed);
-            return processed;
-        } else if (currentEncodingMode === 2) {
-            // 模式2：转Unicode
-            // 如果有映射，使用映射中的原始转义形式
-            if (stringEscapeMap) {
-                const originalEscape = stringEscapeMap.get(str);
-                if (originalEscape !== undefined) {
-                    let escapeForm = Array.isArray(originalEscape) ? originalEscape[0] : (originalEscape as string);
-                    // 将映射中的 \xXX 转换为 \uXXXX（防御性处理，实际上在 buildStringEscapeMap 中已经被解析为实际字符了）
-                    escapeForm = escapeForm.replace(/\\x([0-9a-fA-F]{2})/gi, (match, hex) => {
-                        const codePoint = parseInt(hex, 16);
-                        return '\\u' + ('0000' + codePoint.toString(16)).slice(-4);
-                    });
-                    // 将控制字符（包括空格）转换为Unicode转义
-                    escapeForm = escapeForm.replace(/[\u0000-\u001F\u007F-\u009F]/g, char => {
-                        const codePoint = char.charCodeAt(0);
-                        return '\\u' + ('0000' + codePoint.toString(16)).slice(-4);
-                    });
-                    // 将中文字符和其他非ASCII字符转换为Unicode转义
-                    escapeForm = escapeForm.replace(/[\u0080-\uFFFF]/g, char => {
-                        const codePoint = char.charCodeAt(0);
-                        // 对于特殊控制字符，保持转义形式
-                        if ((codePoint >= 0x202a && codePoint <= 0x202e) || (codePoint >= 0x2066 && codePoint <= 0x2069) || codePoint === 0x061c) {
-                            return '\\u' + ('0000' + codePoint.toString(16)).slice(-4);
-                        }
-                        // 对于其他非ASCII字符
-                        return '\\u' + ('0000' + codePoint.toString(16)).slice(-4);
-                    });
-                    return escapeForm;
-                }
-            }
-            // 如果没有映射，先转义，然后转换为Unicode
-            let processed = escapeString(str);
-            processed = handleChineseToUnicode(processed);
-            return processed;
-        }
-
-        // 默认情况
-        return escapeString(str);
-    };
-
-    const format = (obj: any, currentIndent: string = ''): string => {
-        if (obj === null) return 'null';
-
-        if (Array.isArray(obj)) {
-            if (obj.length === 0) return '[]';
-
-            if (!currentArrayNewLine && isPrimitiveArray(obj)) {
-                const items = obj.map(item => {
-                    if (typeof item === 'string') return `"${processString(item)}"`;
-                    return String(item);
-                });
-                return `[${items.join(', ')}]`;
-            }
-
-            const items = obj.map(item => currentIndent + indent + format(item, currentIndent + indent));
-            return `[\n${items.join(',\n')}\n${currentIndent}]`;
-        }
-
-        if (typeof obj === 'object') {
-            const entries = Object.entries(obj);
-            if (entries.length === 0) return '{}';
-
-            const items = entries.map(([key, value]) => {
-                const formattedValue = format(value, currentIndent + indent);
-                return `${currentIndent}${indent}"${processString(key)}": ${formattedValue}`;
-            });
-            return `{\n${items.join(',\n')}\n${currentIndent}}`;
-        }
-
-        if (typeof obj === 'string') return `"${processString(obj)}"`;
-        return String(obj);
-    };
-
-    return format(obj);
-}
-
-// 清理JSON数据，去除undefined, null, NaN, Infinity, -Infinity, Symbol, Function, Date, RegExp等
-const sanitizeForJson = (value: any, memo: WeakMap<object, any> = new WeakMap()): any => {
-    if (value === undefined) {
-        return null;
-    }
-
-    if (typeof value === 'number') {
-        return Number.isFinite(value) ? value : null;
-    }
-
-    if (typeof value === 'bigint') {
-        return value.toString();
-    }
-
-    if (typeof value === 'symbol' || typeof value === 'function') {
-        return null;
-    }
-
-    if (value instanceof Date) {
-        return value.toISOString();
-    }
-
-    if (value instanceof RegExp) {
-        return value.toString();
-    }
-
-    if (value instanceof Set) {
-        return Array.from(value).map(item => sanitizeForJson(item, memo));
-    }
-
-    if (value instanceof Map) {
-        const result: Record<string, any> = {};
-        value.forEach((mapValue, mapKey) => {
-            result[String(mapKey)] = sanitizeForJson(mapValue, memo);
-        });
-        return result;
-    }
-
-    if (Array.isArray(value)) {
-        if (memo.has(value)) {
-            return memo.get(value);
-        }
-        const result: any[] = [];
-        memo.set(value, result);
-        value.forEach(item => {
-            result.push(sanitizeForJson(item, memo));
-        });
-        return result;
-    }
-
-    if (value && typeof value === 'object') {
-        if (memo.has(value)) {
-            return memo.get(value);
-        }
-        const result: Record<string, any> = {};
-        memo.set(value, result);
-        Object.keys(value).forEach(key => {
-            result[key] = sanitizeForJson((value as Record<string, any>)[key], memo);
-        });
-        return result;
-    }
-
-    return value;
-};
-
-// JSON预处理函数 - 处理结构层面的问题（注释、尾逗号）和无效转义序列
-const preprocessJSON = (jsonString: string): { data: any; originalString: string } => {
-    if (!jsonString || typeof jsonString !== 'string') {
-        return { data: null, originalString: jsonString };
-    }
-    let lastError: unknown = null;
-
-    // 第一层：尝试标准JSON解析
-    try {
-        const data = JSON.parse(jsonString);
-        const sanitized = sanitizeForJson(data);
-        return { data: sanitized, originalString: jsonString };
-    } catch (error) {
-        lastError = error;
-    }
-
-    // 第二层：自定义清理 + JSON5解析
-    // 步骤1：手动去除注释和处理特殊转义
-    let cleanedJSON = '';
-    let inString = false; // 是否在字符串内
-    let stringQuoteType: '"' | "'" | null = null; // 当前字符串的引号类型（用于匹配开始和结束引号）
-    let escaped = false; // 上一个字符是否为转义字符
-    let inSingleLineComment = false; // 是否在单行注释内
-    let inMultiLineComment = false; // 是否在多行注释内
-
-    try {
-        // 标准JSON有效转义序列
-        const standardEscapes = ['"', '\\', '/', 'b', 'f', 'n', 'r', 't', 'u'];
-        // JSON5新增的有效转义序列
-        const json5Escapes = ["'", '0', 'v'];
-        // 所有有效转义序列
-        const validEscapes = [...standardEscapes, ...json5Escapes];
-
-        for (let i = 0; i < jsonString.length; i++) {
-            const char = jsonString[i];
-            const nextChar = jsonString[i + 1] || '';
-
-            // 处理字符串内的转义字符
-            if (char === '\\' && !escaped && inString) {
-                // 检查是否是续行符（反斜杠后跟换行符，JSON5支持）
-                if (nextChar === '\n' || nextChar === '\r') {
-                    // 续行符：跳过反斜杠和换行符
-                    if (nextChar === '\r' && jsonString[i + 2] === '\n') {
-                        i += 2; // 跳过 \r\n
-                    } else {
-                        i++; // 跳过单个换行符
-                    }
-                    escaped = false;
-                    continue;
-                }
-                // 检查是否是有效转义序列
-                if (nextChar === 'u') {
-                    // Unicode转义序列 \uXXXX 或 \u{X...}
-                    const unicodeHex = jsonString.substring(i + 2, i + 6);
-                    if (/^[0-9a-fA-F]{4}$/i.test(unicodeHex)) {
-                        // 有效的4位Unicode转义，保留原样
-                        cleanedJSON += jsonString.substring(i, i + 6); // \uXXXX
-                        i += 5; // 跳过 \uXXXX (已经处理了 \，所以跳过 uXXXX)
-                        escaped = false;
-                        continue;
-                    } else if (jsonString[i + 2] === '{') {
-                        // \u{X...} 格式，保留原样（JSON5支持）
-                        // 找到闭合的 }
-                        let j = i + 3;
-                        while (j < jsonString.length && jsonString[j] !== '}') {
-                            j++;
-                        }
-                        if (j < jsonString.length) {
-                            cleanedJSON += jsonString.substring(i, j + 1); // \u{X...}
-                            i = j; // 跳过整个序列（循环末尾会 i++）
-                            escaped = false;
-                            continue;
-                        } else {
-                            // 没有找到闭合的 }，无效的Unicode转义，将\转义为\\
-                            cleanedJSON += '\\\\';
-                            escaped = false;
-                            continue;
-                        }
-                    } else {
-                        // 无效的Unicode转义，将\转义为\\
-                        cleanedJSON += '\\\\';
-                        escaped = false;
-                        continue;
-                    }
-                } else if (nextChar === 'x') {
-                    // \xXX 序列（JSON5支持），保留原样
-                    const hexChars = jsonString.substring(i + 2, i + 4);
-                    if (/^[0-9a-fA-F]{2}$/i.test(hexChars)) {
-                        cleanedJSON += jsonString.substring(i, i + 4); // \xXX
-                        i += 3; // 跳过 \xXX (已经处理了 \，所以跳过 xXX)
-                        escaped = false;
-                        continue;
-                    } else {
-                        // 无效的 \x 序列，将\转义为\\
-                        cleanedJSON += '\\\\';
-                        escaped = false;
-                        continue;
-                    }
-                } else if (/^[0-9]$/.test(nextChar)) {
-                    // 特殊处理：\0 到 \9 的数字转义序列
-                    // JSON/JSON5中，\0 是有效的（null字符），但 \1 到 \9 都是无效的
-                    // 需要检查是否是多位数字序列（如 \123）
-                    let digits = nextChar;
-                    let j = i + 2;
-                    // 检查后续是否还有数字（最多3位，用于八进制序列）
-                    // 注意：\8 和 \9 不是八进制数字，但 \123 这样的序列可能是八进制
-                    if (/^[0-7]$/.test(nextChar)) {
-                        // 如果是 0-7，可能是八进制序列，检查后续数字（最多3位）
-                        while (j < jsonString.length && /^[0-7]$/.test(jsonString[j]) && digits.length < 3) {
-                            digits += jsonString[j];
-                            j++;
-                        }
-                    } else {
-                        // \8 或 \9，不是八进制，只处理单个字符
-                        // 但也要检查是否后面还有数字（如 \89）
-                        while (j < jsonString.length && /^[0-9]$/.test(jsonString[j]) && digits.length < 3) {
-                            digits += jsonString[j];
-                            j++;
-                        }
-                    }
-                    // 如果是 \0，且后面没有更多数字，这是有效的（\0 是 null 字符，JSON5支持）
-                    if (digits === '0' && j === i + 2) {
-                        cleanedJSON += '\\0';
-                        i++; // 跳过 0
-                        escaped = false;
-                        continue;
-                    } else {
-                        // \1 到 \9 或多位数字序列，需要转义为 \\1, \\2, ..., \\123 等
-                        cleanedJSON += '\\\\' + digits;
-                        i += digits.length; // 跳过所有数字
-                        escaped = false;
-                        continue;
-                    }
-                } else if (validEscapes.includes(nextChar)) {
-                    // 有效的转义序列，保留原样
-                    cleanedJSON += char + nextChar;
-                    i++; // 跳过转义字符
-                    escaped = false;
-                    continue;
-                } else if (nextChar) {
-                    // 无效的转义序列（如\a, \c等），将\转义为\\
-                    cleanedJSON += '\\\\' + nextChar;
-                    i++; // 跳过无效字符
-                    escaped = false;
-                    continue;
-                } else {
-                    // 反斜杠在字符串末尾，转义它
-                    cleanedJSON += '\\\\';
-                    escaped = false;
-                    continue;
-                }
-            } else if (char === '\\' && !escaped) {
-                // 不在字符串内的反斜杠，保留原样
-                escaped = true;
-                if (!inSingleLineComment && !inMultiLineComment) {
-                    cleanedJSON += char;
-                }
-                continue;
-            }
-
-            // 处理字符串边界 - 双引号和单引号（JSON5支持单引号）
-            // 注意：只有在非注释状态下才处理字符串边界
-            if ((char === '"' || char === "'") && !escaped && !inSingleLineComment && !inMultiLineComment) {
-                // 如果在字符串内，需要检查：
-                // 1. 引号类型是否匹配（只有相同类型的引号才能结束字符串）
-                // 2. 前一个字符是否是反斜杠（转义引号）
-                let isEscapedQuote = false;
-                let backslashCount = 0;
-                if (inString) {
-                    // 首先检查引号类型是否匹配
-                    if (char !== stringQuoteType) {
-                        // 引号类型不匹配，这是字符串内容中的引号，不是结束引号
-                        cleanedJSON += char;
-                        escaped = false;
-                        continue;
-                    }
-
-                    // 引号类型匹配，检查是否被转义
-                    // 重要：必须检查cleanedJSON中实际写入的内容，而不是原始字符串
-                    // 因为某些反斜杠可能已经被处理过了（比如续行符被跳过了）
-                    // 检查cleanedJSON末尾连续的反斜杠数量
-                    if (cleanedJSON.length > 0) {
-                        let cleanedBackslashCount = 0;
-                        let k = cleanedJSON.length - 1;
-                        while (k >= 0 && cleanedJSON[k] === '\\') {
-                            cleanedBackslashCount++;
-                            k--;
-                        }
-                        // 如果cleanedJSON中的反斜杠数量是奇数，说明引号被转义了
-                        if (cleanedBackslashCount % 2 === 1) {
-                            isEscapedQuote = true;
-                            backslashCount = cleanedBackslashCount;
-                        }
-                    }
-
-                    // 如果cleanedJSON中没有反斜杠，再检查原始字符串（作为后备）
-                    // 但这种情况应该很少见，因为如果cleanedJSON为空或末尾不是反斜杠，
-                    // 说明之前的反斜杠可能已经被处理掉了
-                    if (!isEscapedQuote && i > 0) {
-                        let j = i - 1;
-                        // 检查原始字符串中连续的转义符
-                        while (j >= 0 && jsonString[j] === '\\') {
-                            backslashCount++;
-                            j--;
-                        }
-                        // 如果反斜杠数量是奇数，说明引号被转义了
-                        isEscapedQuote = backslashCount % 2 === 1;
-                    }
-                }
-
-                if (!isEscapedQuote) {
-                    inString = !inString;
-                    // 更新引号类型：如果开始字符串，记录引号类型；如果结束字符串，清除引号类型
-                    if (inString) {
-                        stringQuoteType = char as '"' | "'";
-                    } else {
-                        stringQuoteType = null;
-                    }
-                    cleanedJSON += char;
-                } else {
-                    // 转义的引号，应该保留在字符串内
-                    cleanedJSON += char;
-                }
-                escaped = false;
-                continue;
-            }
-
-            // 处理多行注释开始
-            if (!inString && !inSingleLineComment && !inMultiLineComment && char === '/' && nextChar === '*') {
-                inMultiLineComment = true;
-                i++; // 跳过 '*'
-                continue;
-            }
-
-            // 处理多行注释结束
-            if (!inString && inMultiLineComment && char === '*' && nextChar === '/') {
-                inMultiLineComment = false;
-                i++; // 跳过 '/'
-                continue;
-            }
-
-            // 处理单行注释开始
-            if (!inString && !inMultiLineComment && !inSingleLineComment) {
-                if (char === '/' && nextChar === '/') {
-                    inSingleLineComment = true;
-                    i++; // 跳过第二个 '/'
-                    continue;
-                }
-                if (char === '#') {
-                    // 支持脚本级别的井号注释符号
-                    inSingleLineComment = true;
-                    continue;
-                }
-            }
-
-            // 处理单行注释结束
-            if (inSingleLineComment && (char === '\n' || char === '\r')) {
-                inSingleLineComment = false;
-            }
-
-            // 只有不在任何注释中时才添加字符
-            if (!inSingleLineComment && !inMultiLineComment) {
-                cleanedJSON += char;
-            }
-
-            // 更新转义状态
-            // 如果当前字符是反斜杠且不在转义状态，设置 escaped = true 以便下一次循环处理转义序列
-            // 否则重置转义状态
-            if (char === '\\' && !escaped) {
-                escaped = true;
-            } else {
-                escaped = false;
-            }
-        }
-
-        // 移除多余的逗号（尾逗号）
-        cleanedJSON = cleanedJSON.replace(/,(\s*[}\]])/g, '$1');
-
-        // 步骤2：将处理好的数据交给JSON5的官方API进行处理
-        const data = JSON5.parse(cleanedJSON);
-        const sanitized = sanitizeForJson(data);
-
-        // 步骤3：得到标准JSON
-        let canonical = jsonString;
-        try {
-            canonical = JSON.stringify(sanitized);
-        } catch {
-            // 如果序列化失败，使用清理后的JSON
-            canonical = cleanedJSON;
-        }
-
-        return { data: sanitized, originalString: canonical };
-    } catch (error) {
-        lastError = error;
-    }
-
-    throw lastError ?? new Error('Unable to parse JSON input');
 };
 
 // 层级收缩-使用缩进级别进行折叠的方法
@@ -4615,6 +3707,709 @@ const handleConvert = (command: string) => {
     }
 };
 
+// JSON Plus Formatter 类
+class JsonPlusFormatter {
+    private encodingMode: number;
+    private indentSize: number;
+    private arrayNewLine: boolean;
+    private escapePlaceholderCounter: number;
+
+    constructor(encodingMode: number, indentSize: number, arrayNewLine: boolean) {
+        this.encodingMode = encodingMode;
+        this.indentSize = indentSize;
+        this.arrayNewLine = arrayNewLine;
+        this.escapePlaceholderCounter = 0;
+    }
+
+    // UTF-8 解码字节数组
+    private decodeUTF8(bytes: number[]): string {
+        let result = '';
+        let i = 0;
+
+        while (i < bytes.length) {
+            const byte = bytes[i];
+
+            if (byte < 128) {
+                // 1字节 UTF-8
+                result += String.fromCharCode(byte);
+                i++;
+            } else if (byte >= 192 && byte < 224 && i + 1 < bytes.length) {
+                // 2字节 UTF-8
+                const code = ((byte & 31) << 6) | (bytes[i + 1] & 63);
+                result += String.fromCharCode(code);
+                i += 2;
+            } else if (byte >= 224 && byte < 240 && i + 2 < bytes.length) {
+                // 3字节 UTF-8
+                const code = ((byte & 15) << 12) | ((bytes[i + 1] & 63) << 6) | (bytes[i + 2] & 63);
+                result += String.fromCharCode(code);
+                i += 3;
+            } else if (byte >= 240 && byte < 248 && i + 3 < bytes.length) {
+                // 4字节 UTF-8
+                const code = ((byte & 7) << 18) | ((bytes[i + 1] & 63) << 12) | ((bytes[i + 2] & 63) << 6) | (bytes[i + 3] & 63);
+                if (code >= 0x10000) {
+                    // 转换为代理对
+                    const high = Math.floor((code - 0x10000) / 0x400) + 0xD800;
+                    const low = ((code - 0x10000) % 0x400) + 0xDC00;
+                    result += String.fromCharCode(high, low);
+                } else {
+                    result += String.fromCharCode(code);
+                }
+                i += 4;
+            } else {
+                // 非法 UTF-8 字节，替换为 �
+                result += '\uFFFD';
+                i++;
+            }
+        }
+
+        return result;
+    }
+
+    // 对 decodeUTF8 返回的字符串进行适配，确保放入 JSON 字符串字面中是合法的（控制字符需要转义）
+    private escapeDecodedString(str: string): string {
+        let out = '';
+        for (let j = 0; j < str.length; j++) {
+            const ch = str[j];
+            const code = str.charCodeAt(j);
+            if (ch === '\\') {
+                out += '\\\\';
+            } else if (ch === '"') {
+                out += '\\"';
+            } else if (ch === '\n') {
+                out += '\\n';
+            } else if (ch === '\r') {
+                out += '\\r';
+            } else if (ch === '\t') {
+                out += '\\t';
+            } else if (ch === '\b') {
+                out += '\\b';
+            } else if (ch === '\f') {
+                out += '\\f';
+            } else if (code < 32 || code === 127) {
+                out += '\\u' + code.toString(16).padStart(4, '0');
+            } else {
+                out += ch;
+            }
+        }
+        return out;
+    }
+
+    // 处理 \uXXXX 转义，返回 { consumed, append }
+    private handleUnicodeEscape(input: string, startIndex: number, quote: string, escapeMap: Map<string, string>): { consumed: number; append: string } {
+        // startIndex 指向反斜杠位置 '\\'
+        const i = startIndex;
+        if (i + 5 < input.length && /^[0-9a-fA-F]{4}$/.test(input.substr(i + 2, 4))) {
+            const unicodeSeq = input.substr(i, 6); // \uXXXX
+            if (this.encodingMode === 0) {
+                const placeholder = this.createEscapePlaceholder();
+                escapeMap.set(placeholder, unicodeSeq);
+                return { consumed: 6, append: placeholder };
+            } else {
+                // 其他模式：保留 \uXXXX 交给 JSON5/后续处理
+                escapeMap.set(unicodeSeq, unicodeSeq);
+                return { consumed: 6, append: unicodeSeq };
+            }
+        } else {
+            // 非法 \u 转义，收集最多4个十六进制字符作为非法序列
+            let invalidUSeq = '\\u';
+            let idx = i + 2;
+            let count = 0;
+            while (idx < input.length && input[idx] !== quote && count < 4) {
+                if (/^[0-9a-fA-F]$/.test(input[idx])) {
+                    invalidUSeq += input[idx];
+                    count++;
+                    idx++;
+                } else {
+                    break;
+                }
+            }
+            const placeholder = this.createEscapePlaceholder();
+            escapeMap.set(placeholder, invalidUSeq);
+            return { consumed: 2 + count, append: placeholder };
+        }
+    }
+
+    // 处理 \xHH 转义，支持收集字节用于后续 UTF-8 解码
+    private handleHexEscape(input: string, startIndex: number, quote: string, escapeMap: Map<string, string>, pendingBytes: number[]): { consumed: number; append: string } {
+        const i = startIndex;
+        if (i + 3 < input.length && /^[0-9a-fA-F]{2}$/.test(input.substr(i + 2, 2))) {
+            const hexSeq = input.substr(i, 4); // \xHH
+            const byte = parseInt(input.substr(i + 2, 2), 16);
+            if (this.encodingMode === 1) {
+                // 收集字节用于 UTF-8 解码，暂不 append
+                pendingBytes.push(byte);
+                return { consumed: 4, append: '' };
+            } else if (this.encodingMode === 0) {
+                // raw 模式：占位以保持原始 \xHH
+                const placeholder = this.createEscapePlaceholder();
+                escapeMap.set(placeholder, hexSeq);
+                return { consumed: 4, append: placeholder };
+            } else {
+                // 其他模式：保留原样 \xHH（交给后续处理）
+                escapeMap.set(hexSeq, hexSeq);
+                return { consumed: 4, append: hexSeq };
+            }
+        } else {
+            // 非法 \x 转义，收集连续十六进制字符（最多2个）
+            let invalidXSeq = '\\x';
+            let idx = i + 2;
+            while (idx < input.length && input[idx] !== quote && /^[0-9a-fA-F]$/.test(input[idx])) {
+                invalidXSeq += input[idx];
+                idx++;
+            }
+            const placeholder = this.createEscapePlaceholder();
+            escapeMap.set(placeholder, invalidXSeq);
+            return { consumed: idx - i, append: placeholder };
+        }
+    }
+
+    // 解析 JSON5 字符串，支持非法转义和特殊值
+    parseJson5(input: string): { data: any; escapeMap: Map<string, string> } {
+        const escapeMap = new Map<string, string>();
+
+        // 预处理字符串，处理特殊值、转义等
+        let processedInput = this.preprocessSpecialValues(input);
+        processedInput = this.preprocessString(processedInput, escapeMap);
+
+        try {
+            // 使用 JSON5 解析
+            const data = JSON5.parse(processedInput);
+            return { data, escapeMap };
+        } catch (error) {
+            throw new Error('JSON5 解析失败: ' + (error as Error).message);
+        }
+    }
+
+    // 预处理特殊值，将JavaScript特殊值转换为JSON兼容格式
+    private preprocessSpecialValues(input: string): string {
+        let result = input;
+
+        // 替换简单特殊值
+        result = result.replace(/\bundefined\b/g, 'null');
+
+        // 处理Symbol - 替换 Symbol(...) 为 null
+        result = result.replace(/Symbol\s*\([^)]*\)/g, 'null');
+
+        // 处理函数定义 - 使用更复杂的逻辑处理嵌套函数
+        result = this.replaceFunctionsWithNull(result);
+
+        return result;
+    }
+
+    // 替换函数定义为null，支持嵌套和大括号匹配
+    private replaceFunctionsWithNull(input: string): string {
+        let result = '';
+        let i = 0;
+
+        while (i < input.length) {
+            const funcIndex = input.indexOf('function', i);
+            if (funcIndex === -1) {
+                result += input.substring(i);
+                break;
+            }
+
+            // 添加function之前的部分
+            result += input.substring(i, funcIndex);
+
+            // 找到函数的结束位置
+            let parenCount = 0;
+            let braceCount = 0;
+            let inString = false;
+            let stringChar = '';
+            let j = funcIndex;
+
+            // 跳过function关键字
+            while (j < input.length && !/\s/.test(input[j])) j++;
+            while (j < input.length && /\s/.test(input[j])) j++;
+
+            // 查找参数列表
+            if (input[j] === '(') {
+                parenCount = 1;
+                j++;
+                while (j < input.length && parenCount > 0) {
+                    const char = input[j];
+                    if (!inString && (char === '"' || char === "'")) {
+                        inString = true;
+                        stringChar = char;
+                    } else if (inString && char === stringChar && input[j - 1] !== '\\') {
+                        inString = false;
+                        stringChar = '';
+                    } else if (!inString) {
+                        if (char === '(') parenCount++;
+                        else if (char === ')') parenCount--;
+                    }
+                    j++;
+                }
+            }
+
+            // 跳过空白字符
+            while (j < input.length && /\s/.test(input[j])) j++;
+
+            // 查找函数体
+            if (input[j] === '{') {
+                braceCount = 1;
+                j++;
+                while (j < input.length && braceCount > 0) {
+                    const char = input[j];
+                    if (!inString && (char === '"' || char === "'")) {
+                        inString = true;
+                        stringChar = char;
+                    } else if (inString && char === stringChar && input[j - 1] !== '\\') {
+                        inString = false;
+                        stringChar = '';
+                    } else if (!inString) {
+                        if (char === '{') braceCount++;
+                        else if (char === '}') braceCount--;
+                    }
+                    j++;
+                }
+            }
+
+            // 替换为null
+            result += 'null';
+            i = j;
+        }
+
+        return result;
+    }
+
+    // 生成转义占位符
+    private createEscapePlaceholder(): string {
+        return '\uE000' + String.fromCharCode(0xF000 + this.escapePlaceholderCounter++); // 私人使用区字符
+    }
+
+    // 预处理字符串，处理非法转义和注释
+    private preprocessString(input: string, escapeMap: Map<string, string>): string {
+        let result = '';
+        let i = 0;
+
+        while (i < input.length) {
+            const char = input[i];
+            const nextChar = input[i + 1] || '';
+
+            // 处理注释
+            if (char === '/' && nextChar === '/') {
+                // 单行注释 //
+                i += 2;
+                while (i < input.length && input[i] !== '\n') {
+                    i++;
+                }
+                        continue;
+            } else if (char === '/' && nextChar === '*') {
+                // 多行注释 /* */
+                i += 2;
+                while (i < input.length - 1) {
+                    if (input[i] === '*' && input[i + 1] === '/') {
+                        i += 2;
+                                break;
+                        }
+                    i++;
+                }
+                        continue;
+            } else if (char === '#') {
+                // # 单行注释（扩展支持）
+                i++;
+                while (i < input.length && input[i] !== '\n') {
+                    i++;
+                }
+                        continue;
+                    }
+
+            if (char === '"' || char === "'") {
+                // 处理字符串
+                const quote = char;
+                result += quote;
+                i++;
+
+                let stringContent = '';
+                const pendingBytes: number[] = []; // 用于收集连续的\xHH字节
+
+                while (i < input.length && input[i] !== quote) {
+                    if (input[i] === '\\') {
+                        // 处理转义
+                        if (i + 1 < input.length) {
+                            const nextChar = input[i + 1];
+
+                            // 对于非标准转义
+                            if (!['"', '\\', '/', 'b', 'f', 'n', 'r', 't'].includes(nextChar)) {
+                                // 特殊处理 \u转义（包括非法格式）
+                                if (nextChar === 'u') {
+                                    const res = this.handleUnicodeEscape(input, i, quote, escapeMap);
+                                    stringContent += res.append;
+                                    i += res.consumed;
+                                    continue;
+                                }
+                                // 特殊处理 \xHH（包括非法格式）
+                                if (nextChar === 'x') {
+                                    const res = this.handleHexEscape(input, i, quote, escapeMap, pendingBytes);
+                                    stringContent += res.append;
+                                    i += res.consumed;
+                                    continue;
+                                } else {
+                                    // 处理累积的字节（如果有）
+                                    if (pendingBytes.length > 0) {
+                                        stringContent += this.escapeDecodedString(this.decodeUTF8(pendingBytes));
+                                        pendingBytes.length = 0; // 清空
+                                    }
+
+                                    // 其他非法转义
+                                    const escapeSeq = '\\' + nextChar;
+                                    const placeholder = this.createEscapePlaceholder();
+                                    escapeMap.set(placeholder, escapeSeq);
+                                    stringContent += placeholder;
+                                    i += 2; // 跳过转义序列
+                                }
+                            } else {
+                                // 处理累积的字节（如果有）
+                                if (pendingBytes.length > 0) {
+                                    stringContent += this.escapeDecodedString(this.decodeUTF8(pendingBytes));
+                                    pendingBytes.length = 0; // 清空
+                                }
+
+                                // 标准转义：统一使用占位符保存原始转义序列，
+                                // 这样在 JSON5.parse 后能通过 escapeMap 恢复为原始的转义表示（例如 "\/"）,
+                                // 避免在后续不同编码模式下丢失反斜杠。
+                                const escapeSeq = '\\' + nextChar;
+                                const placeholder = this.createEscapePlaceholder();
+                                escapeMap.set(placeholder, escapeSeq);
+                                stringContent += placeholder;
+                                i += 2; // 跳过转义序列
+                            }
+                        } else {
+                            // 处理累积的字节（如果有）
+                                if (pendingBytes.length > 0) {
+                                    stringContent += this.escapeDecodedString(this.decodeUTF8(pendingBytes));
+                                    pendingBytes.length = 0; // 清空
+                                }
+
+                            stringContent += '\\';
+                            i++;
+                        }
+                    } else {
+                        // 处理累积的字节（如果有）
+                        if (pendingBytes.length > 0) {
+                            stringContent += this.escapeDecodedString(this.decodeUTF8(pendingBytes));
+                            pendingBytes.length = 0; // 清空
+                        }
+
+                        stringContent += input[i];
+                        i++;
+                    }
+                }
+
+                // 处理字符串结束时的累积字节
+                if (pendingBytes.length > 0) {
+                    stringContent += this.escapeDecodedString(this.decodeUTF8(pendingBytes));
+                }
+
+                result += stringContent;
+
+                if (i < input.length) {
+                    result += quote;
+                }
+            } else {
+                result += char;
+            }
+            i++;
+        }
+
+        return result;
+    }
+
+    // 格式化输出
+    format(data: any, escapeMap: Map<string, string>): string {
+        return this.customStringify(data, escapeMap);
+    }
+
+    // 自定义字符串化函数
+    private customStringify(data: any, escapeMap: Map<string, string>, indent: number = 0): string {
+        const indentStr = ' '.repeat(indent * this.indentSize);
+
+        if (data === null) {
+            return 'null';
+        }
+
+        if (data === undefined) {
+            return 'null'; // JSON标准中undefined转为null
+        }
+
+        if (typeof data === 'boolean') {
+            return data ? 'true' : 'false';
+        }
+
+        if (typeof data === 'number') {
+            if (isNaN(data) || !isFinite(data)) {
+                return 'null';
+            }
+            return data.toString();
+        }
+
+        if (typeof data === 'string') {
+            return this.formatString(data, escapeMap);
+        }
+
+        if (typeof data === 'function') {
+            return 'null'; // JSON标准中function转为null
+        }
+
+        if (typeof data === 'symbol') {
+            return 'null'; // JSON标准中symbol转为null
+        }
+
+        if (Array.isArray(data)) {
+            return this.formatArray(data, escapeMap, indent);
+        }
+
+        if (typeof data === 'object') {
+            return this.formatObject(data, escapeMap, indent);
+        }
+
+        return 'null'; // 其他未知类型转为null
+    }
+
+    // 格式化字符串
+    private formatString(str: string, escapeMap: Map<string, string>): string {
+        // 首先检查是否有占位符需要替换
+        let processedStr = str;
+        for (const [placeholder, originalEscape] of escapeMap.entries()) {
+            if (processedStr.includes(placeholder)) {
+                processedStr = processedStr.replace(new RegExp(placeholder.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g'), originalEscape);
+            }
+        }
+
+        let result = '"';
+
+        for (let i = 0; i < processedStr.length; i++) {
+            const char = processedStr[i];
+            const code = processedStr.charCodeAt(i);
+
+            // 控制字符必须保持转义
+            if (char === '\n') {
+                result += '\\n';
+            } else if (char === '\t') {
+                result += '\\t';
+            } else if (char === '\r') {
+                result += '\\r';
+            } else if (char === '\b') {
+                result += '\\b';
+            } else if (char === '\f') {
+                result += '\\f';
+            } else if (char === '"') {
+                result += '\\"';
+            } else if (char === '\\') {
+                // 智能处理转义：对于合法的单字符转义（如 \n \t \r \b \f \" \\ \/）保持单斜杠；
+                // 对于 \uXXXX 和 \xHH 以及未知/非法转义则输出双反斜杠以保证原样显示（或变为合法的 JSON 字符串）
+                const nextChar = processedStr[i + 1] || '';
+                const nextCode = processedStr.charCodeAt(i + 1) || 0;
+                // 如果反斜杠后是实际的控制字符（例如真实换行），不要把它作为换行插入字符串中
+                // 而是把它当作字面量的转义序列保留为 \\uXXXX 格式，避免字符串换行
+                if (nextCode < 32 || nextCode === 127) {
+                    const hex = nextCode.toString(16).padStart(4, '0');
+                    result += '\\\\u' + hex;
+                    i = i + 1; // 跳过实际的控制字符
+                    continue;
+                }
+
+                if (nextChar === 'u' && i + 5 < processedStr.length && /^[0-9a-fA-F]{4}$/.test(processedStr.substr(i + 2, 4))) {
+                    // \uXXXX - 合法的 Unicode 转义，保持单反斜杠形式（合法 JSON）
+                    result += '\\u' + processedStr.substr(i + 2, 4);
+                    i = i + 5; // 跳到最后一个已消费字符
+                    continue;
+                } else if (nextChar === 'x' && i + 2 < processedStr.length && /^[0-9a-fA-F]{2}$/.test(processedStr.substr(i + 2, 2))) {
+                    // \xHH - 非标准 JSON 转义，需要变为 \\xHH（保留字面）
+                    result += '\\\\x' + processedStr.substr(i + 2, 2);
+                    i = i + 3; // 跳到最后一个已消费字符
+                    continue;
+                } else if (['n', 'r', 't', 'b', 'f', '"', '\\', '/'].includes(nextChar)) {
+                    // 合法的单字符转义，保持单斜杠形式
+                    result += '\\' + nextChar;
+                    i = i + 1; // 跳到最后一个已消费字符
+                    continue;
+                } else {
+                    // 其他未知或非法转义：用双反斜杠加上后续字符（如果有）
+                    if (nextChar) {
+                        result += '\\\\' + nextChar;
+                        i = i + 1;
+                        continue;
+                    } else {
+                        // 仅单个反斜杠，保留它
+                        result += '\\\\';
+                        continue;
+                    }
+                }
+            } else if (code < 32 || code === 127) {
+                // 其他控制字符
+                result += '\\u' + code.toString(16).padStart(4, '0');
+            } else {
+                // 根据编码模式处理字符
+                switch (this.encodingMode) {
+                    case 0: // 保持原样
+                        result += this.formatRaw(char, code, escapeMap);
+                        break;
+                    case 1: // 转中文
+                        result += this.formatChinese(char, code, escapeMap);
+                        break;
+                    case 2: // 转Unicode
+                        result += this.formatUnicode(char, code, escapeMap);
+                        break;
+                    default:
+                        result += char;
+                        break;
+                }
+            }
+        }
+
+        result += '"';
+        return result;
+    }
+
+    // 保持原样模式编码
+    private formatRaw(char: string, code: number, escapeMap: Map<string, string>): string {
+        // 检查是否有原始转义需要保持为双反斜杠形式
+        for (const [processed, original] of escapeMap.entries()) {
+            if (processed.includes(char)) {
+                // 非标准转义转为双反斜杠
+                if (original.startsWith('\\x') || !['"', '\\', '/', 'b', 'f', 'n', 'r', 't', 'u'].includes(original[1])) {
+                    return '\\' + original;
+                }
+            }
+        }
+        // 普通字符保持原样
+        return char;
+    }
+
+    // 转中文模式编码
+    private formatChinese(char: string, code: number, escapeMap: Map<string, string>): string {
+        // 对于\xHH序列，JSON5解析器已经将其转换为实际字符
+        // 我们保持这些字符的原样显示
+        return char;
+    }
+
+    // 转Unicode模式编码
+    private formatUnicode(char: string, code: number, escapeMap: Map<string, string>): string {
+        if (code > 127 || code < 32 || code === 127) {
+            if (code <= 0xFFFF) {
+                return '\\u' + code.toString(16).padStart(4, '0');
+            } else {
+                // 代理对处理
+                const high = Math.floor((code - 0x10000) / 0x400) + 0xD800;
+                const low = ((code - 0x10000) % 0x400) + 0xDC00;
+                return '\\u' + high.toString(16).padStart(4, '0') + '\\u' + low.toString(16).padStart(4, '0');
+            }
+        }
+        return char;
+    }
+
+
+    // 格式化数组
+    private formatArray(arr: any[], escapeMap: Map<string, string>, indent: number): string {
+        if (arr.length === 0) {
+            return '[]';
+        }
+
+        // 检查是否为简单类型数组
+        const isSimpleArray = arr.every(item =>
+            typeof item === 'string' ||
+            typeof item === 'number' ||
+            typeof item === 'boolean' ||
+            item === null
+        );
+
+        if (isSimpleArray && !this.arrayNewLine) {
+            // 紧凑模式
+            const items = arr.map(item => this.customStringify(item, escapeMap, 0));
+            return '[' + items.join(', ') + ']';
+            } else {
+            // 换行模式（复杂数组或强制换行）
+            const indentStr = ' '.repeat((indent + 1) * this.indentSize);
+            const nextIndentStr = ' '.repeat(indent * this.indentSize);
+            const items = arr.map(item => indentStr + this.customStringify(item, escapeMap, indent + 1));
+            return '[\n' + items.join(',\n') + '\n' + nextIndentStr + ']';
+        }
+    }
+
+    // 格式化对象
+    private formatObject(obj: any, escapeMap: Map<string, string>, indent: number): string {
+        const keys = Object.keys(obj);
+        if (keys.length === 0) {
+            return '{}';
+        }
+
+        const indentStr = ' '.repeat((indent + 1) * this.indentSize);
+        const nextIndentStr = ' '.repeat(indent * this.indentSize);
+
+        const items = keys.map(key => {
+            const keyStr = JSON.stringify(key); // JSON标准要求key必须用双引号包围
+            const valueStr = this.customStringify(obj[key], escapeMap, indent + 1);
+            return indentStr + keyStr + ': ' + valueStr;
+        });
+
+        return '{\n' + items.join(',\n') + '\n' + nextIndentStr + '}';
+    }
+}
+
+// 兼容性函数 - 用于其他地方的JSON解析
+const preprocessJSON = (input: string) => {
+    const formatter = new JsonPlusFormatter(encodingMode.value, indentSize.value, arrayNewLine.value);
+    const result = formatter.parseJson5(input);
+    return {
+        ...result,
+        originalString: input // 保持向后兼容
+    };
+};
+
+// 重新格式化JSON字符串的缩进，保持内容不变（不解析转义序列）
+const reformatJsonIndentation = (jsonString: string, newIndentSize: number): string => {
+    // 目标：仅调整缩进显示，不解析或改变字符串中的转义序列
+    const lines = jsonString.split('\n');
+
+    // 收集所有有缩进的行的缩进长度（包括只有单个括号的行）
+    const indentLengths: number[] = [];
+    for (const line of lines) {
+        const trimmed = line.trim();
+        if (!trimmed) continue;
+        const m = line.match(/^(\s*)/);
+        const len = m ? m[1].length : 0;
+        if (len > 0) indentLengths.push(len);
+    }
+
+    // 如果没有可检测的缩进，直接返回原文
+    if (indentLengths.length === 0) return jsonString;
+
+    // 使用最小缩进作为当前缩进单位
+    const currentIndentSize = Math.min(...indentLengths);
+    if (currentIndentSize === newIndentSize) return jsonString;
+
+    // 对每一行按实际缩进长度重新计算层级并应用新缩进
+    const resultLines: string[] = [];
+    for (const line of lines) {
+        const trimmed = line.trim();
+        if (!trimmed) {
+            resultLines.push('');
+            continue;
+        }
+
+        // 计算该行原始缩进长度
+        const m = line.match(/^(\s*)/);
+        const originalIndentLen = m ? m[1].length : 0;
+
+        // 计算层级（向下取整以避免增加缩进）
+        const level = originalIndentLen > 0 ? Math.floor(originalIndentLen / currentIndentSize) : 0;
+
+        const newIndent = ' '.repeat(level * newIndentSize);
+        resultLines.push(newIndent + trimmed);
+    }
+
+    return resultLines.join('\n');
+};
+
+// 兼容性函数 - 用于其他地方的JSON格式化
+const customStringify = (data: any, replacer: any, indentSize: number, originalString?: string, ...args: any[]) => {
+    const formatter = new JsonPlusFormatter(encodingMode.value, indentSize, arrayNewLine.value);
+    const escapeMap = new Map<string, string>();
+    return formatter.format(data, escapeMap);
+};
+
 // 格式化 JSON
 const formatJSON = () => {
     try {
@@ -4626,25 +4421,18 @@ const formatJSON = () => {
             return;
         }
 
-        // 预处理 JSON 字符串
-        // 注意：为了正确构建转义映射，我们需要使用原始输入字符串
-        // JSON5解析可能会自动将Unicode转换为中文，所以需要在解析前保存原始字符串
-        let parsed;
-        let originalString = value; // 始终使用原始输入字符串以构建转义映射
+        // 创建格式化器
+        const formatter = new JsonPlusFormatter(
+            encodingMode.value,
+            indentSize.value,
+            arrayNewLine.value
+        );
 
-        try {
-            const result = preprocessJSON(value);
-            parsed = result.data;
-            // 对于编码模式0（保持原样），使用原始输入字符串
-            // 对于其他模式，也使用原始输入字符串，让customStringify根据编码模式处理
-            originalString = value;
-        } catch (error) {
-            showMessageError('请输入有效的 JSON 数据');
-            return;
-        }
+        // 解析 JSON5
+        const { data, escapeMap } = formatter.parseJson5(value);
 
-        // 使用标准格式化，传递原始字符串
-        const formatted = customStringify(parsed, null, indentSize.value, originalString);
+        // 格式化输出
+        const formatted = formatter.format(data, escapeMap);
 
         // 异步计算所有折叠区域的信息（不阻塞，立即返回）
         // 这样可以避免实时计算的高成本，特别是对于大数据量（7-10万行）
@@ -6054,8 +5842,8 @@ const calculateArchiveMaxWidth = (): number => {
     const padding = 12;
     // 存档项内边距：左右各 4px = 8px
     const itemPadding = 8;
-    // 编辑和删除按钮宽度：每个图标约 14px，两个图标 + 间距 = 约 32px
-    const actionsWidth = 32;
+    // 刷新、编辑和删除按钮宽度：每个图标约 10px，三个图标 + 间距 = 约 42px
+    const actionsWidth = 42;
     // 存档项之间的间距和额外空间：约 4px
     const itemMargin = 4;
 
@@ -6207,6 +5995,57 @@ const stopArchiveResize = () => {
     document.removeEventListener('mouseup', stopArchiveResize);
     document.removeEventListener('touchmove', handleArchiveResizeMove);
     document.removeEventListener('touchend', stopArchiveResize);
+};
+
+// 更新存档内容（将当前输入区域的内容保存到指定存档）
+const handleRefreshArchive = (item: JsonArchive) => {
+    if (!inputEditor) {
+        showMessageError('编辑器未初始化，请稍候再试');
+        return;
+    }
+
+    const newContent = inputEditor.getValue() || '';
+    if (!newContent.trim()) {
+        showMessageError('当前输入区域内容为空，无法更新存档');
+        return;
+    }
+
+    // 检查内容大小是否超过限制
+    if (newContent.length > MAX_FILE_SIZE) {
+        showMessageError(`内容过大（${formatFileSize(newContent.length)}），超过最大限制（${formatFileSize(MAX_FILE_SIZE)}）`);
+        return;
+    }
+
+    // 检查是否超出存档总大小限制
+    const currentTotalSize = archives.value.reduce((sum, archive) => sum + archive.size, 0);
+    const oldSize = item.size;
+    const newSize = calculateArchiveSize(newContent);
+    const newTotalSize = currentTotalSize - oldSize + newSize;
+
+    if (newTotalSize > MAX_ARCHIVE_TOTAL_SIZE) {
+        showMessageError('更新存档失败：所有存档总大小超过限制，请先清理部分存档');
+        return;
+    }
+
+    try {
+        // 更新存档内容
+        const index = archives.value.findIndex(a => a.id === item.id);
+        if (index !== -1) {
+            archives.value[index].content = newContent;
+            archives.value[index].size = newSize;
+
+            // 将更新后的存档移到最前面
+            const updatedArchive = archives.value.splice(index, 1)[0];
+            archives.value.unshift(updatedArchive);
+
+            saveArchives();
+            showMessageSuccess(`已更新存档「${item.name}」的内容`);
+        } else {
+            showMessageError('未找到对应的存档');
+        }
+    } catch (error: any) {
+        showMessageError('更新存档失败: ' + error.message);
+    }
 };
 
 // 删除单个存档
@@ -9395,21 +9234,16 @@ const transferToInput = (e: MouseEvent) => {
             return;
         }
 
-        // 解析 JSON 数据并重新格式化为2个空格缩进（写死2空格）
+
+        const targetIndentSize = 2; // 输入区域固定使用2个空格缩进
         let formattedContent: string;
+
         try {
-            // 先预处理 JSON（支持注释、尾逗号等）
-            const preprocessed = preprocessJSON(outputContent);
-            formattedContent = customStringify(preprocessed.data, null, 2, preprocessed.originalString);
+            // 直接重新格式化缩进，保持原始字符串表示不变
+            formattedContent = reformatJsonIndentation(outputContent, targetIndentSize);
         } catch (parseError) {
-            // 如果解析失败，尝试直接使用 JSON.stringify 格式化
-            try {
-                const parsed = JSON.parse(outputContent);
-                formattedContent = JSON.stringify(parsed, null, 2);
-            } catch (jsonError) {
-                // 如果还是失败，使用原始内容（可能是无效 JSON）
-                formattedContent = outputContent;
-            }
+            // 如果解析失败，使用原始内容
+            formattedContent = outputContent;
         }
 
         // 转移内容到输入区域
@@ -9428,7 +9262,7 @@ const transferToInput = (e: MouseEvent) => {
                 updateLineNumberWidth(inputEditor);
                 updateEditorHeight(inputEditor);
 
-                // 确保输入编辑器使用2空格缩进
+                // 确保输入编辑器使用固定的2个空格缩进
                 inputModel.updateOptions({
                     tabSize: 2,
                     indentSize: 2,
@@ -9725,7 +9559,7 @@ const transferToInput = (e: MouseEvent) => {
 
 /* 添加分隔线样式 */
 .resizer {
-    width: 24px;
+    width: 20px;
     background-color: #eef0f6;
     cursor: col-resize;
     touch-action: none;
@@ -9753,7 +9587,6 @@ const transferToInput = (e: MouseEvent) => {
     width: 4px;
     height: 40px;
     background-color: #c0c4cc;
-    border-radius: 2px;
 }
 
 .panel-header {
@@ -10042,19 +9875,17 @@ const transferToInput = (e: MouseEvent) => {
 
 .transfer-button {
     position: absolute;
-    top: 10px;
+    top: 7px;
     left: 50%;
     transform: translate(-50%, 0);
     background-color: #ffffff;
     border-radius: 3px;
     cursor: pointer;
-    z-index: 20;
-    width: 24px;
-    height: 24px;
+    width: 20px;
+    height: 20px;
     display: flex;
     align-items: center;
     justify-content: center;
-    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.08);
 }
 
 .transfer-button:hover {
