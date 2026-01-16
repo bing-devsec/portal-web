@@ -64,7 +64,7 @@
 
                     <!-- 层级控制 -->
                     <div v-if="buttonVisibility.collapse" class="collapse-control">
-                        <el-select v-model="selectedLevel" placeholder="层级" class="level-select" :disabled="maxLevel === 0">
+                        <el-select v-model="selectedLevel" placeholder="层级" class="level-select" :disabled="maxLevel === 0" popper-class="level-select-dropdown">
                             <el-option v-if="maxLevel === 0" label="第0层" :value="0" :disabled="true" />
                             <el-option v-for="n in maxLevel" :key="n" :label="`第${n}层`" :value="n" />
                         </el-select>
@@ -436,6 +436,27 @@
                                 </div>
                                 <el-switch v-model="arrayNewLine" active-text="换行" inactive-text="紧凑" size="default" />
                             </div>
+
+                            <el-divider style="margin: 12px 0" />
+
+                            <div class="settings-item">
+                                <div class="settings-item-header">
+                                    <span class="settings-label">浮点数精度</span>
+                                    <span class="settings-description">{{ floatPrecision === 0 ? '不控制' : `保留 ${floatPrecision} 位小数` }}</span>
+                                </div>
+                                <el-slider
+                                    v-model="floatPrecision"
+                                    :min="0"
+                                    :max="64"
+                                    :step="1"
+                                    show-input
+                                    size="small"
+                                    :show-stops="false"
+                                    style="width: 100%"
+                                    @input="onFloatPrecisionInput"
+                                    @change="onFloatPrecisionInput"
+                                />
+                            </div>
                         </div>
                     </el-collapse-item>
 
@@ -475,7 +496,7 @@
                                     <span class="settings-label">排序方式</span>
                                 </div>
                                 <el-radio-group v-model="sortMethod" class="settings-radio-group">
-                                    <el-radio value="dictionary" border>字典序</el-radio>
+                                    <el-radio value="dictionary" border>按字典序</el-radio>
                                     <el-radio value="length" border>按Key长度</el-radio>
                                     <el-radio value="field" border>按字段值</el-radio>
                                 </el-radio-group>
@@ -685,6 +706,7 @@ const defaultSettings = {
     indentSize: 2,
     encodingMode: 0,
     arrayNewLine: true,
+    floatPrecision: 0, // 浮点数精度控制：0表示不控制，1-64表示保留的小数位数
     // 排序设置
     sortMethod: 'dictionary' as 'dictionary' | 'length' | 'field',
     sortOrder: 'asc' as 'asc' | 'desc',
@@ -733,6 +755,7 @@ const saveSettings = () => {
             indentSize: indentSize.value,
             encodingMode: encodingMode.value,
             arrayNewLine: arrayNewLine.value,
+            floatPrecision: floatPrecision.value,
             sortMethod: sortMethod.value,
             sortOrder: sortOrder.value,
             customArchiveName: customArchiveName.value,
@@ -752,13 +775,31 @@ const wordWrap = ref(savedSettings.wordWrap); // 字符串换行设置
 const fontSize = ref(savedSettings.fontSize || 14); // 字体大小设置
 const showIndentGuide = ref(savedSettings.showIndentGuide); // 添加缩进指南状态
 const arrayNewLine = ref(savedSettings.arrayNewLine); // 添加数组换行控制开关
+const floatPrecision = ref(savedSettings.floatPrecision); // 浮点数精度控制
+
+// 限制并规范化浮点精度输入（确保介于 0 - 64 之间并为整数）
+const clampFloatPrecisionValue = (raw: number | string): number => {
+    let n = Number(raw);
+    if (!isFinite(n) || isNaN(n)) n = 0;
+    // 向下取整，保持与 slider step 兼容
+    n = Math.floor(n);
+    if (n < 0) return 0;
+    if (n > 64) return 64;
+    return n;
+};
+
+const onFloatPrecisionInput = (val: number | number[] | string) => {
+    const raw = Array.isArray(val) ? (val[0] ?? 0) : val;
+    floatPrecision.value = clampFloatPrecisionValue(raw as number | string);
+};
+
 const startInFullscreen = ref(savedSettings.startInFullscreen ?? false); // 控制是否默认全屏
 const isFullscreen = ref(startInFullscreen.value); // 全屏状态控制，初始化遵循设置
 const isResizing = ref(false); // 添加是否正在调整宽度控制
 const leftPanelWidth = ref(50); // 添加面板宽度控制（实时值，用于布局）
 const stableLeftPanelWidth = ref(50); // 稳定宽度值，用于计算按钮显示状态（防抖更新）
 const encodingMode = ref(savedSettings.encodingMode); // 添加编码处理模式：0-保持原样，1-转中文，2-转Unicode
-const outputType = ref<'json' | 'yaml' | 'toml' | 'xml' | 'go'>('json'); // 添加当前输出类型的状态
+const outputType = ref<'json' | 'yaml' | 'toml' | 'xml' | 'go' | 'text'>('json'); // 添加当前输出类型的状态
 const fetchJsonDialogVisible = ref(false); // 获取JSON数据对话框相关状态
 const shareDialogVisible = ref(false); // 分享对话框相关状态
 const dataMaskingDialogVisible = ref(false); // 数据脱敏对话框相关状态
@@ -1511,7 +1552,7 @@ const getEditorOptions = (size: number, isReadOnly: boolean = false, language: s
         : {}),
 
     // 编辑器配置
-    links: false, // 禁用链接检测功能
+    links: true, // 启用链接检测功能，支持URL点击跳转
     tabSize: size, //  使用传入的大小作为Tab宽度
     indentSize: size, // 使用传入的大小作为缩进宽度
     wordWrap: wordWrap.value ? ('off' as const) : ('on' as const), // 字符串换行设置（反转逻辑：false=换行，true=不换行）
@@ -2546,10 +2587,10 @@ watch(isFullscreen, () => {
 });
 
 // 监听格式化设置的变化
-watch([indentSize, arrayNewLine, showIndentGuide], () => {
+watch([indentSize, arrayNewLine, showIndentGuide, floatPrecision], () => {
     // 如果输入区域为空，不进行任何操作
     if (!inputEditor?.getValue()?.trim()) {
-        selectedLevel.value = 1;
+        selectedLevel.value = 0;
         return;
     }
     try {
@@ -2605,6 +2646,7 @@ watch(
         indentSize.value,
         encodingMode.value,
         arrayNewLine.value,
+        floatPrecision.value,
         sortMethod.value,
         sortOrder.value,
         customArchiveName.value,
@@ -2646,8 +2688,39 @@ const createInputEditor = () => {
     // 输入编辑器始终使用2个空格缩进，不受格式化设置影响
     const inputOptions = getEditorOptions(2, false, 'json', true);
     inputEditor = monaco.editor.create(inputEditorContainer.value, inputOptions);
+
+    // 添加拖拽事件处理，防止存档拖拽到输入区域时出现意外行为
+    const container = inputEditorContainer.value;
+    container.addEventListener('dragover', (event: DragEvent) => {
+        // 检查是否是存档拖拽
+        if (event.dataTransfer?.types.includes('application/json-archive')) {
+            event.preventDefault();
+            event.dataTransfer.dropEffect = 'none'; // 不允许放置
+            // 添加视觉反馈样式
+            container.classList.add('drag-over-archive');
+        }
+    });
+
+    container.addEventListener('dragleave', (event: DragEvent) => {
+        // 检查是否是存档拖拽离开
+        if (event.dataTransfer?.types.includes('application/json-archive')) {
+            // 移除视觉反馈样式
+            container.classList.remove('drag-over-archive');
+        }
+    });
+
+    container.addEventListener('drop', (event: DragEvent) => {
+        // 如果是存档拖拽，阻止默认行为，避免插入意外数据
+        if (event.dataTransfer?.types.includes('application/json-archive')) {
+            event.preventDefault();
+            showMessageWarning('请将存档拖拽到存档列表中重新排序，不要拖拽到编辑区域');
+        }
+        // 移除视觉反馈样式
+        container.classList.remove('drag-over-archive');
+    });
+
     nextTick(() => {
-        const textarea = inputEditorContainer.value?.querySelector('textarea');
+        const textarea = container.querySelector('textarea');
         if (textarea) {
             textarea.setAttribute('id', 'monaco-input-editor');
             textarea.setAttribute('name', 'monaco-input-editor');
@@ -2671,14 +2744,117 @@ const createOutputEditor = () => {
     });
 };
 
+// 配置JSON Schema支持
+const configureJsonSchemaSupport = () => {
+    // 配置JSON Schema诊断选项，提供完整的Schema URL建议
+    // 禁用远程Schema验证以避免网络加载警告，但保留基本的JSON语法检查
+    monaco.languages.json.jsonDefaults.setDiagnosticsOptions({
+        validate: false, // 禁用远程Schema验证，避免网络加载警告
+        allowComments: true,
+        schemas: [
+            // JSON Schema Draft 2020-12 及相关
+            { uri: 'http://json-schema.org/draft/2020-12/schema#', fileMatch: ['*'] },
+            { uri: 'https://json-schema.org/draft/2020-12/schema#', fileMatch: ['*'] },
+            { uri: 'http://json-schema.org/draft/2020-12/hyper-schema#', fileMatch: ['*'] },
+            { uri: 'https://json-schema.org/draft/2020-12/hyper-schema#', fileMatch: ['*'] },
+            { uri: 'http://json-schema.org/draft/2020-12/links#', fileMatch: ['*'] },
+            { uri: 'https://json-schema.org/draft/2020-12/links#', fileMatch: ['*'] },
+            { uri: 'http://json-schema.org/draft/2020-12/output/schema#', fileMatch: ['*'] },
+            { uri: 'https://json-schema.org/draft/2020-12/output/schema#', fileMatch: ['*'] },
+
+            // JSON Schema Draft 2019-09 及相关
+            { uri: 'http://json-schema.org/draft/2019-09/schema#', fileMatch: ['*'] },
+            { uri: 'https://json-schema.org/draft/2019-09/schema#', fileMatch: ['*'] },
+            { uri: 'http://json-schema.org/draft/2019-09/hyper-schema#', fileMatch: ['*'] },
+            { uri: 'https://json-schema.org/draft/2019-09/hyper-schema#', fileMatch: ['*'] },
+
+            // JSON Schema Draft 07 及相关
+            { uri: 'http://json-schema.org/draft-07/schema#', fileMatch: ['*'] },
+            { uri: 'https://json-schema.org/draft-07/schema#', fileMatch: ['*'] },
+            { uri: 'http://json-schema.org/draft-07/hyper-schema#', fileMatch: ['*'] },
+            { uri: 'https://json-schema.org/draft-07/hyper-schema#', fileMatch: ['*'] },
+
+            // JSON Schema Draft 06 及相关
+            { uri: 'http://json-schema.org/draft-06/schema#', fileMatch: ['*'] },
+            { uri: 'https://json-schema.org/draft-06/schema#', fileMatch: ['*'] },
+            { uri: 'http://json-schema.org/draft-06/hyper-schema#', fileMatch: ['*'] },
+            { uri: 'https://json-schema.org/draft-06/hyper-schema#', fileMatch: ['*'] },
+
+            // JSON Schema Draft 04 及相关
+            { uri: 'http://json-schema.org/draft-04/schema#', fileMatch: ['*'] },
+            { uri: 'https://json-schema.org/draft-04/schema#', fileMatch: ['*'] },
+            { uri: 'http://json-schema.org/draft-04/hyper-schema#', fileMatch: ['*'] },
+            { uri: 'https://json-schema.org/draft-04/hyper-schema#', fileMatch: ['*'] },
+
+            // JSON Schema Draft 03 及相关
+            { uri: 'http://json-schema.org/draft-03/schema#', fileMatch: ['*'] },
+            { uri: 'https://json-schema.org/draft-03/schema#', fileMatch: ['*'] },
+            { uri: 'http://json-schema.org/draft-03/hyper-schema#', fileMatch: ['*'] },
+            { uri: 'https://json-schema.org/draft-03/hyper-schema#', fileMatch: ['*'] },
+
+            // JSON Schema Draft 02 及相关
+            { uri: 'http://json-schema.org/draft-02/schema#', fileMatch: ['*'] },
+            { uri: 'https://json-schema.org/draft-02/schema#', fileMatch: ['*'] },
+            { uri: 'http://json-schema.org/draft-02/hyper-schema#', fileMatch: ['*'] },
+            { uri: 'https://json-schema.org/draft-02/hyper-schema#', fileMatch: ['*'] },
+
+            // JSON Schema Draft 01 及相关
+            { uri: 'http://json-schema.org/draft-01/schema#', fileMatch: ['*'] },
+            { uri: 'https://json-schema.org/draft-01/schema#', fileMatch: ['*'] },
+            { uri: 'http://json-schema.org/draft-01/hyper-schema#', fileMatch: ['*'] },
+            { uri: 'https://json-schema.org/draft-01/hyper-schema#', fileMatch: ['*'] },
+
+            // JSON Schema Draft 00 及相关
+            { uri: 'http://json-schema.org/draft-00/schema#', fileMatch: ['*'] },
+            { uri: 'https://json-schema.org/draft-00/schema#', fileMatch: ['*'] },
+
+            // 通用Schema URL
+            { uri: 'http://json-schema.org/schema#', fileMatch: ['*'] },
+            { uri: 'https://json-schema.org/schema#', fileMatch: ['*'] },
+
+            // Vocabulary URLs (2020-12)
+            { uri: 'http://json-schema.org/draft/2020-12/vocab/core', fileMatch: ['*'] },
+            { uri: 'https://json-schema.org/draft/2020-12/vocab/core', fileMatch: ['*'] },
+            { uri: 'http://json-schema.org/draft/2020-12/vocab/applicator', fileMatch: ['*'] },
+            { uri: 'https://json-schema.org/draft/2020-12/vocab/applicator', fileMatch: ['*'] },
+            { uri: 'http://json-schema.org/draft/2020-12/vocab/validation', fileMatch: ['*'] },
+            { uri: 'https://json-schema.org/draft/2020-12/vocab/validation', fileMatch: ['*'] },
+            { uri: 'http://json-schema.org/draft/2020-12/vocab/meta-data', fileMatch: ['*'] },
+            { uri: 'https://json-schema.org/draft/2020-12/vocab/meta-data', fileMatch: ['*'] },
+            { uri: 'http://json-schema.org/draft/2020-12/vocab/format-annotation', fileMatch: ['*'] },
+            { uri: 'https://json-schema.org/draft/2020-12/vocab/format-annotation', fileMatch: ['*'] },
+            { uri: 'http://json-schema.org/draft/2020-12/vocab/content', fileMatch: ['*'] },
+            { uri: 'https://json-schema.org/draft/2020-12/vocab/content', fileMatch: ['*'] }
+        ]
+    });
+
+    // 配置JSON语言服务，提供更好的自动补全
+    monaco.languages.json.jsonDefaults.setModeConfiguration({
+        documentFormattingEdits: false,
+        documentRangeFormattingEdits: false,
+        completionItems: true, // 保留自动补全功能
+        hovers: true,
+        documentSymbols: true,
+        tokens: true,
+        colors: true,
+        foldingRanges: true,
+        diagnostics: false, // 禁用诊断以避免Schema加载警告
+        selectionRanges: true
+    });
+};
+
 // 配置输入编辑器
 const configureInputEditor: () => void = () => {
     if (!inputEditor) return;
 
-    // 输入编辑器始终使用2个空格缩进，不受格式化设置影响
-    inputEditor.getModel()?.updateOptions({ tabSize: 2, indentSize: 2, insertSpaces: true });
-    // 同时更新编辑器选项，确保formatOnPaste使用2个空格
-    inputEditor.updateOptions({ tabSize: 2, indentSize: 2 } as any);
+    // 配置JSON Schema支持
+    configureJsonSchemaSupport();
+
+    // 输入编辑器使用用户设置的缩进大小
+    const indentSizeValue = indentSize.value;
+    inputEditor.getModel()?.updateOptions({ tabSize: indentSizeValue, indentSize: indentSizeValue, insertSpaces: true });
+    // 同时更新编辑器选项，确保formatOnPaste使用用户设置的缩进
+    inputEditor.updateOptions({ tabSize: indentSizeValue, indentSize: indentSizeValue } as any);
 
     // 初始化时不加载数据，保持空白
     inputEditor.setValue('');
@@ -2690,14 +2866,15 @@ const configureInputEditor: () => void = () => {
 
     // 监听输入变化
     inputEditor.onDidChangeModelContent(() => {
-        // 确保输入编辑器始终使用2个空格缩进
+        // 确保输入编辑器使用用户设置的缩进大小
         const model = inputEditor?.getModel();
         if (model) {
+            const indentSizeValue = indentSize.value;
             const currentTabSize = model.getOptions().tabSize;
             const currentIndentSize = (model.getOptions() as any).indentSize;
-            if (currentTabSize !== 2 || currentIndentSize !== 2) {
-                model.updateOptions({ tabSize: 2, indentSize: 2, insertSpaces: true });
-                inputEditor?.updateOptions({ tabSize: 2, indentSize: 2 } as any);
+            if (currentTabSize !== indentSizeValue || currentIndentSize !== indentSizeValue) {
+                model.updateOptions({ tabSize: indentSizeValue, indentSize: indentSizeValue, insertSpaces: true });
+                inputEditor?.updateOptions({ tabSize: indentSizeValue, indentSize: indentSizeValue } as any);
             }
         }
         // 使用防抖更新行号宽度，避免频繁调用
@@ -3712,12 +3889,14 @@ class JsonPlusFormatter {
     private encodingMode: number;
     private indentSize: number;
     private arrayNewLine: boolean;
+    private floatPrecision: number;
     private escapePlaceholderCounter: number;
 
-    constructor(encodingMode: number, indentSize: number, arrayNewLine: boolean) {
+    constructor(encodingMode: number, indentSize: number, arrayNewLine: boolean, floatPrecision: number = 0) {
         this.encodingMode = encodingMode;
         this.indentSize = indentSize;
         this.arrayNewLine = arrayNewLine;
+        this.floatPrecision = floatPrecision;
         this.escapePlaceholderCounter = 0;
     }
 
@@ -3869,6 +4048,7 @@ class JsonPlusFormatter {
 
         // 预处理字符串，处理特殊值、转义等
         let processedInput = this.preprocessSpecialValues(input);
+        processedInput = this.preprocessHighPrecisionNumbers(processedInput, escapeMap);
         processedInput = this.preprocessString(processedInput, escapeMap);
 
         try {
@@ -3878,6 +4058,39 @@ class JsonPlusFormatter {
         } catch (error) {
             throw new Error('JSON5 解析失败: ' + (error as Error).message);
         }
+    }
+
+    // 预处理高精度数字，将超长数字字符串包装为特殊对象以保持精度
+    private preprocessHighPrecisionNumbers(input: string, escapeMap: Map<string, string>): string {
+        // 如果不需要高精度控制，直接返回
+        if (this.floatPrecision <= 17) {
+            return input;
+        }
+
+        // 正则表达式匹配数字（包括整数、小数、科学计数法）
+        const numberRegex = /\b\d+\.?\d*(?:e[+-]?\d+)?\b|\b\d*\.\d+(?:e[+-]?\d+)?\b/g;
+
+        return input.replace(numberRegex, (match) => {
+            // 检查是否是超高精度的数字
+            const numStr = match;
+            const hasDecimal = numStr.includes('.');
+            const decimalPlaces = hasDecimal ? numStr.split('.')[1]?.replace(/e[+-]?.*$/, '').length || 0 : 0;
+            const totalDigits = numStr.replace(/[e.]/g, '').length;
+
+            // 如果数字具有极高精度（超过17位或小数点后超过17位），包装为特殊对象
+            if (totalDigits > 17 || decimalPlaces > 17) {
+                const placeholder = this.createEscapePlaceholder();
+                const highPrecisionNumber = {
+                    __highPrecisionNumber: true,
+                    originalString: numStr,
+                    parsedValue: parseFloat(numStr) // 仍然解析为数字以便计算，但保留原始字符串
+                };
+                escapeMap.set(placeholder, JSON.stringify(highPrecisionNumber));
+                return `"${placeholder}"`;
+            }
+
+            return match;
+        });
     }
 
     // 预处理特殊值，将JavaScript特殊值转换为JSON兼容格式
@@ -3896,7 +4109,7 @@ class JsonPlusFormatter {
         return result;
     }
 
-    // 替换函数定义为null，支持嵌套和大括号匹配
+    // 替换函数定义为null，支持嵌套和大括号匹配，但不处理字符串内部的内容
     private replaceFunctionsWithNull(input: string): string {
         let result = '';
         let i = 0;
@@ -3908,14 +4121,35 @@ class JsonPlusFormatter {
                 break;
             }
 
+            // 检查function是否在字符串内部
+            let inString = false;
+            let stringChar = '';
+            let k = 0;
+            while (k < funcIndex) {
+                const char = input[k];
+                if (!inString && (char === '"' || char === "'")) {
+                    inString = true;
+                    stringChar = char;
+                } else if (inString && char === stringChar && input[k - 1] !== '\\') {
+                    inString = false;
+                    stringChar = '';
+                }
+                k++;
+            }
+
+            // 如果在字符串内部，跳过这个function
+            if (inString) {
+                result += input.substring(i, funcIndex + 8); // 'function'.length = 8
+                i = funcIndex + 8;
+                continue;
+            }
+
             // 添加function之前的部分
             result += input.substring(i, funcIndex);
 
             // 找到函数的结束位置
             let parenCount = 0;
             let braceCount = 0;
-            let inString = false;
-            let stringChar = '';
             let j = funcIndex;
 
             // 跳过function关键字
@@ -4121,6 +4355,163 @@ class JsonPlusFormatter {
         return this.customStringify(data, escapeMap);
     }
 
+    // 格式化数字，支持精度控制和大数字处理
+    private formatNumber(num: number): string {
+        // 如果精度为0，不进行任何处理
+        if (this.floatPrecision === 0) {
+            return num.toString();
+        }
+
+        // 检查是否为整数
+        if (Number.isInteger(num)) {
+            return num.toString();
+        }
+
+        // 获取原始字符串表示
+        const numStr = num.toString();
+
+        // 对于科学计数法或极大数据，使用高精度处理
+        if (numStr.includes('e') || Math.abs(num) >= 1e15 || (Math.abs(num) < 1e-6 && num !== 0)) {
+            return this.formatHighPrecisionNumber(num);
+        }
+
+        // 对于普通浮点数，如果需要高精度且原始字符串有足够精度，直接使用
+        if (this.floatPrecision > 15 && numStr.includes('.')) {
+            const parts = numStr.split('.');
+            if (parts[1] && parts[1].length >= this.floatPrecision) {
+                // 原始字符串已经具有所需精度，直接使用
+                return numStr;
+            }
+        }
+
+        // 普通浮点数使用toFixed进行精度控制
+        try {
+            return num.toFixed(this.floatPrecision);
+        } catch (error) {
+            // 如果toFixed失败，回退到原始字符串
+            return num.toString();
+        }
+    }
+
+    // 处理大数字或科学计数法的高精度格式化
+    private formatHighPrecisionNumber(num: number): string {
+        const str = num.toString();
+
+        // 如果不需要精度控制，直接返回原始字符串
+        if (this.floatPrecision === 0) {
+            return str;
+        }
+
+        // 处理科学计数法
+        if (str.includes('e')) {
+            const [mantissa, exponent] = str.split('e');
+            const exp = parseInt(exponent);
+
+            if (exp > 0) {
+                // 正指数：123.45e+2 -> 12345
+                const parts = mantissa.split('.');
+                const integerPart = parts[0];
+                const decimalPart = parts[1] || '';
+
+                // 计算需要移动的小数位数
+                let result = integerPart + decimalPart;
+                const zerosToAdd = exp - decimalPart.length;
+
+                if (zerosToAdd > 0) {
+                    result += '0'.repeat(zerosToAdd);
+                } else if (zerosToAdd < 0) {
+                    const insertPos = result.length + zerosToAdd;
+                    if (insertPos > 0) {
+                        result = result.slice(0, insertPos) + '.' + result.slice(insertPos);
+                    } else {
+                        result = '0.' + '0'.repeat(-insertPos) + result;
+                    }
+                }
+
+                // 如果需要精度控制且不是整数，截取到指定精度
+                if (this.floatPrecision > 0 && result.includes('.')) {
+                    const dotIndex = result.indexOf('.');
+                    const decimalPlaces = result.length - dotIndex - 1;
+                    if (decimalPlaces > this.floatPrecision) {
+                        // 直接截取字符串，避免再次转换为数字丢失精度
+                        result = result.slice(0, dotIndex + this.floatPrecision + 1);
+                        // 移除末尾的0，但保留至少一个小数位如果有小数点
+                        result = result.replace(/\.?0+$/, match => match.includes('.') ? '.0' : '');
+                    }
+                }
+
+                return result;
+            } else {
+                // 负指数：1.2345e-2 -> 0.012345
+                const parts = mantissa.split('.');
+                const integerPart = parts[0];
+                const decimalPart = parts[1] || '';
+
+                const totalDigits = integerPart + decimalPart;
+                const zerosToAdd = -exp - 1;
+
+                let result = '0.' + '0'.repeat(zerosToAdd) + totalDigits;
+
+                // 如果需要精度控制，截取小数部分
+                if (this.floatPrecision > 0 && result.includes('.')) {
+                    const dotIndex = result.indexOf('.');
+                    const maxLength = dotIndex + this.floatPrecision + 1;
+                    if (result.length > maxLength) {
+                        result = result.slice(0, maxLength);
+                        // 移除末尾的0，但保留至少一个小数位如果有小数点
+                        result = result.replace(/\.?0+$/, match => match.includes('.') ? '.0' : '');
+                    }
+                }
+
+                return result;
+            }
+        }
+
+        // 对于其他大数字，如果精度要求不高，使用toFixed
+        if (this.floatPrecision <= 15) {
+            try {
+                return num.toFixed(this.floatPrecision);
+            } catch (error) {
+                return str;
+            }
+        }
+
+        // 对于高精度要求，直接返回原始字符串（如果它已经足够精确）
+        return str;
+    }
+
+    // 格式化高精度数字对象
+    private formatHighPrecisionNumberObject(data: any): string {
+        if (!data || !data.__highPrecisionNumber || !data.originalString) {
+            return 'null';
+        }
+
+        const originalStr = data.originalString;
+
+        // 如果不需要精度控制，直接返回原始字符串
+        if (this.floatPrecision === 0) {
+            return originalStr;
+        }
+
+        // 如果精度设置为很高且原始字符串足够精确，直接返回
+        if (this.floatPrecision >= 64) {
+            return originalStr;
+        }
+
+        // 否则，截取到指定精度
+        if (originalStr.includes('.')) {
+            const parts = originalStr.split('.');
+            const integerPart = parts[0];
+            const decimalPart = parts[1].replace(/e[+-]?.*$/, ''); // 移除科学计数法部分
+
+            if (decimalPart.length > this.floatPrecision) {
+                return integerPart + '.' + decimalPart.slice(0, this.floatPrecision);
+            }
+        }
+
+        return originalStr;
+    }
+
     // 自定义字符串化函数
     private customStringify(data: any, escapeMap: Map<string, string>, indent: number = 0): string {
         const indentStr = ' '.repeat(indent * this.indentSize);
@@ -4141,8 +4532,10 @@ class JsonPlusFormatter {
             if (isNaN(data) || !isFinite(data)) {
                 return 'null';
             }
-            return data.toString();
+            return this.formatNumber(data);
         }
+
+        // 高精度数字对象现在在字符串处理中处理，这里不再需要特殊处理
 
         if (typeof data === 'string') {
             return this.formatString(data, escapeMap);
@@ -4175,6 +4568,16 @@ class JsonPlusFormatter {
             if (processedStr.includes(placeholder)) {
                 processedStr = processedStr.replace(new RegExp(placeholder.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g'), originalEscape);
             }
+        }
+
+        // 检查是否是高精度数字对象的JSON字符串，如果是则直接返回数字字符串
+        try {
+            const parsed = JSON.parse(processedStr);
+            if (typeof parsed === 'object' && parsed && parsed.__highPrecisionNumber && parsed.originalString) {
+                return this.formatHighPrecisionNumberObject(parsed);
+            }
+        } catch (e) {
+            // 不是有效的JSON，正常处理
         }
 
         let result = '"';
@@ -4339,7 +4742,7 @@ class JsonPlusFormatter {
         const nextIndentStr = ' '.repeat(indent * this.indentSize);
 
         const items = keys.map(key => {
-            const keyStr = JSON.stringify(key); // JSON标准要求key必须用双引号包围
+            const keyStr = this.formatString(key, escapeMap); // 处理对象键，确保占位符被正确恢复
             const valueStr = this.customStringify(obj[key], escapeMap, indent + 1);
             return indentStr + keyStr + ': ' + valueStr;
         });
@@ -4350,7 +4753,7 @@ class JsonPlusFormatter {
 
 // 兼容性函数 - 用于其他地方的JSON解析
 const preprocessJSON = (input: string) => {
-    const formatter = new JsonPlusFormatter(encodingMode.value, indentSize.value, arrayNewLine.value);
+    const formatter = new JsonPlusFormatter(encodingMode.value, indentSize.value, arrayNewLine.value, floatPrecision.value);
     const result = formatter.parseJson5(input);
     return {
         ...result,
@@ -4405,7 +4808,7 @@ const reformatJsonIndentation = (jsonString: string, newIndentSize: number): str
 
 // 兼容性函数 - 用于其他地方的JSON格式化
 const customStringify = (data: any, replacer: any, indentSize: number, originalString?: string, ...args: any[]) => {
-    const formatter = new JsonPlusFormatter(encodingMode.value, indentSize, arrayNewLine.value);
+    const formatter = new JsonPlusFormatter(encodingMode.value, indentSize, arrayNewLine.value, floatPrecision.value);
     const escapeMap = new Map<string, string>();
     return formatter.format(data, escapeMap);
 };
@@ -4425,7 +4828,8 @@ const formatJSON = () => {
         const formatter = new JsonPlusFormatter(
             encodingMode.value,
             indentSize.value,
-            arrayNewLine.value
+            arrayNewLine.value,
+            floatPrecision.value
         );
 
         // 解析 JSON5
@@ -6120,6 +6524,10 @@ const resetArchiveDragState = () => {
     dragEnabledArchiveId.value = null;
     dropIndicatorIndex.value = null;
     clearArchivePressTimer();
+    // 清理输入编辑器的拖拽视觉状态
+    if (inputEditorContainer.value) {
+        inputEditorContainer.value.classList.remove('drag-over-archive');
+    }
 };
 
 const onArchiveDragStart = (item: JsonArchive, event: DragEvent) => {
@@ -6129,7 +6537,8 @@ const onArchiveDragStart = (item: JsonArchive, event: DragEvent) => {
     }
     draggingArchiveId.value = item.id;
     dragOverArchiveId.value = null;
-    event.dataTransfer?.setData('text/plain', item.id);
+    // 设置自定义数据类型，避免被当作普通文本处理
+    event.dataTransfer?.setData('application/json-archive', JSON.stringify({ id: item.id, type: 'archive' }));
     if (event.dataTransfer) {
         event.dataTransfer.effectAllowed = 'move';
     }
@@ -7765,26 +8174,61 @@ const executeFieldSort = () => {
     }
 };
 
+// 排序字符串行（每行一个字符串）
+const sortStringLines = (input: string, method: 'dictionary' | 'length', order: 'asc' | 'desc'): string => {
+    // 按行分割，去掉空行和只包含空白字符的行
+    const lines = input.split('\n')
+        .map(line => line.trim())
+        .filter(line => line.length > 0)
+        .map(line => {
+            // 自动处理引号：如果不是以引号开头结尾，则添加引号
+            if (!line.startsWith('"') && !line.endsWith('"')) {
+                // 检查是否已经是有效的JSON字符串（处理转义字符）
+                try {
+                    JSON.parse(line);
+                    return line; // 如果能解析，保持原样
+                } catch {
+                    return `"${line.replace(/"/g, '\\"')}"`; // 添加引号并转义内部引号
+                }
+            }
+            return line;
+        });
+
+    // 排序
+    const sortedLines = lines.sort((a, b) => {
+        let result: number;
+
+        if (method === 'dictionary') {
+            // 字典序比较（去除引号进行比较）
+            const strA = a.replace(/^"|"$/g, '');
+            const strB = b.replace(/^"|"$/g, '');
+            result = strA.localeCompare(strB, undefined, { numeric: false, sensitivity: 'base' });
+        } else if (method === 'length') {
+            // 按长度比较（去除引号进行比较）
+            const strA = a.replace(/^"|"$/g, '');
+            const strB = b.replace(/^"|"$/g, '');
+            if (strA.length !== strB.length) {
+                result = strA.length - strB.length;
+            } else {
+                result = strA.localeCompare(strB, undefined, { numeric: false, sensitivity: 'base' });
+            }
+        } else {
+            result = 0;
+        }
+
+        return order === 'asc' ? result : -result;
+    });
+
+    return sortedLines.join('\n');
+};
+
 // 应用排序
 const applySort = () => {
     try {
-        outputType.value = 'json';
         const value = inputEditor?.getValue() || '';
 
         if (!value.trim()) {
-            showMessageError('请先输入 JSON 数据');
-            return;
-        }
-
-        // 预处理 JSON 字符串
-        let parsed;
-        let originalString = value;
-        try {
-            const result = preprocessJSON(value);
-            parsed = result.data;
-            originalString = result.originalString;
-        } catch (error) {
-            showMessageError('请输入有效的 JSON 数据');
+            showMessageError('请先输入数据');
             return;
         }
 
@@ -7797,38 +8241,63 @@ const applySort = () => {
             return;
         }
 
-        // 执行排序
-        const sorted = sortJsonObject(parsed, sortMethod.value, sortOrder.value, '');
+        let outputResult: string;
+        let isJsonFormat = true;
 
-        // 格式化输出（排序功能固定使用2个空格缩进，编码模式保持原样，数组样式固定为换行）
-        const formatted = customStringify(sorted, null, 2, originalString, 0, true);
-        const finalOutput = formatted.replace(/\\u([0-9a-fA-F]{4})/g, '\\u$1');
+        // 对于字典序和按Key长度，优先尝试JSON解析，如果失败则按字符串行处理
+        if (sortMethod.value === 'dictionary' || sortMethod.value === 'length') {
+            try {
+                // 先尝试JSON解析
+                const result = preprocessJSON(value);
+                const parsed = result.data;
+                const originalString = result.originalString;
 
-        outputEditor?.setValue(finalOutput);
+                // 执行JSON对象排序
+                const sorted = sortJsonObject(parsed, sortMethod.value, sortOrder.value, '');
 
-        // 更新编辑器配置（排序功能固定使用2个空格缩进）
+                // 格式化输出
+                const formatted = customStringify(sorted, null, 2, originalString, 0, true);
+                outputResult = formatted.replace(/\\u([0-9a-fA-F]{4})/g, '\\u$1');
+            } catch (jsonError) {
+                // JSON解析失败，按字符串行处理
+                isJsonFormat = false;
+                outputResult = sortStringLines(value, sortMethod.value, sortOrder.value);
+                outputType.value = 'text';
+            }
+        } else {
+            // 其他排序方式保持原有逻辑
+            outputType.value = 'json';
+            const result = preprocessJSON(value);
+            const parsed = result.data;
+            const originalString = result.originalString;
+
+            const sorted = sortJsonObject(parsed, sortMethod.value, sortOrder.value, '');
+            const formatted = customStringify(sorted, null, 2, originalString, 0, true);
+            outputResult = formatted.replace(/\\u([0-9a-fA-F]{4})/g, '\\u$1');
+        }
+
+        outputEditor?.setValue(outputResult);
+
+        // 更新编辑器配置
         if (outputEditor) {
             const model = outputEditor.getModel();
             if (model) {
-                monaco.editor.setModelLanguage(model, 'json');
+                // 根据输出格式设置语言
+                monaco.editor.setModelLanguage(model, isJsonFormat ? 'json' : 'plaintext');
             }
 
             const lineCount = outputEditor?.getModel()?.getLineCount() || 0;
-            outputEditor.updateOptions(getEditorOptions(2, true, 'json', true));
+            outputEditor.updateOptions(getEditorOptions(2, true, isJsonFormat ? 'json' : 'text', true));
             updateLineNumberWidth(outputEditor);
             updateEditorHeight(outputEditor);
         }
 
-        // 显示成功提示
         const methodNames: Record<string, string> = {
             dictionary: '字典序',
             length: '按Key长度',
         };
-        const orderNames: Record<string, string> = {
-            asc: '正序',
-            desc: '倒序',
-        };
-        showMessageSuccess(`排序成功`);
+        const formatType = isJsonFormat ? 'JSON' : '文本行';
+        showMessageSuccess(`${formatType}排序成功`);
     } catch (error: any) {
         showMessageError('排序失败: ' + error.message);
     }
@@ -8916,21 +9385,23 @@ const downloadOutput = async () => {
         const hash = fullHash.substring(0, 32);
 
         // 根据输出类型决定文件扩展名和 MIME 类型
-        const fileExtensionMap: Record<'json' | 'yaml' | 'toml' | 'xml' | 'go', string> = {
+        const fileExtensionMap: Record<'json' | 'yaml' | 'toml' | 'xml' | 'go' | 'text', string> = {
             json: '.json',
             yaml: '.yaml',
             toml: '.toml',
             xml: '.xml',
             go: '.go',
+            text: '.txt',
         };
         const fileExtension = fileExtensionMap[outputType.value];
 
-        const mimeTypeMap: Record<'json' | 'yaml' | 'toml' | 'xml' | 'go', string> = {
+        const mimeTypeMap: Record<'json' | 'yaml' | 'toml' | 'xml' | 'go' | 'text', string> = {
             json: 'application/json',
             yaml: 'text/yaml',
             toml: 'text/plain',
             xml: 'application/xml',
             go: 'text/plain',
+            text: 'text/plain',
         };
         const mimeType = mimeTypeMap[outputType.value];
 
@@ -9344,13 +9815,13 @@ const transferToInput = (e: MouseEvent) => {
 /* 全屏样式 */
 .json-tool-container.fullscreen {
     position: fixed;
-    top: 0;
+    inset: 0;
     bottom: 0;
     z-index: 1500;
     left: 0;
     right: 0;
-    width: 100vw;
-    height: 100vh;
+    width: 100%;
+    height: 100%;
     background-color: #f0f2f5;
     animation: fullscreenEnter 0.4s cubic-bezier(0.4, 0, 0.2, 1);
 }
@@ -9364,7 +9835,7 @@ const transferToInput = (e: MouseEvent) => {
 
     to {
         opacity: 1;
-        transform: scale(1);
+        transform: none;
     }
 }
 
@@ -9390,11 +9861,12 @@ const transferToInput = (e: MouseEvent) => {
     position: relative;
     display: flex;
     align-items: center;
-    min-height: 48px;
 }
 
 .tool-bar {
-    padding: 6px;
+    border-bottom: 1px solid rgba(160,170,180,0.18);
+    box-shadow: 0 2px 6px rgba(16,24,40,0.03);
+    padding: 5px 10px;
     display: flex;
     align-items: center;
     gap: 0;
@@ -9504,6 +9976,10 @@ const transferToInput = (e: MouseEvent) => {
 
 .collapse-control .level-select {
     width: 90px;
+}
+
+:deep(.el-select-dropdown__item) {
+    padding: 0 20px !important;
 }
 
 /* 响应式：小屏幕时调整布局 */
@@ -10160,15 +10636,27 @@ const transferToInput = (e: MouseEvent) => {
     border-radius: 4px;
 }
 
-/* 缩小设置弹窗中单选按钮的圆圈大小 */
-.settings-radio-group :deep(.el-radio__inner) {
-    width: 14px !important;
-    height: 14px !important;
+/* 移除单选项标签左侧为圆圈预留的间距（当圆圈被隐藏时） */
+.settings-radio-group :deep(.el-radio__label) {
+    padding-left: 0 !important;
 }
 
-.settings-radio-group :deep(.el-radio__inner::after) {
-    width: 6px !important;
-    height: 6px !important;
+/* 隐藏设置弹窗中单选按钮的小圆圈，仅保留文字标签 */
+.settings-radio-group :deep(.el-radio__inner) {
+    display: none !important;
+}
+
+.settings-radio-group :deep(.el-radio__input) {
+    width: 0 !important;
+    margin-right: 0 !important;
+    padding: 0 !important;
+    visibility: hidden !important;
+}
+
+/* 保持带边框的单选项的内边距，只是移除圆圈留白 */
+.settings-radio-group :deep(.el-radio.is-bordered) {
+    padding: 6px 12px;
+    border-radius: 4px;
 }
 
 .settings-item :deep(.el-switch) {
@@ -10286,9 +10774,8 @@ const transferToInput = (e: MouseEvent) => {
     text-align: center;
     background-color: #edf5ff;
     color: #409eff;
-    border-radius: 2px;
     min-width: 20px;
-    padding: 2px 4px;
+    padding: 2px;
     display: inline-block;
 }
 
@@ -10607,5 +11094,15 @@ const transferToInput = (e: MouseEvent) => {
     font-size: 14px;
     line-height: 1.6;
     word-break: break-word;
+}
+</style>
+<style>
+.level-select-dropdown .el-select-dropdown__item {
+    padding: 0 20px;
+}
+.level-select-dropdown .el-select-dropdown__item.is-active,
+.level-select-dropdown .el-select-dropdown__item.selected {
+  color: #409eff;
+  font-weight: 600;
 }
 </style>
