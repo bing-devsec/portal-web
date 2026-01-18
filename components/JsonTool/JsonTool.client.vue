@@ -187,10 +187,11 @@
 
                 <!-- 添加可拖动分隔线 -->
                 <div class="resizer" @mousedown="startResize" @touchstart.passive="startResize">
-                    <el-button class="transfer-button" type="primary" circle @click.stop="transferToInput">
-                        <el-icon>
-                            <ArrowLeft />
-                        </el-icon>
+                    <el-button class="transfer-button" type="primary" circle @click.stop="transferToInput" aria-label="转移到输入">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-hidden="true" focusable="false">
+                            <path d="M10 18L4 12L10 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+                            <path d="M4 12H20" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
+                        </svg>
                     </el-button>
                 </div>
 
@@ -789,7 +790,7 @@ const clampFloatPrecisionValue = (raw: number | string): number => {
 };
 
 const onFloatPrecisionInput = (val: number | number[] | string) => {
-    const raw = Array.isArray(val) ? (val[0] ?? 0) : val;
+    const raw = Array.isArray(val) ? val[0] ?? 0 : val;
     floatPrecision.value = clampFloatPrecisionValue(raw as number | string);
 };
 
@@ -2824,8 +2825,8 @@ const configureJsonSchemaSupport = () => {
             { uri: 'http://json-schema.org/draft/2020-12/vocab/format-annotation', fileMatch: ['*'] },
             { uri: 'https://json-schema.org/draft/2020-12/vocab/format-annotation', fileMatch: ['*'] },
             { uri: 'http://json-schema.org/draft/2020-12/vocab/content', fileMatch: ['*'] },
-            { uri: 'https://json-schema.org/draft/2020-12/vocab/content', fileMatch: ['*'] }
-        ]
+            { uri: 'https://json-schema.org/draft/2020-12/vocab/content', fileMatch: ['*'] },
+        ],
     });
 
     // 配置JSON语言服务，提供更好的自动补全
@@ -2839,7 +2840,7 @@ const configureJsonSchemaSupport = () => {
         colors: true,
         foldingRanges: true,
         diagnostics: false, // 禁用诊断以避免Schema加载警告
-        selectionRanges: true
+        selectionRanges: true,
     });
 };
 
@@ -2882,7 +2883,7 @@ const configureInputEditor: () => void = () => {
 
         const value = inputEditor?.getValue() || '';
         if (value.trim()) {
-            const cleanedContent = value.replace(/[\u0000-\u0019]+/g, '');
+            const cleanedContent = value.replace(/[\u0000-\u0008\u000B-\u000C\u000E-\u0019]+/g, '');
 
             // 检查行数和深度限制
             const checkResult = checkLinesAndDepth(cleanedContent);
@@ -3927,8 +3928,8 @@ class JsonPlusFormatter {
                 const code = ((byte & 7) << 18) | ((bytes[i + 1] & 63) << 12) | ((bytes[i + 2] & 63) << 6) | (bytes[i + 3] & 63);
                 if (code >= 0x10000) {
                     // 转换为代理对
-                    const high = Math.floor((code - 0x10000) / 0x400) + 0xD800;
-                    const low = ((code - 0x10000) % 0x400) + 0xDC00;
+                    const high = Math.floor((code - 0x10000) / 0x400) + 0xd800;
+                    const low = ((code - 0x10000) % 0x400) + 0xdc00;
                     result += String.fromCharCode(high, low);
                 } else {
                     result += String.fromCharCode(code);
@@ -4070,7 +4071,7 @@ class JsonPlusFormatter {
         // 正则表达式匹配数字（包括整数、小数、科学计数法）
         const numberRegex = /\b\d+\.?\d*(?:e[+-]?\d+)?\b|\b\d*\.\d+(?:e[+-]?\d+)?\b/g;
 
-        return input.replace(numberRegex, (match) => {
+        return input.replace(numberRegex, match => {
             // 检查是否是超高精度的数字
             const numStr = match;
             const hasDecimal = numStr.includes('.');
@@ -4083,7 +4084,7 @@ class JsonPlusFormatter {
                 const highPrecisionNumber = {
                     __highPrecisionNumber: true,
                     originalString: numStr,
-                    parsedValue: parseFloat(numStr) // 仍然解析为数字以便计算，但保留原始字符串
+                    parsedValue: parseFloat(numStr), // 仍然解析为数字以便计算，但保留原始字符串
                 };
                 escapeMap.set(placeholder, JSON.stringify(highPrecisionNumber));
                 return `"${placeholder}"`;
@@ -4209,7 +4210,7 @@ class JsonPlusFormatter {
 
     // 生成转义占位符
     private createEscapePlaceholder(): string {
-        return '\uE000' + String.fromCharCode(0xF000 + this.escapePlaceholderCounter++); // 私人使用区字符
+        return '\uE000' + String.fromCharCode(0xf000 + this.escapePlaceholderCounter++); // 私人使用区字符
     }
 
     // 预处理字符串，处理非法转义和注释
@@ -4228,26 +4229,26 @@ class JsonPlusFormatter {
                 while (i < input.length && input[i] !== '\n') {
                     i++;
                 }
-                        continue;
+                continue;
             } else if (char === '/' && nextChar === '*') {
                 // 多行注释 /* */
                 i += 2;
                 while (i < input.length - 1) {
                     if (input[i] === '*' && input[i + 1] === '/') {
                         i += 2;
-                                break;
-                        }
+                        break;
+                    }
                     i++;
                 }
-                        continue;
+                continue;
             } else if (char === '#') {
                 // # 单行注释（扩展支持）
                 i++;
                 while (i < input.length && input[i] !== '\n') {
                     i++;
                 }
-                        continue;
-                    }
+                continue;
+            }
 
             if (char === '"' || char === "'") {
                 // 处理字符串
@@ -4311,10 +4312,10 @@ class JsonPlusFormatter {
                             }
                         } else {
                             // 处理累积的字节（如果有）
-                                if (pendingBytes.length > 0) {
-                                    stringContent += this.escapeDecodedString(this.decodeUTF8(pendingBytes));
-                                    pendingBytes.length = 0; // 清空
-                                }
+                            if (pendingBytes.length > 0) {
+                                stringContent += this.escapeDecodedString(this.decodeUTF8(pendingBytes));
+                                pendingBytes.length = 0; // 清空
+                            }
 
                             stringContent += '\\';
                             i++;
@@ -4436,7 +4437,7 @@ class JsonPlusFormatter {
                         // 直接截取字符串，避免再次转换为数字丢失精度
                         result = result.slice(0, dotIndex + this.floatPrecision + 1);
                         // 移除末尾的0，但保留至少一个小数位如果有小数点
-                        result = result.replace(/\.?0+$/, match => match.includes('.') ? '.0' : '');
+                        result = result.replace(/\.?0+$/, match => (match.includes('.') ? '.0' : ''));
                     }
                 }
 
@@ -4459,7 +4460,7 @@ class JsonPlusFormatter {
                     if (result.length > maxLength) {
                         result = result.slice(0, maxLength);
                         // 移除末尾的0，但保留至少一个小数位如果有小数点
-                        result = result.replace(/\.?0+$/, match => match.includes('.') ? '.0' : '');
+                        result = result.replace(/\.?0+$/, match => (match.includes('.') ? '.0' : ''));
                     }
                 }
 
@@ -4691,18 +4692,17 @@ class JsonPlusFormatter {
     // 转Unicode模式编码
     private formatUnicode(char: string, code: number, escapeMap: Map<string, string>): string {
         if (code > 127 || code < 32 || code === 127) {
-            if (code <= 0xFFFF) {
+            if (code <= 0xffff) {
                 return '\\u' + code.toString(16).padStart(4, '0');
             } else {
                 // 代理对处理
-                const high = Math.floor((code - 0x10000) / 0x400) + 0xD800;
-                const low = ((code - 0x10000) % 0x400) + 0xDC00;
+                const high = Math.floor((code - 0x10000) / 0x400) + 0xd800;
+                const low = ((code - 0x10000) % 0x400) + 0xdc00;
                 return '\\u' + high.toString(16).padStart(4, '0') + '\\u' + low.toString(16).padStart(4, '0');
             }
         }
         return char;
     }
-
 
     // 格式化数组
     private formatArray(arr: any[], escapeMap: Map<string, string>, indent: number): string {
@@ -4711,18 +4711,13 @@ class JsonPlusFormatter {
         }
 
         // 检查是否为简单类型数组
-        const isSimpleArray = arr.every(item =>
-            typeof item === 'string' ||
-            typeof item === 'number' ||
-            typeof item === 'boolean' ||
-            item === null
-        );
+        const isSimpleArray = arr.every(item => typeof item === 'string' || typeof item === 'number' || typeof item === 'boolean' || item === null);
 
         if (isSimpleArray && !this.arrayNewLine) {
             // 紧凑模式
             const items = arr.map(item => this.customStringify(item, escapeMap, 0));
             return '[' + items.join(', ') + ']';
-            } else {
+        } else {
             // 换行模式（复杂数组或强制换行）
             const indentStr = ' '.repeat((indent + 1) * this.indentSize);
             const nextIndentStr = ' '.repeat(indent * this.indentSize);
@@ -4757,7 +4752,7 @@ const preprocessJSON = (input: string) => {
     const result = formatter.parseJson5(input);
     return {
         ...result,
-        originalString: input // 保持向后兼容
+        originalString: input, // 保持向后兼容
     };
 };
 
@@ -4825,12 +4820,7 @@ const formatJSON = () => {
         }
 
         // 创建格式化器
-        const formatter = new JsonPlusFormatter(
-            encodingMode.value,
-            indentSize.value,
-            arrayNewLine.value,
-            floatPrecision.value
-        );
+        const formatter = new JsonPlusFormatter(encodingMode.value, indentSize.value, arrayNewLine.value, floatPrecision.value);
 
         // 解析 JSON5
         const { data, escapeMap } = formatter.parseJson5(value);
@@ -5749,16 +5739,19 @@ const handleLevelAction = () => {
 
         // 解析JSON
         let parsedData;
+        let escapeMap;
         try {
             const result = preprocessJSON(value);
             parsedData = result.data; // 提取实际的JSON数据
+            escapeMap = result.escapeMap; // 获取转义映射
         } catch (error) {
             showMessageError('请输入有效的 JSON 数据');
             return;
         }
 
-        // 格式化JSON以确保结构正确
-        const formatted = JSON.stringify(parsedData, null, 2);
+        // 使用JsonPlusFormatter格式化JSON，保持原始转义序列
+        const formatter = new JsonPlusFormatter(encodingMode.value, indentSize.value, arrayNewLine.value, floatPrecision.value);
+        const formatted = formatter.format(parsedData, escapeMap);
 
         // 更新预览区域内容
         outputEditor.setValue(formatted);
@@ -8177,7 +8170,8 @@ const executeFieldSort = () => {
 // 排序字符串行（每行一个字符串）
 const sortStringLines = (input: string, method: 'dictionary' | 'length', order: 'asc' | 'desc'): string => {
     // 按行分割，去掉空行和只包含空白字符的行
-    const lines = input.split('\n')
+    const lines = input
+        .split('\n')
         .map(line => line.trim())
         .filter(line => line.length > 0)
         .map(line => {
@@ -9705,7 +9699,6 @@ const transferToInput = (e: MouseEvent) => {
             return;
         }
 
-
         const targetIndentSize = 2; // 输入区域固定使用2个空格缩进
         let formattedContent: string;
 
@@ -9864,8 +9857,8 @@ const transferToInput = (e: MouseEvent) => {
 }
 
 .tool-bar {
-    border-bottom: 1px solid rgba(160,170,180,0.18);
-    box-shadow: 0 2px 6px rgba(16,24,40,0.03);
+    border-bottom: 1px solid rgba(160, 170, 180, 0.18);
+    box-shadow: 0 2px 6px rgba(16, 24, 40, 0.03);
     padding: 5px 10px;
     display: flex;
     align-items: center;
@@ -10354,7 +10347,7 @@ const transferToInput = (e: MouseEvent) => {
     top: 7px;
     left: 50%;
     transform: translate(-50%, 0);
-    background-color: #ffffff;
+    background-color: #e4e7ed;
     border-radius: 3px;
     cursor: pointer;
     width: 20px;
@@ -10364,14 +10357,11 @@ const transferToInput = (e: MouseEvent) => {
     justify-content: center;
 }
 
-.transfer-button:hover {
-    background-color: #f5f7fa;
-    border-color: #bbb;
-}
-
-.transfer-button .el-icon {
-    font-size: 16px;
+.transfer-button svg {
+    width: 18px;
+    height: 18px;
     color: #409eff;
+    display: block;
 }
 
 /* 调整单选按钮的大小和样式 */
@@ -11011,7 +11001,6 @@ const transferToInput = (e: MouseEvent) => {
     transition: all 0.2s;
 }
 
-
 .demo-guide-header {
     cursor: move;
     user-select: none;
@@ -11102,7 +11091,7 @@ const transferToInput = (e: MouseEvent) => {
 }
 .level-select-dropdown .el-select-dropdown__item.is-active,
 .level-select-dropdown .el-select-dropdown__item.selected {
-  color: #409eff;
-  font-weight: 600;
+    color: #409eff;
+    font-weight: 600;
 }
 </style>

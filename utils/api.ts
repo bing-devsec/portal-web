@@ -284,9 +284,9 @@ const getGlobalMessageOffset = () => {
         // 通过检查DOM中是否有fullscreen类来判断
         const jsonToolContainer = document.querySelector('.json-tool-container');
         if (jsonToolContainer && jsonToolContainer.classList.contains('fullscreen')) {
-            return 5; // 全屏状态下的偏移量
+            return 2; // 全屏状态下的偏移量
         }
-        return 51.5; // 非全屏状态下的偏移量
+        return 48.5; // 非全屏状态下的偏移量
     }
     return 20; // 其他页面的默认偏移量
 };
