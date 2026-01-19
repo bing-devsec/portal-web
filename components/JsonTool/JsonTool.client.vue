@@ -825,7 +825,7 @@ interface JsonArchive {
 
 const ARCHIVE_STORAGE_KEY = 'json-tool-archives';
 // 存档总大小限制：10MB（逻辑限制，实际上限由浏览器决定）
-const MAX_ARCHIVE_TOTAL_SIZE = 10 * 1024 * 1024;
+const MAX_ARCHIVE_TOTAL_SIZE = 5 * 1024 * 1024;
 // 存档数量上限
 const MAX_ARCHIVE_COUNT = 20;
 
@@ -852,12 +852,14 @@ const loadArchives = () => {
     }
 };
 
-const saveArchives = () => {
-    if (typeof window === 'undefined') return;
+const saveArchives = (): boolean => {
+    if (typeof window === 'undefined') return true;
     try {
         sessionStorage.setItem(ARCHIVE_STORAGE_KEY, JSON.stringify(archives.value));
+        return true; // 保存成功
     } catch (error) {
         showMessageError('存档保存失败：浏览器存储空间可能已满');
+        return false; // 保存失败
     }
 };
 
@@ -2344,6 +2346,15 @@ const formatFileSize = (bytes: number): string => {
     const mb = bytes / (1024 * 1024);
     // 如果是整数，不显示小数；否则保留两位小数
     return mb % 1 === 0 ? `${mb} MB` : `${mb.toFixed(2)} MB`;
+};
+
+// 获取存档总大小信息（简洁版）
+const getArchivesTotalSizeInfo = (): string => {
+    const totalSize = archives.value.reduce((sum, archive) => sum + archive.size, 0);
+    const formattedSize = formatFileSize(totalSize);
+    const count = archives.value.length;
+
+    return `${count}个存档，${formattedSize}`;
 };
 
 // 更新编辑器状态栏信息
@@ -4049,7 +4060,6 @@ class JsonPlusFormatter {
 
         // 预处理字符串，处理特殊值、转义等
         let processedInput = this.preprocessSpecialValues(input);
-        processedInput = this.preprocessHighPrecisionNumbers(processedInput, escapeMap);
         processedInput = this.preprocessString(processedInput, escapeMap);
 
         try {
@@ -4061,38 +4071,6 @@ class JsonPlusFormatter {
         }
     }
 
-    // 预处理高精度数字，将超长数字字符串包装为特殊对象以保持精度
-    private preprocessHighPrecisionNumbers(input: string, escapeMap: Map<string, string>): string {
-        // 如果不需要高精度控制，直接返回
-        if (this.floatPrecision <= 17) {
-            return input;
-        }
-
-        // 正则表达式匹配数字（包括整数、小数、科学计数法）
-        const numberRegex = /\b\d+\.?\d*(?:e[+-]?\d+)?\b|\b\d*\.\d+(?:e[+-]?\d+)?\b/g;
-
-        return input.replace(numberRegex, match => {
-            // 检查是否是超高精度的数字
-            const numStr = match;
-            const hasDecimal = numStr.includes('.');
-            const decimalPlaces = hasDecimal ? numStr.split('.')[1]?.replace(/e[+-]?.*$/, '').length || 0 : 0;
-            const totalDigits = numStr.replace(/[e.]/g, '').length;
-
-            // 如果数字具有极高精度（超过17位或小数点后超过17位），包装为特殊对象
-            if (totalDigits > 17 || decimalPlaces > 17) {
-                const placeholder = this.createEscapePlaceholder();
-                const highPrecisionNumber = {
-                    __highPrecisionNumber: true,
-                    originalString: numStr,
-                    parsedValue: parseFloat(numStr), // 仍然解析为数字以便计算，但保留原始字符串
-                };
-                escapeMap.set(placeholder, JSON.stringify(highPrecisionNumber));
-                return `"${placeholder}"`;
-            }
-
-            return match;
-        });
-    }
 
     // 预处理特殊值，将JavaScript特殊值转换为JSON兼容格式
     private preprocessSpecialValues(input: string): string {
@@ -4481,6 +4459,46 @@ class JsonPlusFormatter {
         return str;
     }
 
+    // 检查数字是否需要包装为高精度数字对象
+    private shouldWrapAsHighPrecisionNumber(num: number): boolean {
+        // 如果精度设置为0，不进行包装
+        if (this.floatPrecision <= 17) {
+            return false;
+        }
+
+        const numStr = num.toString();
+
+        // 检查是否为科学计数法或极大数据
+        if (numStr.includes('e') || Math.abs(num) >= 1e15 || (Math.abs(num) < 1e-6 && num !== 0)) {
+            return true;
+        }
+
+        // 检查小数位数
+        if (numStr.includes('.')) {
+            const decimalPart = numStr.split('.')[1].replace(/e[+-]?.*$/, '');
+            if (decimalPart.length > 17) {
+                return true;
+            }
+        }
+
+        // 检查总位数
+        const totalDigits = numStr.replace(/[e.]/g, '').length;
+        if (totalDigits > 17) {
+            return true;
+        }
+
+        return false;
+    }
+
+    // 将数字包装为高精度数字对象
+    private wrapAsHighPrecisionNumber(num: number): any {
+        return {
+            __highPrecisionNumber: true,
+            originalString: num.toString(),
+            parsedValue: num,
+        };
+    }
+
     // 格式化高精度数字对象
     private formatHighPrecisionNumberObject(data: any): string {
         if (!data || !data.__highPrecisionNumber || !data.originalString) {
@@ -4494,20 +4512,20 @@ class JsonPlusFormatter {
             return originalStr;
         }
 
-        // 如果精度设置为很高且原始字符串足够精确，直接返回
-        if (this.floatPrecision >= 64) {
-            return originalStr;
-        }
-
-        // 否则，截取到指定精度
+        // 处理小数精度控制
         if (originalStr.includes('.')) {
             const parts = originalStr.split('.');
             const integerPart = parts[0];
             const decimalPart = parts[1].replace(/e[+-]?.*$/, ''); // 移除科学计数法部分
 
             if (decimalPart.length > this.floatPrecision) {
+                // 截取到指定精度
                 return integerPart + '.' + decimalPart.slice(0, this.floatPrecision);
+            } else if (decimalPart.length < this.floatPrecision) {
+                // 填充末尾的0到指定精度
+                return integerPart + '.' + decimalPart + '0'.repeat(this.floatPrecision - decimalPart.length);
             }
+            // 小数位数正好等于精度要求，直接返回
         }
 
         return originalStr;
@@ -4533,6 +4551,12 @@ class JsonPlusFormatter {
             if (isNaN(data) || !isFinite(data)) {
                 return 'null';
             }
+
+            // 检查是否需要高精度处理
+            if (this.shouldWrapAsHighPrecisionNumber(data)) {
+                return this.formatHighPrecisionNumberObject(this.wrapAsHighPrecisionNumber(data));
+            }
+
             return this.formatNumber(data);
         }
 
@@ -6025,6 +6049,13 @@ const handleSaveArchive = () => {
     }
 
     if (customArchiveName.value) {
+        // 最后一次完整检查（防止由于异步操作导致的状态不一致）
+        const finalTotalSize = archives.value.reduce((sum, item) => sum + item.size, 0);
+        if (finalTotalSize + size > MAX_ARCHIVE_TOTAL_SIZE) {
+            showMessageError('存档失败：所有存档总大小超过限制，请先清理部分存档');
+            return;
+        }
+
         // 使用自定义弹窗
         archiveNameDialogTitle.value = '保存存档';
         // 使用最小的未使用数字作为默认值
@@ -6035,6 +6066,13 @@ const handleSaveArchive = () => {
             // 再次检查存档数量上限（防止在弹窗打开期间存档数量达到上限）
             if (archives.value.length >= MAX_ARCHIVE_COUNT) {
                 showMessageError(`存档数量已达到上限（${MAX_ARCHIVE_COUNT}个），请先删除部分存档`);
+                return;
+            }
+
+            // 再次检查存档总大小上限（防止在弹窗打开期间大小发生变化）
+            const currentTotalSize = archives.value.reduce((sum, item) => sum + item.size, 0);
+            if (currentTotalSize + size > MAX_ARCHIVE_TOTAL_SIZE) {
+                showMessageError('存档失败：所有存档总大小超过限制，请先清理部分存档');
                 return;
             }
 
@@ -6056,12 +6094,24 @@ const handleSaveArchive = () => {
 
             // 新存档放在最前面
             archives.value.unshift(archive);
-            saveArchives();
+            const saveSuccess = saveArchives();
 
-            showMessageSuccess('已保存到本地存档（当前会话有效）');
+            if (saveSuccess) {
+                showMessageSuccess(`已保存到本地存档（当前会话有效） - ${getArchivesTotalSizeInfo()}`);
+            } else {
+                // 保存失败时，从内存数组中移除刚刚添加的存档
+                archives.value.shift();
+            }
         };
         archiveNameDialogVisible.value = true;
     } else {
+        // 最后一次完整检查（防止由于异步操作导致的状态不一致）
+        const finalTotalSize = archives.value.reduce((sum, item) => sum + item.size, 0);
+        if (finalTotalSize + size > MAX_ARCHIVE_TOTAL_SIZE) {
+            showMessageError('存档失败：所有存档总大小超过限制，请先清理部分存档');
+            return;
+        }
+
         // 自动命名：使用最小的未使用数字
         const nextNum = findNextAvailableNumber();
         let name = normalizeArchiveName(`${nextNum}`);
@@ -6079,9 +6129,14 @@ const handleSaveArchive = () => {
 
         // 新存档放在最前面
         archives.value.unshift(archive);
-        saveArchives();
+        const saveSuccess = saveArchives();
 
-        showMessageSuccess('已保存到本地存档（当前会话有效）');
+        if (saveSuccess) {
+            showMessageSuccess(`已保存到本地存档（当前会话有效） - ${getArchivesTotalSizeInfo()}`);
+        } else {
+            // 保存失败时，从内存数组中移除刚刚添加的存档
+            archives.value.shift();
+        }
     }
 };
 
@@ -6099,9 +6154,15 @@ const handleArchiveCommand = async (command: string) => {
             return;
         }
 
+        const oldArchives = [...archives.value];
         archives.value = [];
-        saveArchives();
-        showMessageSuccess('已清空所有存档');
+        const saveSuccess = saveArchives();
+        if (saveSuccess) {
+            showMessageSuccess(`已清空所有存档 - ${getArchivesTotalSizeInfo()}`);
+        } else {
+            // 保存失败时，回滚清空操作
+            archives.value = oldArchives;
+        }
         return;
     }
 
@@ -6407,12 +6468,6 @@ const handleRefreshArchive = (item: JsonArchive) => {
         return;
     }
 
-    // 检查内容大小是否超过限制
-    if (newContent.length > MAX_FILE_SIZE) {
-        showMessageError(`内容过大（${formatFileSize(newContent.length)}），超过最大限制（${formatFileSize(MAX_FILE_SIZE)}）`);
-        return;
-    }
-
     // 检查是否超出存档总大小限制
     const currentTotalSize = archives.value.reduce((sum, archive) => sum + archive.size, 0);
     const oldSize = item.size;
@@ -6428,6 +6483,10 @@ const handleRefreshArchive = (item: JsonArchive) => {
         // 更新存档内容
         const index = archives.value.findIndex(a => a.id === item.id);
         if (index !== -1) {
+            // 保存旧的存档数据，用于回滚
+            const oldContent = archives.value[index].content;
+            const oldSize = archives.value[index].size;
+
             archives.value[index].content = newContent;
             archives.value[index].size = newSize;
 
@@ -6435,8 +6494,20 @@ const handleRefreshArchive = (item: JsonArchive) => {
             const updatedArchive = archives.value.splice(index, 1)[0];
             archives.value.unshift(updatedArchive);
 
-            saveArchives();
-            showMessageSuccess(`已更新存档「${item.name}」的内容`);
+            const saveSuccess = saveArchives();
+            if (saveSuccess) {
+                showMessageSuccess(`已更新存档「${item.name}」的内容 - ${getArchivesTotalSizeInfo()}`);
+            } else {
+                // 保存失败时，回滚内存中的更改
+                const currentIndex = archives.value.findIndex(a => a.id === item.id);
+                if (currentIndex !== -1) {
+                    archives.value[currentIndex].content = oldContent;
+                    archives.value[currentIndex].size = oldSize;
+                    // 将存档移回原来的位置
+                    const rollbackArchive = archives.value.splice(currentIndex, 1)[0];
+                    archives.value.splice(index, 0, rollbackArchive);
+                }
+            }
         } else {
             showMessageError('未找到对应的存档');
         }
@@ -6460,9 +6531,14 @@ const handleDeleteArchive = async (item: JsonArchive) => {
 
     const index = archives.value.findIndex(a => a.id === item.id);
     if (index !== -1) {
-        archives.value.splice(index, 1);
-        saveArchives();
-        showMessageSuccess('已删除存档');
+        const deletedArchive = archives.value.splice(index, 1)[0];
+        const saveSuccess = saveArchives();
+        if (saveSuccess) {
+            showMessageSuccess(`已删除存档 - ${getArchivesTotalSizeInfo()}`);
+        } else {
+            // 保存失败时，将删除的存档重新添加回去
+            archives.value.splice(index, 0, deletedArchive);
+        }
     }
 };
 
@@ -6481,10 +6557,15 @@ const handleRenameArchive = (item: JsonArchive) => {
 
         // 名称重复检查已在弹窗组件内完成，这里不再检查
 
+        const oldName = item.name;
         item.name = normalizedName;
-        saveArchives();
-
-        showMessageSuccess('已更新存档名称');
+        const saveSuccess = saveArchives();
+        if (saveSuccess) {
+            showMessageSuccess(`已更新存档名称 - ${getArchivesTotalSizeInfo()}`);
+        } else {
+            // 保存失败时，回滚名称更改
+            item.name = oldName;
+        }
     };
     archiveNameDialogVisible.value = true;
 };
@@ -6600,7 +6681,17 @@ const onArchiveListDrop = (event: DragEvent) => {
             }
             insertIndex = Math.max(0, Math.min(insertIndex, archives.value.length));
             archives.value.splice(insertIndex, 0, moved);
-            saveArchives();
+
+            const saveSuccess = saveArchives();
+            if (!saveSuccess) {
+                // 保存失败时，回滚拖拽排序
+                archives.value.splice(insertIndex, 1);
+                if (sourceIndex < insertIndex) {
+                    archives.value.splice(sourceIndex, 0, moved);
+                } else {
+                    archives.value.splice(sourceIndex, 0, moved);
+                }
+            }
         }
     }
     resetArchiveDragState();
@@ -6630,7 +6721,17 @@ const onArchiveDrop = (targetId: string, event?: DragEvent) => {
     // 防御：确保在范围内
     insertIndex = Math.max(0, Math.min(insertIndex, archives.value.length));
     archives.value.splice(insertIndex, 0, moved);
-    saveArchives();
+
+    const saveSuccess = saveArchives();
+    if (!saveSuccess) {
+        // 保存失败时，回滚拖拽排序
+        archives.value.splice(insertIndex, 1);
+        if (sourceIndex < insertIndex) {
+            archives.value.splice(sourceIndex, 0, moved);
+        } else {
+            archives.value.splice(sourceIndex, 0, moved);
+        }
+    }
     resetArchiveDragState();
 };
 
