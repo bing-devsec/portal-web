@@ -64,7 +64,12 @@ export default defineNuxtConfig({
   },
 
   // ==================== 样式配置 ====================
-  css: ["~/assets/iconfont/iconfont.css", "~/assets/base.css"],
+  css: [
+    "~/assets/iconfont/iconfont.css",
+    "~/assets/base.css",
+    // highlight.js 主题样式，本地引入避免 CDN 存储访问被浏览器追踪防护阻止
+    "highlight.js/styles/atom-one-dark.css",
+  ],
 
   // ==================== 模块配置 ====================
   modules: [

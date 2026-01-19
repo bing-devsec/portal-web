@@ -171,11 +171,22 @@ function getSessionIdFromCookie(): string | null {
 }
 
 // 服务端预取文章详情，用于 SSR 输出 HTML（不改变浏览器端 fingerprint / cookie 请求逻辑）
-const { data: serverArticle } = await useAsyncData<ArticleDetail | null>(
+// Nuxt 要求 useAsyncData 在 SSR 阶段返回非 null/undefined 的值，否则客户端可能重复请求。
+// 在无法获取到有效文章时，返回一个空的占位对象以避免该警告并保持行为可控。
+const emptyArticle: ArticleDetail = {
+  id: "",
+  title: "",
+  tag: "",
+  content: "",
+  createTime: "",
+  updateTime: "",
+};
+
+const { data: serverArticle } = await useAsyncData<ArticleDetail>(
   "article-detail-ssr",
   async () => {
     if (!import.meta.server || !articleId.value) {
-      return null;
+      return emptyArticle;
     }
 
     try {
@@ -219,11 +230,12 @@ const { data: serverArticle } = await useAsyncData<ArticleDetail | null>(
         return result.data;
       }
     } catch {
-      // SSR 获取失败时静默降级为客户端渲染
-      return null;
+      // SSR 获取失败时静默降级为客户端渲染，返回占位对象以避免客户端重复请求
+      return emptyArticle;
     }
 
-    return null;
+    // 如果没有拿到有效数据，也返回占位对象
+    return emptyArticle;
   }
 );
 
@@ -641,7 +653,6 @@ watch(
 .catalog-wrapper {
   position: fixed;
   background-color: #fff;
-  border-radius: 5px;
   max-height: 80vh;
   min-width: 100px;
   width: fit-content;

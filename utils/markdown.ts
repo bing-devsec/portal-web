@@ -1,4 +1,5 @@
 import MarkdownIt from 'markdown-it';
+import hljs from 'highlight.js';
 
 // 单例 MarkdownIt 实例，既可在服务端也可在客户端运行
 // 优化：禁用一些耗时的插件，提升渲染速度
@@ -7,7 +8,22 @@ const md = new MarkdownIt({
     linkify: true,
     breaks: false,
     // 优化：禁用一些可能耗时的功能
-    typographer: false, // 禁用排版优化，提升速度
+    typographer: true, // 启用排版优化，提升速度
+});
+
+// 使用 highlight.js 安全地高亮代码块，未识别的语言或出错时返回已转义的文本
+md.set({
+    highlight: function (str: string, lang: string) {
+        if (lang && hljs.getLanguage(lang)) {
+            try {
+                return hljs.highlight(str, { language: lang, ignoreIllegals: true }).value;
+            } catch (e) {
+                // fallthrough to escape
+            }
+        }
+        // 对代码内容进行 HTML 转义，避免未转义的 HTML 注入
+        return md.utils.escapeHtml(str);
+    }
 });
 
 // 优化：为图片添加懒加载和异步解码属性（移动端性能优化）

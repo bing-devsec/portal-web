@@ -4,6 +4,13 @@
    全局 Reset & 基础排版
    =========================== */
 
+
+/* Element Plus 样式覆盖 */
+
+.el-card {
+    border-radius: 0px !important;
+}
+
 * {
     word-wrap: break-word
 }
@@ -490,10 +497,6 @@ strong {
 
 .pb-10 {
     padding-bottom: 10px
-}
-
-.radius {
-    border-radius: 4px
 }
 
 

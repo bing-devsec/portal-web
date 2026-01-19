@@ -92,7 +92,7 @@ onMounted(() => {
 }
 
 .cd-timeline-content a:hover {
-    border-radius: 3px;
+    border-radius: 2px;
     cursor: pointer;
     text-decoration: none;
     color: #fc5531;

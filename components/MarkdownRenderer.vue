@@ -17,7 +17,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, onMounted, onBeforeUnmount } from "vue";
+import { computed, ref, onMounted, onBeforeUnmount, watch, nextTick } from "vue";
 import { MdPreview } from "md-editor-v3";
 import "md-editor-v3/lib/preview.css";
 
@@ -68,6 +68,64 @@ const showCodeRowNumber = ref(true);
 // 渲染 key，用于强制重新渲染组件
 const renderKey = ref(`${props.editorId}-${Date.now()}`);
 
+// 按需动态加载并初始化第三方库（highlight.js, mermaid）
+const hljsLoaded = ref(false);
+const mermaidLoaded = ref(false);
+
+const initHighlightAndMermaid = async () => {
+  if (!import.meta.client) return;
+
+  // highlight.js
+  try {
+    const hljsMod = await import("highlight.js");
+    const hljs = (hljsMod && (hljsMod as any).default) || hljsMod;
+    if (hljs) {
+      // 配置忽略未转义 HTML 的警告（安全性仍由我们在 markdown 渲染处进行转义）
+      if (typeof (hljs as any).configure === "function") {
+        try {
+          (hljs as any).configure({ ignoreUnescapedHTML: true });
+        } catch (e) {
+          // 某些版本可能不支持该配置，忽略错误
+        }
+      }
+      if (typeof (hljs as any).highlightAll === "function") {
+        (hljs as any).highlightAll();
+        hljsLoaded.value = true;
+      }
+    }
+  } catch (e) {
+    // 忽略加载失败
+  }
+
+  // mermaid
+  if (!hasMermaid.value) return;
+  try {
+    const mermaidMod = await import("mermaid");
+    const mermaid = (mermaidMod && (mermaidMod as any).default) || mermaidMod;
+    if (mermaid) {
+      mermaid.initialize?.({ startOnLoad: false });
+      mermaidLoaded.value = true;
+      // 等待 DOM 更新后初始化 mermaid 渲染
+      await nextTick();
+      // md-editor-v3 预览区域常用类 .md-editor-preview
+      const containers = Array.from(
+        document.querySelectorAll(
+          `.md-editor-preview .language-mermaid, .md-editor-preview pre code.language-mermaid, #${props.editorId} .language-mermaid`
+        )
+      );
+      if (containers.length) {
+        try {
+          mermaid.init?.(undefined, containers as any);
+        } catch (e) {
+          // mermaid 渲染可能需要不同的 selector，忽略错误
+        }
+      }
+    }
+  } catch (e) {
+    // 忽略加载失败
+  }
+};
+
 const updateCodeRowNumber = () => {
   if (typeof window === "undefined") return;
   const isLargeScreen = window.innerWidth > 576;
@@ -93,6 +151,8 @@ onMounted(() => {
   if (typeof window === "undefined") return;
   updateCodeRowNumber();
   window.addEventListener("resize", handleResize, { passive: true });
+  // 初次挂载后按需初始化 highlight.js / mermaid（如果有）
+  initHighlightAndMermaid();
 });
 
 onBeforeUnmount(() => {
@@ -101,6 +161,14 @@ onBeforeUnmount(() => {
   if (resizeTimer) {
     clearTimeout(resizeTimer);
     resizeTimer = null;
+  }
+});
+
+// 当 renderKey 或内容/mermaid 检测变化时，重新初始化第三方渲染
+watch([() => renderKey.value, () => props.content, hasMermaid], async () => {
+  if (import.meta.client) {
+    await nextTick();
+    initHighlightAndMermaid();
   }
 });
 </script>
