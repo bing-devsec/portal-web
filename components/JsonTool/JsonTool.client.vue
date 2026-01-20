@@ -391,6 +391,17 @@
                                     <el-switch v-model="syncScrollEnabled" active-text="启用" inactive-text="禁用" size="default" />
                                 </div>
                             </div>
+
+                            <!-- 分隔线：同步滚动设置和缩略图设置之间 -->
+                            <el-divider class="settings-subsection-divider" />
+
+                            <!-- 缩略图设置 -->
+                            <div class="settings-subsection">
+                                <div class="settings-subsection-title">缩略图设置</div>
+                                <div class="settings-item">
+                                    <el-switch v-model="showMinimap" active-text="显示" inactive-text="隐藏" size="default" @change="updateMinimap" />
+                                </div>
+                            </div>
                         </div>
                     </el-collapse-item>
 
@@ -703,6 +714,8 @@ const defaultSettings = {
     startInFullscreen: false,
     // 同步滚动设置
     syncScrollEnabled: false,
+    // 缩略图设置
+    showMinimap: false,
     // 格式化设置
     indentSize: 2,
     encodingMode: 0,
@@ -753,6 +766,7 @@ const saveSettings = () => {
             showIndentGuide: showIndentGuide.value,
             startInFullscreen: startInFullscreen.value,
             syncScrollEnabled: syncScrollEnabled.value,
+            showMinimap: showMinimap.value,
             indentSize: indentSize.value,
             encodingMode: encodingMode.value,
             arrayNewLine: arrayNewLine.value,
@@ -797,6 +811,7 @@ const onFloatPrecisionInput = (val: number | number[] | string) => {
 const startInFullscreen = ref(savedSettings.startInFullscreen ?? false); // 控制是否默认全屏
 const isFullscreen = ref(startInFullscreen.value); // 全屏状态控制，初始化遵循设置
 const isResizing = ref(false); // 添加是否正在调整宽度控制
+const showMinimap = ref(savedSettings.showMinimap ?? false); // 是否显示缩略图
 const leftPanelWidth = ref(50); // 添加面板宽度控制（实时值，用于布局）
 const stableLeftPanelWidth = ref(50); // 稳定宽度值，用于计算按钮显示状态（防抖更新）
 const encodingMode = ref(savedSettings.encodingMode); // 添加编码处理模式：0-保持原样，1-转中文，2-转Unicode
@@ -1519,7 +1534,7 @@ const getEditorOptions = (size: number, isReadOnly: boolean = false, language: s
 
     // 外观配置
     renderLineHighlight: 'line' as const, // 仅高亮内容行，不高亮行号区域
-    minimap: { enabled: false }, // 禁用右侧的代码概览图
+    minimap: { enabled: showMinimap.value }, // 根据设置控制是否显示右侧的代码概览图
     lineNumbers: 'on' as const, // 启用行号
     roundedSelection: true, // 启用圆角选择
     renderIndentGuides: showIndentGuide.value, // 根据设置显示缩进指南线
@@ -1622,6 +1637,16 @@ const updateIndentGuides = () => {
             highlightActiveIndentation: showIndentGuide.value,
             bracketPairs: showIndentGuide.value,
         },
+    };
+
+    inputEditor?.updateOptions(options);
+    outputEditor?.updateOptions(options);
+};
+
+// 更新缩略图显示
+const updateMinimap = () => {
+    const options = {
+        minimap: { enabled: showMinimap.value },
     };
 
     inputEditor?.updateOptions(options);
@@ -2598,6 +2623,11 @@ watch(isFullscreen, () => {
     });
 });
 
+// 监听缩略图设置的变化
+watch(showMinimap, () => {
+    updateMinimap();
+});
+
 // 监听格式化设置的变化
 watch([indentSize, arrayNewLine, showIndentGuide, floatPrecision], () => {
     // 如果输入区域为空，不进行任何操作
@@ -2655,6 +2685,7 @@ watch(
         showIndentGuide.value,
         startInFullscreen.value,
         syncScrollEnabled.value,
+        showMinimap.value,
         indentSize.value,
         encodingMode.value,
         arrayNewLine.value,
@@ -2760,85 +2791,7 @@ const createOutputEditor = () => {
 const configureJsonSchemaSupport = () => {
     // 配置JSON Schema诊断选项，提供完整的Schema URL建议
     // 禁用远程Schema验证以避免网络加载警告，但保留基本的JSON语法检查
-    monaco.languages.json.jsonDefaults.setDiagnosticsOptions({
-        validate: false, // 禁用远程Schema验证，避免网络加载警告
-        allowComments: true,
-        schemas: [
-            // JSON Schema Draft 2020-12 及相关
-            { uri: 'http://json-schema.org/draft/2020-12/schema#', fileMatch: ['*'] },
-            { uri: 'https://json-schema.org/draft/2020-12/schema#', fileMatch: ['*'] },
-            { uri: 'http://json-schema.org/draft/2020-12/hyper-schema#', fileMatch: ['*'] },
-            { uri: 'https://json-schema.org/draft/2020-12/hyper-schema#', fileMatch: ['*'] },
-            { uri: 'http://json-schema.org/draft/2020-12/links#', fileMatch: ['*'] },
-            { uri: 'https://json-schema.org/draft/2020-12/links#', fileMatch: ['*'] },
-            { uri: 'http://json-schema.org/draft/2020-12/output/schema#', fileMatch: ['*'] },
-            { uri: 'https://json-schema.org/draft/2020-12/output/schema#', fileMatch: ['*'] },
-
-            // JSON Schema Draft 2019-09 及相关
-            { uri: 'http://json-schema.org/draft/2019-09/schema#', fileMatch: ['*'] },
-            { uri: 'https://json-schema.org/draft/2019-09/schema#', fileMatch: ['*'] },
-            { uri: 'http://json-schema.org/draft/2019-09/hyper-schema#', fileMatch: ['*'] },
-            { uri: 'https://json-schema.org/draft/2019-09/hyper-schema#', fileMatch: ['*'] },
-
-            // JSON Schema Draft 07 及相关
-            { uri: 'http://json-schema.org/draft-07/schema#', fileMatch: ['*'] },
-            { uri: 'https://json-schema.org/draft-07/schema#', fileMatch: ['*'] },
-            { uri: 'http://json-schema.org/draft-07/hyper-schema#', fileMatch: ['*'] },
-            { uri: 'https://json-schema.org/draft-07/hyper-schema#', fileMatch: ['*'] },
-
-            // JSON Schema Draft 06 及相关
-            { uri: 'http://json-schema.org/draft-06/schema#', fileMatch: ['*'] },
-            { uri: 'https://json-schema.org/draft-06/schema#', fileMatch: ['*'] },
-            { uri: 'http://json-schema.org/draft-06/hyper-schema#', fileMatch: ['*'] },
-            { uri: 'https://json-schema.org/draft-06/hyper-schema#', fileMatch: ['*'] },
-
-            // JSON Schema Draft 04 及相关
-            { uri: 'http://json-schema.org/draft-04/schema#', fileMatch: ['*'] },
-            { uri: 'https://json-schema.org/draft-04/schema#', fileMatch: ['*'] },
-            { uri: 'http://json-schema.org/draft-04/hyper-schema#', fileMatch: ['*'] },
-            { uri: 'https://json-schema.org/draft-04/hyper-schema#', fileMatch: ['*'] },
-
-            // JSON Schema Draft 03 及相关
-            { uri: 'http://json-schema.org/draft-03/schema#', fileMatch: ['*'] },
-            { uri: 'https://json-schema.org/draft-03/schema#', fileMatch: ['*'] },
-            { uri: 'http://json-schema.org/draft-03/hyper-schema#', fileMatch: ['*'] },
-            { uri: 'https://json-schema.org/draft-03/hyper-schema#', fileMatch: ['*'] },
-
-            // JSON Schema Draft 02 及相关
-            { uri: 'http://json-schema.org/draft-02/schema#', fileMatch: ['*'] },
-            { uri: 'https://json-schema.org/draft-02/schema#', fileMatch: ['*'] },
-            { uri: 'http://json-schema.org/draft-02/hyper-schema#', fileMatch: ['*'] },
-            { uri: 'https://json-schema.org/draft-02/hyper-schema#', fileMatch: ['*'] },
-
-            // JSON Schema Draft 01 及相关
-            { uri: 'http://json-schema.org/draft-01/schema#', fileMatch: ['*'] },
-            { uri: 'https://json-schema.org/draft-01/schema#', fileMatch: ['*'] },
-            { uri: 'http://json-schema.org/draft-01/hyper-schema#', fileMatch: ['*'] },
-            { uri: 'https://json-schema.org/draft-01/hyper-schema#', fileMatch: ['*'] },
-
-            // JSON Schema Draft 00 及相关
-            { uri: 'http://json-schema.org/draft-00/schema#', fileMatch: ['*'] },
-            { uri: 'https://json-schema.org/draft-00/schema#', fileMatch: ['*'] },
-
-            // 通用Schema URL
-            { uri: 'http://json-schema.org/schema#', fileMatch: ['*'] },
-            { uri: 'https://json-schema.org/schema#', fileMatch: ['*'] },
-
-            // Vocabulary URLs (2020-12)
-            { uri: 'http://json-schema.org/draft/2020-12/vocab/core', fileMatch: ['*'] },
-            { uri: 'https://json-schema.org/draft/2020-12/vocab/core', fileMatch: ['*'] },
-            { uri: 'http://json-schema.org/draft/2020-12/vocab/applicator', fileMatch: ['*'] },
-            { uri: 'https://json-schema.org/draft/2020-12/vocab/applicator', fileMatch: ['*'] },
-            { uri: 'http://json-schema.org/draft/2020-12/vocab/validation', fileMatch: ['*'] },
-            { uri: 'https://json-schema.org/draft/2020-12/vocab/validation', fileMatch: ['*'] },
-            { uri: 'http://json-schema.org/draft/2020-12/vocab/meta-data', fileMatch: ['*'] },
-            { uri: 'https://json-schema.org/draft/2020-12/vocab/meta-data', fileMatch: ['*'] },
-            { uri: 'http://json-schema.org/draft/2020-12/vocab/format-annotation', fileMatch: ['*'] },
-            { uri: 'https://json-schema.org/draft/2020-12/vocab/format-annotation', fileMatch: ['*'] },
-            { uri: 'http://json-schema.org/draft/2020-12/vocab/content', fileMatch: ['*'] },
-            { uri: 'https://json-schema.org/draft/2020-12/vocab/content', fileMatch: ['*'] },
-        ],
-    });
+    // 启用基本的 JSON 语法校验（仅语法层面），但禁用远程 Schema 请求以避免网络警告\n+    monaco.languages.json.jsonDefaults.setDiagnosticsOptions({\n+        validate: true, // 启用语法和基本校验\n+        allowComments: true, // 允许注释（支持 JSONC 风格输入）\n+        enableSchemaRequest: false, // 禁用远程 schema 请求\n+        schemas: [], // 不主动注册远程 schema，避免额外的网络请求\n+    });\n*** End Patch"}EOF辑ICENSE_PROBLEM_KEEP_GOINGность_JSON_SAMPLE_WARNING_USERNAME_REPLACED_DIFF_TRACE_BLOCK_CONTINUE_TRANSLATION_OUTPUT_BLOCK_LABELUnexpected token in JSON at position 0
 
     // 配置JSON语言服务，提供更好的自动补全
     monaco.languages.json.jsonDefaults.setModeConfiguration({
@@ -2850,7 +2803,7 @@ const configureJsonSchemaSupport = () => {
         tokens: true,
         colors: true,
         foldingRanges: true,
-        diagnostics: false, // 禁用诊断以避免Schema加载警告
+        diagnostics: true, // 启用JSON语法检查和错误提示
         selectionRanges: true,
     });
 };
@@ -4354,12 +4307,17 @@ class JsonPlusFormatter {
             return this.formatHighPrecisionNumber(num);
         }
 
-        // 对于普通浮点数，如果需要高精度且原始字符串有足够精度，直接使用
+        // 对于普通浮点数，如果需要高精度，我们在原始字符串基础上填充0
         if (this.floatPrecision > 15 && numStr.includes('.')) {
             const parts = numStr.split('.');
-            if (parts[1] && parts[1].length >= this.floatPrecision) {
-                // 原始字符串已经具有所需精度，直接使用
-                return numStr;
+            if (parts[1]) {
+                if (parts[1].length >= this.floatPrecision) {
+                    // 原始字符串已经具有所需精度，直接使用
+                    return numStr;
+                } else {
+                    // 在原始精度基础上填充0到指定精度，避免显示浮点数误差
+                    return parts[0] + '.' + parts[1] + '0'.repeat(this.floatPrecision - parts[1].length);
+                }
             }
         }
 
@@ -4512,15 +4470,25 @@ class JsonPlusFormatter {
             return originalStr;
         }
 
+        // 先将科学计数法转换为普通格式
+        let normalizedStr = originalStr;
+        if (originalStr.includes('e')) {
+            // 使用 formatHighPrecisionNumber 的逻辑来转换科学计数法
+            normalizedStr = this.convertScientificToDecimal(originalStr);
+        }
+
         // 处理小数精度控制
-        if (originalStr.includes('.')) {
-            const parts = originalStr.split('.');
+        if (normalizedStr.includes('.')) {
+            const parts = normalizedStr.split('.');
             const integerPart = parts[0];
-            const decimalPart = parts[1].replace(/e[+-]?.*$/, ''); // 移除科学计数法部分
+            const decimalPart = parts[1];
 
             if (decimalPart.length > this.floatPrecision) {
                 // 截取到指定精度
-                return integerPart + '.' + decimalPart.slice(0, this.floatPrecision);
+                let result = integerPart + '.' + decimalPart.slice(0, this.floatPrecision);
+                // 移除末尾的0，但保留至少一个小数位如果有小数点
+                result = result.replace(/\.?0+$/, match => (match.includes('.') ? '.0' : ''));
+                return result;
             } else if (decimalPart.length < this.floatPrecision) {
                 // 填充末尾的0到指定精度
                 return integerPart + '.' + decimalPart + '0'.repeat(this.floatPrecision - decimalPart.length);
@@ -4528,7 +4496,50 @@ class JsonPlusFormatter {
             // 小数位数正好等于精度要求，直接返回
         }
 
-        return originalStr;
+        return normalizedStr;
+    }
+
+    // 将科学计数法转换为普通十进制格式
+    private convertScientificToDecimal(scientificStr: string): string {
+        if (!scientificStr.includes('e')) {
+            return scientificStr;
+        }
+
+        const [mantissa, exponentStr] = scientificStr.split('e');
+        const exp = parseInt(exponentStr);
+
+        if (exp >= 0) {
+            // 正指数：123.45e+2 -> 12345
+            const parts = mantissa.split('.');
+            const integerPart = parts[0];
+            const decimalPart = parts[1] || '';
+
+            let result = integerPart + decimalPart;
+            const zerosToAdd = exp - decimalPart.length;
+
+            if (zerosToAdd > 0) {
+                result += '0'.repeat(zerosToAdd);
+            } else if (zerosToAdd < 0) {
+                const insertPos = result.length + zerosToAdd;
+                if (insertPos > 0) {
+                    result = result.slice(0, insertPos) + '.' + result.slice(insertPos);
+                } else {
+                    result = '0.' + '0'.repeat(-insertPos) + result;
+                }
+            }
+
+            return result;
+        } else {
+            // 负指数：1.2345e-2 -> 0.012345
+            const parts = mantissa.split('.');
+            const integerPart = parts[0];
+            const decimalPart = parts[1] || '';
+
+            const totalDigits = integerPart + decimalPart;
+            const zerosToAdd = -exp - 1;
+
+            return '0.' + '0'.repeat(zerosToAdd) + totalDigits;
+        }
     }
 
     // 自定义字符串化函数
