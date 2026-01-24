@@ -151,7 +151,7 @@
                         <div class="panel-title">
                             <span>输入区域</span>
                         </div>
-                        <div class="panel-actions" v-show="showInputActions">
+                        <div class="panel-actions" :style="{ '--panel-actions-opacity': showInputActions ? 1 : 0, '--panel-actions-pointer-events': showInputActions ? 'auto' : 'none' }">
                             <el-button @click="clearInput" size="small" type="danger" plain>
                                 <el-icon>
                                     <Delete />
@@ -200,7 +200,7 @@
                         <div class="panel-title">
                             <span>预览区域</span>
                         </div>
-                        <div class="panel-actions" v-show="showOutputActions">
+                        <div class="panel-actions" :style="{ '--panel-actions-opacity': showOutputActions ? 1 : 0, '--panel-actions-pointer-events': showOutputActions ? 'auto' : 'none' }">
                             <el-button @click="copyOutput" size="small" type="success" plain>
                                 <el-icon>
                                     <CopyDocument />
@@ -2728,8 +2728,8 @@ const createInputEditor = () => {
     if (!inputEditorContainer.value) return;
 
     // 对于输入编辑器，也启用大文件折叠优化（因为用户可能输入大量JSON）
-    // 输入编辑器始终使用2个空格缩进，不受格式化设置影响
-    const inputOptions = getEditorOptions(2, false, 'json', true);
+    // 使用用户设置的缩进大小
+    const inputOptions = getEditorOptions(indentSize.value, false, 'json', true);
     inputEditor = monaco.editor.create(inputEditorContainer.value, inputOptions);
 
     // 添加拖拽事件处理，防止存档拖拽到输入区域时出现意外行为
@@ -4024,7 +4024,6 @@ class JsonPlusFormatter {
         }
     }
 
-
     // 预处理特殊值，将JavaScript特殊值转换为JSON兼容格式
     private preprocessSpecialValues(input: string): string {
         let result = input;
@@ -4287,6 +4286,11 @@ class JsonPlusFormatter {
         return this.customStringify(data, escapeMap);
     }
 
+    // 压缩模式 - 生成紧凑的JSON字符串，不带缩进和换行
+    compress(data: any, escapeMap: Map<string, string>): string {
+        return this.customStringify(data, escapeMap, 0, true);
+    }
+
     // 格式化数字，支持精度控制和大数字处理
     private formatNumber(num: number): string {
         // 如果精度为0，不进行任何处理
@@ -4543,7 +4547,7 @@ class JsonPlusFormatter {
     }
 
     // 自定义字符串化函数
-    private customStringify(data: any, escapeMap: Map<string, string>, indent: number = 0): string {
+    private customStringify(data: any, escapeMap: Map<string, string>, indent: number = 0, compressed: boolean = false): string {
         const indentStr = ' '.repeat(indent * this.indentSize);
 
         if (data === null) {
@@ -4586,11 +4590,11 @@ class JsonPlusFormatter {
         }
 
         if (Array.isArray(data)) {
-            return this.formatArray(data, escapeMap, indent);
+            return this.formatArray(data, escapeMap, indent, compressed);
         }
 
         if (typeof data === 'object') {
-            return this.formatObject(data, escapeMap, indent);
+            return this.formatObject(data, escapeMap, indent, compressed);
         }
 
         return 'null'; // 其他未知类型转为null
@@ -4740,9 +4744,15 @@ class JsonPlusFormatter {
     }
 
     // 格式化数组
-    private formatArray(arr: any[], escapeMap: Map<string, string>, indent: number): string {
+    private formatArray(arr: any[], escapeMap: Map<string, string>, indent: number, compressed: boolean = false): string {
         if (arr.length === 0) {
             return '[]';
+        }
+
+        if (compressed) {
+            // 压缩模式：始终生成紧凑格式
+            const items = arr.map(item => this.customStringify(item, escapeMap, 0, true));
+            return '[' + items.join(',') + ']';
         }
 
         // 检查是否为简单类型数组
@@ -4750,22 +4760,32 @@ class JsonPlusFormatter {
 
         if (isSimpleArray && !this.arrayNewLine) {
             // 紧凑模式
-            const items = arr.map(item => this.customStringify(item, escapeMap, 0));
+            const items = arr.map(item => this.customStringify(item, escapeMap, 0, compressed));
             return '[' + items.join(', ') + ']';
         } else {
             // 换行模式（复杂数组或强制换行）
             const indentStr = ' '.repeat((indent + 1) * this.indentSize);
             const nextIndentStr = ' '.repeat(indent * this.indentSize);
-            const items = arr.map(item => indentStr + this.customStringify(item, escapeMap, indent + 1));
+            const items = arr.map(item => indentStr + this.customStringify(item, escapeMap, indent + 1, compressed));
             return '[\n' + items.join(',\n') + '\n' + nextIndentStr + ']';
         }
     }
 
     // 格式化对象
-    private formatObject(obj: any, escapeMap: Map<string, string>, indent: number): string {
+    private formatObject(obj: any, escapeMap: Map<string, string>, indent: number, compressed: boolean = false): string {
         const keys = Object.keys(obj);
         if (keys.length === 0) {
             return '{}';
+        }
+
+        if (compressed) {
+            // 压缩模式：生成紧凑格式
+            const items = keys.map(key => {
+                const keyStr = this.formatString(key, escapeMap); // 处理对象键，确保占位符被正确恢复
+                const valueStr = this.customStringify(obj[key], escapeMap, 0, true);
+                return keyStr + ':' + valueStr;
+            });
+            return '{' + items.join(',') + '}';
         }
 
         const indentStr = ' '.repeat((indent + 1) * this.indentSize);
@@ -4773,7 +4793,7 @@ class JsonPlusFormatter {
 
         const items = keys.map(key => {
             const keyStr = this.formatString(key, escapeMap); // 处理对象键，确保占位符被正确恢复
-            const valueStr = this.customStringify(obj[key], escapeMap, indent + 1);
+            const valueStr = this.customStringify(obj[key], escapeMap, indent + 1, compressed);
             return indentStr + keyStr + ': ' + valueStr;
         });
 
@@ -4892,17 +4912,17 @@ const compressJSON = () => {
         }
 
         // 预处理 JSON 字符串
-        let parsed;
+        let result;
         try {
-            const result = preprocessJSON(value);
-            parsed = result.data;
+            result = preprocessJSON(value);
         } catch (error) {
             showMessageError('请输入有效的 JSON 数据');
             return;
         }
 
-        // 使用标准压缩方法
-        const compressed = JSON.stringify(parsed);
+        // 使用 JsonPlusFormatter 进行压缩，确保转义序列正确恢复
+        const formatter = new JsonPlusFormatter(encodingMode.value, indentSize.value, arrayNewLine.value, floatPrecision.value);
+        const compressed = formatter.compress(result.data, result.escapeMap);
         outputEditor?.setValue(compressed);
 
         // 更新编辑器配置（包括模型选项，确保缩进指南线正确显示）
@@ -4925,18 +4945,26 @@ const escapeJSON = () => {
             return;
         }
 
+        // 检测非法转义序列
+        const illegalCheck = detectIllegalEscapes(value);
+        if (illegalCheck.hasIllegal) {
+            // 对于包含非法编码的情况，直接拒绝处理
+            showMessageError('检测到非法转义序列，为避免数据损坏，已拒绝转义操作');
+            return;
+        }
+
         // 预处理 JSON 字符串
-        let parsed;
+        let result;
         try {
-            const result = preprocessJSON(value);
-            parsed = result.data;
+            result = preprocessJSON(value);
         } catch (error) {
             showMessageError('请输入有效的 JSON 数据');
             return;
         }
 
-        // 格式化JSON（缩进为2）
-        const formatted = JSON.stringify(parsed, null, 2);
+        // 使用 JsonPlusFormatter 进行格式化，确保转义序列正确恢复
+        const formatter = new JsonPlusFormatter(encodingMode.value, indentSize.value, arrayNewLine.value, floatPrecision.value);
+        const formatted = formatter.format(result.data, result.escapeMap);
 
         // 有效的JSON转义序列
         const validEscapes = ['"', '\\', '/', 'b', 'f', 'n', 'r', 't', 'u'];
@@ -5029,6 +5057,41 @@ const escapeJSON = () => {
 };
 
 // 去除JSON转义字符
+// 检测字符串中是否存在非法转义序列
+const detectIllegalEscapes = (str: string): { hasIllegal: boolean; details: string[] } => {
+    const details: string[] = [];
+
+    // 使用正则表达式查找所有转义序列
+    const escapeRegex = /\\./g;
+    let match;
+
+    while ((match = escapeRegex.exec(str)) !== null) {
+        const escapeSeq = match[0];
+        const char = escapeSeq[1];
+
+        // 检查非法 Unicode 转义
+        if (char === 'u') {
+            const remaining = str.substr(match.index + 2, 4);
+            if (remaining.length < 4 || !/^[0-9a-fA-F]{4}$/.test(remaining)) {
+                details.push(`非法Unicode转义: ${escapeSeq}${remaining.substring(0, 4)}`);
+            }
+        }
+        // 检查非法十六进制转义
+        else if (char === 'x') {
+            const remaining = str.substr(match.index + 2, 2);
+            if (remaining.length < 2 || !/^[0-9a-fA-F]{2}$/.test(remaining)) {
+                details.push(`非法十六进制转义: ${escapeSeq}${remaining.substring(0, 2)}`);
+            }
+        }
+        // 检查其他非法转义序列
+        else if (!['"', '\\', '/', 'b', 'f', 'n', 'r', 't'].includes(char)) {
+            details.push(`非法转义序列: ${escapeSeq}`);
+        }
+    }
+
+    return { hasIllegal: details.length > 0, details };
+};
+
 const unescapeJSON = (recursive: boolean = true) => {
     try {
         const value = inputEditor?.getValue() || '';
@@ -5054,6 +5117,14 @@ const unescapeJSON = (recursive: boolean = true) => {
         }
         if (hasEscapeToPreserve) {
             shouldPreserveEscapes = true;
+        }
+
+        // 检测非法转义序列
+        const illegalCheck = detectIllegalEscapes(value);
+        if (illegalCheck.hasIllegal) {
+            // 对于包含非法编码的情况，直接拒绝处理，预览区域不显示内容
+            showMessageError('检测到非法转义序列，为避免数据损坏，已拒绝去除转义操作');
+            return;
         }
 
         // 简化解析流程：优先直接解析 -> 宽松解析 -> 迭代去除外层转义后再尝试解析
@@ -5095,14 +5166,57 @@ const unescapeJSON = (recursive: boolean = true) => {
             parsedInput = direct.value;
             parseAttempted = true;
         } else {
-            // 2. 宽松解析器
-            try {
-                const result = preprocessJSON(value);
-                parsedInput = result.data;
-                parseAttempted = true;
-            } catch {
-                // 3. 迭代去除外层转义再尝试解析
-                parsedInput = iterativeParse(value);
+            // 如果检测到非法编码，使用保守的字符串处理方式
+            if (illegalCheck.hasIllegal) {
+                // 对于包含非法编码的情况，进行保守的字符串级别转义去除
+                const conservativeUnescape = (str: string): string => {
+                    // 只处理最安全的转义：\\ -> \, \" -> "
+                    // 对于其他转义序列（包括非法 ones），保持原样
+                    let result = str;
+                    let changed = true;
+                    let iterations = 0;
+                    const maxIterations = 10; // 防止无限循环
+
+                    while (changed && iterations < maxIterations) {
+                        changed = false;
+                        const newResult = result.replace(/\\\\/g, '\\').replace(/\\"/g, '"');
+                        if (newResult !== result) {
+                            changed = true;
+                            result = newResult;
+                        }
+                        iterations++;
+                    }
+
+                    return result;
+                };
+
+                // 直接返回保守处理的字符串，不尝试JSON解析
+                const processed = conservativeUnescape(value);
+                outputEditor?.setValue(processed);
+
+                // 更新编辑器配置
+                if (outputEditor) {
+                    const model = outputEditor.getModel();
+                    if (model) {
+                        monaco.editor.setModelLanguage(model, 'json');
+                    }
+                    outputEditor.updateOptions(getEditorOptions(indentSize.value, true, 'json', true));
+                    updateLineNumberWidth(outputEditor);
+                    updateEditorHeight(outputEditor);
+                }
+
+                showMessageSuccess('已进行保守的转义去除处理（仅处理\\\\和\\"，非法转义保持原样）');
+                return;
+            } else {
+                // 2. 宽松解析器（仅对合法编码使用）
+                try {
+                    const result = preprocessJSON(value);
+                    parsedInput = result.data;
+                    parseAttempted = true;
+                } catch {
+                    // 3. 迭代去除外层转义再尝试解析
+                    parsedInput = iterativeParse(value);
+                }
             }
         }
 
@@ -5329,9 +5443,11 @@ const unescapeJSON = (recursive: boolean = true) => {
 
                                             parsedValue = restoreUnicodePlaceholders(parsedValue, unicodeMap);
                                             // 将 unicodeMap 合并到全局映射中
-                                            unicodeMap.forEach((unicode, char) => {
-                                                globalUnicodeMap.set(char, unicode);
-                                            });
+                                            if (isValidJson) {
+                                                unicodeMap.forEach((unicode, char) => {
+                                                    globalUnicodeMap.set(char, unicode);
+                                                });
+                                            }
                                             (parsedValue as any).__unicodeMap__ = unicodeMap;
                                         } catch (parseError) {
                                             isValidJson = false;
@@ -5647,18 +5763,26 @@ const compressAndEscapeJSON = () => {
         }
         outputType.value = 'json';
 
+        // 检测非法转义序列
+        const illegalCheck = detectIllegalEscapes(value);
+        if (illegalCheck.hasIllegal) {
+            // 对于包含非法编码的情况，直接拒绝处理
+            showMessageError('检测到非法转义序列，为避免数据损坏，已拒绝压缩并转义操作');
+            return;
+        }
+
         // 预处理 JSON 字符串
-        let parsed;
+        let result;
         try {
-            const result = preprocessJSON(value);
-            parsed = result.data;
+            result = preprocessJSON(value);
         } catch (error) {
             showMessageError('请输入有效的 JSON 数据');
             return;
         }
 
-        // 使用标准压缩方法（不格式化）
-        const compressed = JSON.stringify(parsed);
+        // 使用 JsonPlusFormatter 进行压缩，确保转义序列正确恢复
+        const formatter = new JsonPlusFormatter(encodingMode.value, indentSize.value, arrayNewLine.value, floatPrecision.value);
+        const compressed = formatter.compress(result.data, result.escapeMap);
 
         // 有效的JSON转义序列
         const validEscapes = ['"', '\\', '/', 'b', 'f', 'n', 'r', 't', 'u'];
@@ -5801,7 +5925,7 @@ const handleLevelAction = () => {
 
             // 更新其他配置
             // 对于10万行以内的JSON文件，总是启用大文件折叠优化
-            const updateOptions = getEditorOptions(2, true, 'json', true);
+            const updateOptions = getEditorOptions(indentSize.value, true, 'json', true);
             outputEditor.updateOptions(updateOptions);
             updateLineNumberWidth(outputEditor);
             updateEditorHeight(outputEditor);
@@ -5920,11 +6044,11 @@ const handleDataMaskingApply = (maskedJson: string) => {
 
                 // 更新编辑器配置
                 monaco.editor.setModelLanguage(model, 'json');
-                // 确保使用2空格缩进
-                model.updateOptions({ tabSize: 2, indentSize: 2, insertSpaces: true });
+                // 使用用户设置的缩进大小
+                model.updateOptions({ tabSize: indentSize.value, indentSize: indentSize.value, insertSpaces: true });
             }
             // 同时更新编辑器选项
-            inputEditor.updateOptions({ tabSize: 2, indentSize: 2 } as any);
+            inputEditor.updateOptions({ tabSize: indentSize.value, indentSize: indentSize.value } as any);
 
             // 更新行号和高度
             updateLineNumberWidth(inputEditor);
@@ -6188,7 +6312,38 @@ const handleArchiveCommand = async (command: string) => {
         return;
     }
 
+    // 直接加载存档内容，保持原有格式（不重新格式化以避免缩进不一致）
     inputEditor.setValue(archive.content);
+
+    // 检测存档内容的缩进设置，并更新编辑器以匹配
+    const detectIndentSize = (text: string): { size: number; insertSpaces: boolean } => {
+        const lines = text.split('\n');
+        for (const line of lines) {
+            const match = line.match(/^[ \t]+(?=\S)/);
+            if (match) {
+                const indentStr = match[0];
+                if (indentStr.includes('\t')) {
+                    return { size: 4, insertSpaces: false }; // Tab键缩进
+                }
+                return { size: indentStr.length || 2, insertSpaces: true }; // 空格缩进
+            }
+        }
+        return { size: 2, insertSpaces: true }; // 默认2格空格
+    };
+
+    const detectedIndent = detectIndentSize(archive.content);
+    const model = inputEditor.getModel();
+    if (model) {
+        model.updateOptions({
+            tabSize: detectedIndent.size,
+            indentSize: detectedIndent.size,
+            insertSpaces: detectedIndent.insertSpaces,
+        });
+    }
+    inputEditor.updateOptions({
+        tabSize: detectedIndent.size,
+        indentSize: detectedIndent.size
+    } as any);
 
     // 清空outputEditor的内容
     outputEditor?.setValue('');
@@ -6214,7 +6369,7 @@ const handleLoadSharedJson = (jsonData: string) => {
         // 验证并格式化JSON数据
         try {
             const parsed = JSON.parse(jsonData);
-            // 使用自定义格式化函数格式化JSON，输入编辑器始终使用2空格缩进
+            // 使用自定义格式化函数格式化JSON，保持原有缩进格式
             const formattedJson = customStringify(parsed, null, 2, jsonData);
 
             // 将格式化后的JSON设置到输入编辑器
@@ -6224,11 +6379,11 @@ const handleLoadSharedJson = (jsonData: string) => {
             const model = inputEditor.getModel();
             if (model) {
                 monaco.editor.setModelLanguage(model, 'json');
-                // 确保使用2空格缩进
-                model.updateOptions({ tabSize: 2, indentSize: 2, insertSpaces: true });
+                // 使用用户设置的缩进大小
+                model.updateOptions({ tabSize: indentSize.value, indentSize: indentSize.value, insertSpaces: true });
             }
             // 同时更新编辑器选项
-            inputEditor.updateOptions({ tabSize: 2, indentSize: 2 } as any);
+            inputEditor.updateOptions({ tabSize: indentSize.value, indentSize: indentSize.value } as any);
 
             // 更新行号和高度
             updateLineNumberWidth(inputEditor);
@@ -6791,7 +6946,7 @@ const loadSharedDataFromUrl = async () => {
                 try {
                     // 验证JSON格式
                     const jsonData = JSON.parse(response.data.jsonData);
-                    // 输入编辑器始终使用2个空格缩进，不受格式化设置影响
+                    // 保持原有缩进格式，避免与现有内容格式不一致
                     const formattedJson = customStringify(jsonData, null, 2, response.data.jsonData);
                     inputEditor.setValue(formattedJson);
 
@@ -6800,13 +6955,13 @@ const loadSharedDataFromUrl = async () => {
                     if (model) {
                         monaco.editor.setModelLanguage(model, 'json');
                         model.updateOptions({
-                            tabSize: 2,
-                            indentSize: 2,
+                            tabSize: indentSize.value,
+                            indentSize: indentSize.value,
                             insertSpaces: true,
                         });
                     }
                     // 同时更新编辑器选项
-                    inputEditor.updateOptions({ tabSize: 2, indentSize: 2 } as any);
+                    inputEditor.updateOptions({ tabSize: indentSize.value, indentSize: indentSize.value } as any);
 
                     // 更新行号和高度
                     updateLineNumberWidth(inputEditor);
@@ -8227,6 +8382,12 @@ const executeFieldSort = () => {
             // 格式化输出
             const formatted = customStringify(parsed, null, 2, originalString, 0, true);
             const finalOutput = formatted.replace(/\\u([0-9a-fA-F]{4})/g, '\\u$1');
+
+            // 异步计算所有折叠区域的信息（不阻塞，立即返回）
+            precomputeFoldingInfo(finalOutput).catch(error => {
+                // 静默处理错误，不影响主流程
+            });
+
             outputEditor?.setValue(finalOutput);
             updateEditorHeight(outputEditor);
 
@@ -8255,8 +8416,13 @@ const executeFieldSort = () => {
         }
 
         // 格式化输出
-        const formatted = customStringify(finalResult, null, 2, originalString, 0, true);
+        const formatted = customStringify(finalResult, null, indentSize.value, originalString, 0, true);
         const finalOutput = formatted.replace(/\\u([0-9a-fA-F]{4})/g, '\\u$1');
+
+        // 异步计算所有折叠区域的信息（不阻塞，立即返回）
+        precomputeFoldingInfo(finalOutput).catch(error => {
+            // 静默处理错误，不影响主流程
+        });
 
         outputEditor?.setValue(finalOutput);
 
@@ -8378,8 +8544,16 @@ const applySort = () => {
             const originalString = result.originalString;
 
             const sorted = sortJsonObject(parsed, sortMethod.value, sortOrder.value, '');
-            const formatted = customStringify(sorted, null, 2, originalString, 0, true);
+            const formatted = customStringify(sorted, null, indentSize.value, originalString, 0, true);
             outputResult = formatted.replace(/\\u([0-9a-fA-F]{4})/g, '\\u$1');
+        }
+
+        // 异步计算所有折叠区域的信息（不阻塞，立即返回）
+        // 这样可以避免实时计算的高成本，特别是对于大数据量
+        if (isJsonFormat) {
+            precomputeFoldingInfo(outputResult).catch(error => {
+                // 静默处理错误，不影响主流程
+            });
         }
 
         outputEditor?.setValue(outputResult);
@@ -8393,7 +8567,7 @@ const applySort = () => {
             }
 
             const lineCount = outputEditor?.getModel()?.getLineCount() || 0;
-            outputEditor.updateOptions(getEditorOptions(2, true, isJsonFormat ? 'json' : 'text', true));
+            outputEditor.updateOptions(getEditorOptions(indentSize.value, true, isJsonFormat ? 'json' : 'text', true));
             updateLineNumberWidth(outputEditor);
             updateEditorHeight(outputEditor);
         }
@@ -9352,11 +9526,7 @@ const handleFileUpload = async (uploadFile: UploadFile) => {
                 insertSpaces,
             });
             // 同时更新编辑器选项
-            inputEditor.updateOptions({
-                tabSize: size,
-                indentSize: size,
-                insertSpaces,
-            } as any);
+            inputEditor.updateOptions({ tabSize: indentSize.value, indentSize: indentSize.value } as any);
         }
 
         // 清空outputEditor的内容
@@ -9811,7 +9981,7 @@ const transferToInput = (e: MouseEvent) => {
             return;
         }
 
-        const targetIndentSize = 2; // 输入区域固定使用2个空格缩进
+        const targetIndentSize = indentSize.value; // 使用用户设置的缩进大小
         let formattedContent: string;
 
         try {
@@ -9838,14 +10008,14 @@ const transferToInput = (e: MouseEvent) => {
                 updateLineNumberWidth(inputEditor);
                 updateEditorHeight(inputEditor);
 
-                // 确保输入编辑器使用固定的2个空格缩进
+                // 确保输入编辑器使用用户设置的缩进大小
                 inputModel.updateOptions({
-                    tabSize: 2,
-                    indentSize: 2,
+                    tabSize: indentSize.value,
+                    indentSize: indentSize.value,
                     insertSpaces: true,
                 });
                 // 同时更新编辑器选项
-                inputEditor.updateOptions({ tabSize: 2, indentSize: 2 } as any);
+                inputEditor.updateOptions({ tabSize: indentSize.value, indentSize: indentSize.value } as any);
             }
         }
 
@@ -10175,9 +10345,11 @@ const transferToInput = (e: MouseEvent) => {
     justify-content: space-between;
     align-items: center;
     flex-shrink: 0;
+    height: 35px;
     padding: 5px 15px;
     background: linear-gradient(to bottom, #fafbfc, #f6f8fa);
     border-bottom: 1px solid #e4e7ed;
+    box-sizing: border-box;
     transition: none !important;
 }
 
@@ -10202,6 +10374,9 @@ const transferToInput = (e: MouseEvent) => {
     gap: 12px;
     /* 确保按钮显示/隐藏是瞬时的，无过渡动画，避免拖动时标题换行 */
     transition: none !important;
+    /* 当按钮应该隐藏时，使用透明度和禁用事件而不是display none，保持空间占用 */
+    opacity: var(--panel-actions-opacity, 1);
+    pointer-events: var(--panel-actions-pointer-events, auto);
 }
 
 /* 确保按钮元素本身也没有过渡效果（包括 Element Plus 的过渡） */
