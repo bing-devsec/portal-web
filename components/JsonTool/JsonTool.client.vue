@@ -5752,7 +5752,12 @@ const handleLevelAction = () => {
             return;
         }
 
-        const value = inputEditor?.getValue() || '';
+        // 优先使用输出编辑器的数据（如果有内容，说明已经进行过处理如排序）
+        let value = outputEditor?.getValue() || '';
+        if (!value.trim()) {
+            // 如果输出编辑器没有内容，则使用输入编辑器的数据
+            value = inputEditor?.getValue() || '';
+        }
         if (!value.trim()) {
             showMessageError('请先输入 JSON 数据');
             selectedLevel.value = 1;
