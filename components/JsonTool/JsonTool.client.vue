@@ -1410,14 +1410,9 @@ const foldProgressVisible = ref(false);
 const foldTotalLines = ref(0);
 const foldPercent = computed(() => Math.round(foldProgress.value * 100));
 const foldCurrentLine = computed(() => Math.min(foldTotalLines.value, Math.round(foldProgress.value * foldTotalLines.value)));
-// 平滑耗时估算（EMA）
-let avgMsPerRange = 2; // 初始每个 range 估算耗时（毫秒）
-let avgMsPerLine = 0.02; // 初始每行估算耗时（毫秒）
-const EMA_ALPHA = 0.12;
 
 // 初始化存档数据（该组件为 .client，确保只在客户端执行）
 loadArchives();
-const isFolding = ref(false); // 是否正在执行折叠操作
 
 // 拖动相关状态（提升到外层作用域，避免每次拖动创建新变量）
 let resizeState: {
@@ -3287,7 +3282,6 @@ const checkLinesAndDepth = (content: string): { isValid: boolean; error?: string
 };
 
 // 层级收缩
-// 硬核优化的层级收缩方法
 const foldByIndentation = () => {
     if (!outputEditor) return;
 
@@ -3561,75 +3555,6 @@ const calculateLinesToFold = (model: monaco.editor.ITextModel, lineCount: number
                 // 收缩深度 >= targetLevel 的内容（修正：第N层收缩应折叠第N层及以上的内容）
                 if (startInfo && startInfo.level >= targetLevel && startInfo.line < lineNum) {
                     linesToFold.push(startInfo.line);
-                }
-
-                currentDepth--;
-            }
-        }
-    }
-
-};
-
-const calculateFoldingRangesForProvider = (model: monaco.editor.ITextModel, lineCount: number, targetLevel: number, foldingRanges: Array<{ start: number; end: number }>) => {
-    const stack: Array<{
-        line: number;
-        bracket: '{' | '[';
-        level: number;
-    }> = [];
-
-    let inString = false;
-    let escapeNext = false;
-    let currentDepth = 0;
-
-    for (let lineNum = 1; lineNum <= lineCount; lineNum++) {
-        const lineContent = model.getLineContent(lineNum);
-
-        for (let pos = 0; pos < lineContent.length; pos++) {
-            const char = lineContent[pos];
-
-            // 处理转义和字符串
-            if (escapeNext) {
-                escapeNext = false;
-                continue;
-            }
-            if (char === '\\') {
-                escapeNext = true;
-                continue;
-            }
-            if (char === '"') {
-                inString = !inString;
-                continue;
-            }
-            if (inString) continue;
-
-            // 处理括号
-            if (char === '{' || char === '[') {
-                currentDepth++;
-
-                stack.push({
-                    line: lineNum,
-                    bracket: char as '{' | '[',
-                    level: currentDepth,
-                });
-            } else if (char === '}' || char === ']') {
-                // 找到匹配的开始括号
-                let startInfo = null;
-                while (stack.length > 0) {
-                    const top = stack[stack.length - 1];
-                    if ((top.bracket === '{' && char === '}') || (top.bracket === '[' && char === ']')) {
-                        startInfo = stack.pop()!;
-                        break;
-                    } else {
-                        stack.pop();
-                    }
-                }
-
-                // 关键修改：只添加深度 >= targetLevel 的范围（收缩目标层级及以上的内容）
-                if (startInfo && startInfo.level >= targetLevel && startInfo.line < lineNum) {
-                    foldingRanges.push({
-                        start: startInfo.line,
-                        end: lineNum,
-                    });
                 }
 
                 currentDepth--;
@@ -9313,17 +9238,9 @@ const handleFileUpload = async (uploadFile: UploadFile) => {
             const reader = new FileReader();
             reader.onload = e => {
                 if (e.target?.result) {
-                    // 检查文件编码
-                    try {
-                        const text = e.target.result as string;
-                        if (text.includes('\uFFFD')) {
-                            reject(new Error('文件编码不是有效的UTF-8'));
-                            return;
-                        }
-                        resolve(text);
-                    } catch (error) {
-                        reject(new Error('文件编码不正确'));
-                    }
+                    // 直接使用读取的文本，不再检查替换字符
+                    // 因为某些二进制数据可能被序列化为 \uFFFD，但这不影响 JSON 处理
+                    resolve(e.target.result as string);
                 } else {
                     reject(new Error('文件读取失败'));
                 }
