@@ -4094,13 +4094,10 @@ class JsonPlusFormatter {
                                     pendingBytes.length = 0; // 清空
                                 }
 
-                                // 标准转义：统一使用占位符保存原始转义序列，
-                                // 这样在 JSON5.parse 后能通过 escapeMap 恢复为原始的转义表示（例如 "\/"）,
-                                // 避免在后续不同编码模式下丢失反斜杠。
-                                const escapeSeq = '\\' + nextChar;
-                                const placeholder = this.createEscapePlaceholder();
-                                escapeMap.set(placeholder, escapeSeq);
-                                stringContent += placeholder;
+                                // 标准转义序列直接保留，不需要占位符
+                                // JSON5 能正确解析这些标准转义序列（如 \n \t \r 等）
+                                // 这样可以避免占位符恢复时产生实际的控制字符破坏 JSON 结构
+                                stringContent += '\\' + nextChar;
                                 i += 2; // 跳过转义序列
                             }
                         } else {
