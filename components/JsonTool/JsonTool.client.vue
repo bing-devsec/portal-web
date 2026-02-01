@@ -3282,7 +3282,7 @@ const checkLinesAndDepth = (content: string): { isValid: boolean; error?: string
 };
 
 // 层级收缩
-const foldByIndentation = () => {
+const foldByIndentation = async () => {
     if (!outputEditor) return;
 
     const model = outputEditor.getModel();
@@ -3290,231 +3290,171 @@ const foldByIndentation = () => {
 
     const lineCount = model.getLineCount();
 
-    // 🚀 统一使用硬核的FoldingRangeProvider方案进行递归折叠
-    foldUsingCustomProvider(model, lineCount, selectedLevel.value);
+    // 🚀 统一使用智能批处理方案
+    await foldUsingCustomProvider(model, lineCount, selectedLevel.value);
 };
 
-// 🚀 简化方案：直接使用传统折叠方法，性能稳定可靠
-const foldUsingCustomProvider = (model: monaco.editor.ITextModel, lineCount: number, targetLevel: number) => {
-    const startTime = performance.now();
+// 异步批处理折叠函数（优化版）
+const foldInBatchesAsync = async (
+    linesToFold: number[],
+    batchSize: number,
+    onBatchComplete: (completed: number, total: number) => Promise<void>,
+    totalCount: number
+): Promise<void> => {
+    for (let i = 0; i < linesToFold.length; i += batchSize) {
+        const batch = linesToFold.slice(i, i + batchSize);
+        const batchStartTime = performance.now();
 
-    // 降级方案：逐个折叠，但使用更快的间隔
-    outputEditor?.trigger('unfold', 'editor.unfoldAll', null);
-
-    setTimeout(() => {
-        if (!outputEditor) return;
-
-        const linesToFold: number[] = [];
-        calculateLinesToFold(model, lineCount, targetLevel, linesToFold);
-
-        if (linesToFold.length === 0) {
-            showMessageInfo(`未找到可收缩的第 ${targetLevel} 层内容`);
-            return;
-        }
-
-        let completedCount = 0;
-        const totalCount = linesToFold.length;
-
-        // 🚀 极限性能优化：目标3秒内完成1万次操作
-        let foldInterval: number;
-        let useBatching: boolean;
-        let useExtremeMode: boolean;
-
-        if (totalCount > 100000) {
-            // 超超大数据量：极度保守
-            foldInterval = 10;
-            useBatching = false;
-            useExtremeMode = false;
-        } else if (totalCount > 50000) {
-            // 超大数据量：保守策略
-            foldInterval = 5;
-            useBatching = false;
-            useExtremeMode = false;
-        } else if (totalCount > 20000) {
-            // 大数据量：平衡策略
-            foldInterval = 1;
-            useBatching = false;
-            useExtremeMode = true; // 启用极限模式
-        } else if (totalCount > 10000) {
-            // 中大数据量：激进策略
-            foldInterval = 0.3; // 极致间隔
-            useBatching = false;
-            useExtremeMode = true; // 启用极限模式
-        } else if (totalCount > 5000) {
-            // 中等数据量：高速批次
-            foldInterval = 0.5;
-            useBatching = true;
-            useExtremeMode = false;
-        } else {
-            // 小数据量：极速批次
-            foldInterval = 0.2;
-            useBatching = true;
-            useExtremeMode = false;
-        }
-
-        if (useBatching) {
-            // 批次模式：优化批次策略，提高并发度
-            const batchSize = Math.max(25, Math.min(100, Math.floor(totalCount / 15)));
-            const batches = Math.ceil(totalCount / batchSize);
-            const batchDelay = Math.max(5, foldInterval * 2); // 减少批次间延迟
-
-
-            for (let batchIndex = 0; batchIndex < batches; batchIndex++) {
-                const batchStart = batchIndex * batchSize;
-                const batchEnd = Math.min(batchStart + batchSize, totalCount);
-                const batch = linesToFold.slice(batchStart, batchEnd);
-
-                // 减少批次间延迟，提高并发度
-                setTimeout(() => {
-                    batch.forEach((lineNumber, indexInBatch) => {
-                        // 最后一个元素增加额外延迟，避免状态竞争
-                        const extraDelay = (batchIndex === batches - 1 && indexInBatch === batch.length - 1) ? 50 : 0;
-
-                        setTimeout(() => {
-                            if (!outputEditor) return;
-
-                            try {
-                                outputEditor.setPosition({ lineNumber: lineNumber, column: 1 });
-                                outputEditor.trigger('fold', 'editor.fold', null);
-                                completedCount++;
-
-                                // 所有任务完成时显示结果（增加额外延迟确保状态稳定）
-                                if (completedCount === totalCount) {
-                                    setTimeout(() => {
-                                        const endTime = performance.now();
-                                        const duration = ((endTime - startTime) / 1000).toFixed(2);
-
-                                        showMessageSuccess(`收缩到第 ${targetLevel} 层成功，共折叠 ${totalCount} 个元素，耗时 ${duration}秒`);
-                                    }, 500); // 增加到500ms，确保所有操作都稳定
-                                }
-                            } catch (error) {
-                                completedCount++;
-
-                                // 即使出错也要检查是否完成
-                                if (completedCount === totalCount) {
-                                    setTimeout(() => {
-                                        const endTime = performance.now();
-                                        const duration = ((endTime - startTime) / 1000).toFixed(2);
-
-                                        showMessageSuccess(`收缩到第 ${targetLevel} 层成功，共折叠 ${totalCount} 个元素，耗时 ${duration}秒`);
-                                    }, 500); // 增加到500ms
-                                }
-                            }
-                        }, indexInBatch * foldInterval + extraDelay);
-                    });
-                }, batchIndex * batchDelay); // 动态批次间间隔
+        // 根据总数据量决定批次内的处理方式
+        if (totalCount > 50000) {
+            // 大数据量：串行批次内处理，避免并发过高
+            let indexInBatch = 0;
+            for (const lineNumber of batch) {
+                if (!outputEditor) return;
+                try {
+                    outputEditor.setPosition({ lineNumber, column: 1 });
+                    outputEditor.trigger('fold', 'editor.fold', null);
+                } catch (e) {
+                    // 忽略折叠错误
+                }
+                // 大数据量时每处理一定数量后使用微任务切换，避免阻塞
+                indexInBatch++;
+                if (indexInBatch % 100 === 0) {
+                    await new Promise(r => setTimeout(r, 0));
+                }
             }
         } else {
-            // 🚀 极限性能模式：针对大数据量优化
-            if (useExtremeMode) {
-
-                // 策略1：大块同步处理，减少异步开销
-                const chunkSize = Math.max(10, Math.floor(totalCount / 50)); // 每50个块处理一个
-                const chunks = Math.ceil(totalCount / chunkSize);
-
-                for (let chunkIndex = 0; chunkIndex < chunks; chunkIndex++) {
-                    const chunkStart = chunkIndex * chunkSize;
-                    const chunkEnd = Math.min(chunkStart + chunkSize, totalCount);
-                    const chunk = linesToFold.slice(chunkStart, chunkEnd);
-
-                    // 使用更激进的间隔策略
-                    const chunkDelay = chunkIndex * Math.max(1, foldInterval * chunkSize / 2);
-
-                    setTimeout(() => {
-                        // 在每个块内快速连续处理
-                        chunk.forEach((lineNumber, indexInChunk) => {
-                            setTimeout(() => {
-                                if (!outputEditor) return;
-
-                                try {
-                                    outputEditor.setPosition({ lineNumber: lineNumber, column: 1 });
-                                    outputEditor.trigger('fold', 'editor.fold', null);
-                                    completedCount++;
-
-                                    // 检查完成（在最后几个操作时）
-                                    if (completedCount >= totalCount - 5) {
-                                        checkCompletion();
-                                    }
-                                } catch (error) {
-                                    completedCount++;
-                                    if (completedCount >= totalCount - 5) {
-                                        checkCompletion();
-                                    }
-                                }
-                            }, indexInChunk * Math.max(0.1, foldInterval)); // 最小0.1ms间隔
-                        });
-                    }, chunkDelay);
-                }
-
-                // 统一的完成检查函数
-                const checkCompletion = () => {
-                    if (completedCount >= totalCount) {
+            // 中小数据量：并行处理，提高速度
+            await Promise.all(
+                batch.map((lineNumber) => {
+                    return new Promise<void>((resolve) => {
                         setTimeout(() => {
-                            const endTime = performance.now();
-                            const duration = ((endTime - startTime) / 1000).toFixed(2);
-
-                            showMessageSuccess(`收缩到第 ${targetLevel} 层成功，共折叠 ${totalCount} 个元素，耗时 ${duration}秒`);
-                        }, 200);
-                    }
-                };
-
-            } else {
-                // 标准单线程模式
-                linesToFold.forEach((lineNumber, index) => {
-                    const extraDelay = (index === totalCount - 1) ? 50 : 0;
-
-                    setTimeout(() => {
-                        if (!outputEditor) return;
-
-                        try {
-                            outputEditor.setPosition({ lineNumber: lineNumber, column: 1 });
-                            outputEditor.trigger('fold', 'editor.fold', null);
-                            completedCount++;
-
-                            if (completedCount === totalCount) {
-                                setTimeout(() => {
-                                            const endTime = performance.now();
-                                            const duration = ((endTime - startTime) / 1000).toFixed(2);
-
-                                            showMessageSuccess(`收缩到第 ${targetLevel} 层成功，共折叠 ${totalCount} 个元素，耗时 ${duration}秒`);
-                                        }, 300);
-                                    }
-                                } catch (error) {
-                                    completedCount++;
-
-                                    if (completedCount === totalCount) {
-                                        setTimeout(() => {
-                                            const endTime = performance.now();
-                                            const duration = ((endTime - startTime) / 1000).toFixed(2);
-
-                                            showMessageSuccess(`收缩到第 ${targetLevel} 层成功，共折叠 ${totalCount} 个元素，耗时 ${duration}秒`);
-                                        }, 300);
-                                    }
-                                }
-                            }, index * foldInterval + extraDelay);
+                            if (!outputEditor) {
+                                resolve();
+                                return;
+                            }
+                            try {
+                                outputEditor.setPosition({ lineNumber, column: 1 });
+                                outputEditor.trigger('fold', 'editor.fold', null);
+                            } catch (e) {
+                                // 忽略折叠错误
+                            }
+                            resolve();
                         });
-                    }
-                }
+                    });
+                })
+            );
+        }
 
-    }, 100);
+        // 报告进度
+        const completed = Math.min(i + batchSize, linesToFold.length);
+        await onBatchComplete(completed, totalCount);
+
+        // 动态调整延迟：确保UI有机会更新
+        const batchTime = performance.now() - batchStartTime;
+        if (batchTime < 16) {
+            await new Promise(r => setTimeout(r, 0));
+        }
+    }
 };
 
-// 计算需要折叠的行号（直接返回行号数组）
-const calculateLinesToFold = (model: monaco.editor.ITextModel, lineCount: number, targetLevel: number, linesToFold: number[]) => {
-    const stack: Array<{
-        line: number;
-        bracket: '{' | '[';
-        level: number;
-    }> = [];
+// 🚀 优化方案：使用智能批处理 + Monaco 内置 Folding API
+const foldUsingCustomProvider = async (model: monaco.editor.ITextModel, lineCount: number, targetLevel: number) => {
+    const startTime = performance.now();
+
+    // 1. 先展开所有
+    outputEditor?.trigger('unfold', 'editor.unfoldAll', null);
+
+    // 等待展开完成
+    await new Promise(resolve => setTimeout(resolve, 100));
+
+    if (!outputEditor) return;
+
+    // 2. 计算需要折叠的行号
+    const linesToFold = calculateLinesToFold(model, lineCount, targetLevel);
+
+    if (linesToFold.length === 0) {
+        showMessageInfo(`未找到可收缩的第 ${targetLevel} 层内容`);
+        return;
+    }
+
+    const totalCount = linesToFold.length;
+
+    // 3. 根据数据量选择最佳策略
+    // 优化策略：总是使用批处理，但根据数据量调整批次大小和并发度
+    let batchSize: number;
+    let showProgress: boolean;
+
+    if (totalCount > 100000) {
+        // 超大数据量：超大批次，减少切换开销
+        batchSize = 2000;
+        showProgress = true;
+    } else if (totalCount > 50000) {
+        // 大数据量（你的场景）：中等批次大小
+        batchSize = 1500;
+        showProgress = true;
+    } else if (totalCount > 20000) {
+        // 中等数据量：较小批次
+        batchSize = 1000;
+        showProgress = true;
+    } else if (totalCount > 10000) {
+        // 中小数据量：小批次
+        batchSize = 500;
+        showProgress = false;
+    } else {
+        // 小数据量：直接一次性处理
+        batchSize = totalCount;
+        showProgress = false;
+    }
+
+    const progressInterval = Math.max(1000, Math.floor(totalCount / 50)); // 每完成约2%的进度报告一次
+
+    // 4. 执行批处理折叠
+    await foldInBatchesAsync(
+        linesToFold,
+        batchSize,
+        async (completed, total) => {
+            // 只有在数据量大时才显示进度，避免频繁更新UI
+            if (showProgress && completed % progressInterval < batchSize) {
+                const percent = ((completed / total) * 100).toFixed(1);
+                // 使用 console 而非消息提示，避免刷屏
+                console.log(`收缩进度: ${percent}% (${completed}/${total})`);
+            }
+        },
+        totalCount
+    );
+
+    // 5. 完成
+    const endTime = performance.now();
+    const duration = ((endTime - startTime) / 1000).toFixed(2);
+
+    // 估算剩余操作时间（基于已完成的平均速度）
+    const speed = totalCount / (endTime - startTime); // 操作/毫秒
+    const estimatedTotalTime = totalCount / speed / 1000; // 秒
+
+    showMessageSuccess(`收缩到第 ${targetLevel} 层成功，共折叠 ${totalCount} 个元素，耗时 ${duration}秒`);
+};
+
+// 计算需要折叠的行号（优化版本：减少重复解析）
+const calculateLinesToFold = (model: monaco.editor.ITextModel, lineCount: number, targetLevel: number): number[] => {
+    // 一次性获取所有行内容，避免循环中多次调用 API
+    const lines: string[] = [];
+    for (let i = 1; i <= lineCount; i++) {
+        lines.push(model.getLineContent(i));
+    }
+
+    const linesToFold: number[] = [];
+    const stack: Array<{ line: number; bracket: '{' | '['; level: number; }> = [];
 
     let inString = false;
     let escapeNext = false;
     let currentDepth = 0;
 
     for (let lineNum = 1; lineNum <= lineCount; lineNum++) {
-        const lineContent = model.getLineContent(lineNum);
+        const lineContent = lines[lineNum - 1];
+        const len = lineContent.length;
 
-        for (let pos = 0; pos < lineContent.length; pos++) {
+        for (let pos = 0; pos < len; pos++) {
             const char = lineContent[pos];
 
             // 处理转义和字符串
@@ -3552,7 +3492,7 @@ const calculateLinesToFold = (model: monaco.editor.ITextModel, lineCount: number
                     }
                 }
 
-                // 收缩深度 >= targetLevel 的内容（修正：第N层收缩应折叠第N层及以上的内容）
+                // 收缩深度 >= targetLevel 的内容
                 if (startInfo && startInfo.level >= targetLevel && startInfo.line < lineNum) {
                     linesToFold.push(startInfo.line);
                 }
@@ -3562,6 +3502,7 @@ const calculateLinesToFold = (model: monaco.editor.ITextModel, lineCount: number
         }
     }
 
+    return linesToFold;
 };
 
 // 处理转换
@@ -5723,63 +5664,62 @@ const handleLevelAction = () => {
 
         // 根据行数动态调整延迟时间
         const currentLineCount = outputEditor?.getModel()?.getLineCount() || 0;
-        let delayTime: number;
-        let unfoldDelay: number;
 
-        if (currentLineCount > 80000) {
-            delayTime = 1000; // 1秒
-            unfoldDelay = 600; // 0.6秒
-        } else if (currentLineCount > 50000) {
-            delayTime = 600; // 0.6秒
-            unfoldDelay = 400; // 0.4秒
-        } else {
-            delayTime = 200; // 0.2秒
-            unfoldDelay = 100; // 0.1秒
-        }
-
-        setTimeout(() => {
+        // 🚀 优化后的异步处理流程
+        const performFold = async () => {
             if (!outputEditor) return;
+
+            // 展开所有
             outputEditor.trigger('unfold', 'editor.unfoldAll', null);
-            // 等待展开完成后再执行折叠
+
+            // 等待展开完成
+            const unfoldDelay = currentLineCount > 80000 ? 600 : currentLineCount > 50000 ? 400 : 100;
+            await new Promise(resolve => setTimeout(resolve, unfoldDelay));
+
+            // 执行折叠
+            await foldByIndentation();
+
+            // 折叠完成后，启用折叠信息更新并立即刷新，然后重新计算
             setTimeout(() => {
-                foldByIndentation();
+                if (!outputEditor) return;
+                try {
+                    // 启用折叠信息更新并立即刷新（使用现有数据）
+                    const refreshFunc = (outputEditor as any).__enableFoldingInfoUpdateAndRefresh;
+                    if (refreshFunc) {
+                        refreshFunc();
+                    }
 
-                // 折叠完成后，启用折叠信息更新并立即刷新，然后重新计算
-                setTimeout(() => {
-                    if (!outputEditor) return;
-                    try {
-                        // 启用折叠信息更新并立即刷新（使用现有数据）
-                        const refreshFunc = (outputEditor as any).__enableFoldingInfoUpdateAndRefresh;
-                        if (refreshFunc) {
-                            refreshFunc();
-                        }
+                    // 然后重新计算折叠信息
+                    const visibleRanges = outputEditor.getVisibleRanges();
+                    if (visibleRanges && visibleRanges.length > 0) {
+                        let minLine = Infinity;
+                        let maxLine = 0;
+                        visibleRanges.forEach(range => {
+                            if (range.startLineNumber < minLine) minLine = range.startLineNumber;
+                            if (range.endLineNumber > maxLine) maxLine = range.endLineNumber;
+                        });
+                        if (minLine !== Infinity && maxLine > 0) {
+                            // 扩展可见区域范围（上下各扩展200行，提高滚动体验）
+                            const model = outputEditor.getModel();
+                            if (model) {
+                                const totalLines = model.getLineCount();
+                                const priorityStart = Math.max(1, minLine - 200);
+                                const priorityEnd = Math.min(totalLines, maxLine + 200);
 
-                        // 然后重新计算折叠信息
-                        const visibleRanges = outputEditor.getVisibleRanges();
-                        if (visibleRanges && visibleRanges.length > 0) {
-                            let minLine = Infinity;
-                            let maxLine = 0;
-                            visibleRanges.forEach(range => {
-                                if (range.startLineNumber < minLine) minLine = range.startLineNumber;
-                                if (range.endLineNumber > maxLine) maxLine = range.endLineNumber;
-                            });
-                            if (minLine !== Infinity && maxLine > 0) {
-                                // 扩展可见区域范围（上下各扩展200行，提高滚动体验）
-                                const model = outputEditor.getModel();
-                                if (model) {
-                                    const totalLines = model.getLineCount();
-                                    const priorityStart = Math.max(1, minLine - 200);
-                                    const priorityEnd = Math.min(totalLines, maxLine + 200);
-
-                                    // 重新触发计算，优先计算可见区域
-                                    precomputeFoldingInfo(formatted, { start: priorityStart, end: priorityEnd }).catch(() => {});
-                                }
+                                // 重新触发计算，优先计算可见区域
+                                precomputeFoldingInfo(formatted, { start: priorityStart, end: priorityEnd }).catch(() => {});
                             }
                         }
-                    } catch (e) {}
-                }, 300); // 等待折叠动画完成
-            }, unfoldDelay);
-        }, delayTime);
+                    }
+                } catch (e) {}
+            }, 300); // 等待折叠动画完成
+        };
+
+        // 启动异步处理
+        const startDelay = currentLineCount > 80000 ? 1000 : currentLineCount > 50000 ? 600 : 200;
+        setTimeout(() => {
+            performFold();
+        }, startDelay);
     } catch (error: any) {
         showMessageError('操作失败: ' + error.message);
     }
