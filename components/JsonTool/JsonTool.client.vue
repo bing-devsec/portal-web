@@ -3289,9 +3289,51 @@ const foldByIndentation = async () => {
     if (!model) return;
 
     const lineCount = model.getLineCount();
+    const targetLevel = selectedLevel.value;
 
-    // 🚀 统一使用智能批处理方案
-    await foldUsingCustomProvider(model, lineCount, selectedLevel.value);
+    // 计算 JSON 的实际最大层级
+    const maxLevel = calculateMaxLevelFromEditor(model, lineCount);
+
+    // 根据 JSON 实际最大层级选择策略，确保两个策略完全独立
+    if (maxLevel <= 7) {
+        // JSON 最大层级 <= 7：只用 Monaco 内置命令（极速）
+        await foldUsingMonacoBuiltin(model, targetLevel);
+    } else {
+        // JSON 最大层级 > 7：只用自定义批处理方案（兼容深层级）
+        await foldUsingCustomProvider(model, lineCount, targetLevel);
+    }
+
+    showMessageSuccess(`收缩到第 ${targetLevel} 层成功`);
+};
+
+// 🚀 使用 Monaco 内置命令进行快速折叠（仅支持 1-7 层）
+const foldUsingMonacoBuiltin = async (model: monaco.editor.ITextModel, targetLevel: number): Promise<void> => {
+    // 1. 先展开所有
+    const unfoldAction = outputEditor?.getAction('editor.unfoldAll');
+    if (unfoldAction) {
+        await unfoldAction.run();
+    }
+
+    if (!outputEditor) return;
+
+    // 2. 使用内置命令进行折叠
+    // Monaco 的 foldLevelN 命令会折叠所有第 N 层及更深的层级
+    // 从 targetLevel 开始逐层折叠到第 7 层（最大支持层数）
+    const maxBuiltinLevel = 7;
+    for (let level = targetLevel; level <= maxBuiltinLevel; level++) {
+        const foldAction = outputEditor.getAction(`editor.foldLevel${level}`);
+        if (foldAction) {
+            await foldAction.run();
+        }
+    }
+
+    // 3. 如果目标层级是 1，还需要额外折叠根节点
+    if (targetLevel === 1) {
+        const foldAction = outputEditor.getAction('editor.fold');
+        if (foldAction) {
+            await foldAction.run();
+        }
+    }
 };
 
 // 异步批处理折叠函数（优化版）
@@ -3358,10 +3400,8 @@ const foldInBatchesAsync = async (
     }
 };
 
-// 🚀 优化方案：使用智能批处理 + Monaco 内置 Folding API
+// 🚀 优化方案：使用智能批处理（适用于 8 层以上的深层级）
 const foldUsingCustomProvider = async (model: monaco.editor.ITextModel, lineCount: number, targetLevel: number) => {
-    const startTime = performance.now();
-
     // 1. 先展开所有
     outputEditor?.trigger('unfold', 'editor.unfoldAll', null);
 
@@ -3423,16 +3463,6 @@ const foldUsingCustomProvider = async (model: monaco.editor.ITextModel, lineCoun
         },
         totalCount
     );
-
-    // 5. 完成
-    const endTime = performance.now();
-    const duration = ((endTime - startTime) / 1000).toFixed(2);
-
-    // 估算剩余操作时间（基于已完成的平均速度）
-    const speed = totalCount / (endTime - startTime); // 操作/毫秒
-    const estimatedTotalTime = totalCount / speed / 1000; // 秒
-
-    showMessageSuccess(`收缩到第 ${targetLevel} 层成功，共折叠 ${totalCount} 个元素，耗时 ${duration}秒`);
 };
 
 // 计算需要折叠的行号（优化版本：减少重复解析）
@@ -3503,6 +3533,55 @@ const calculateLinesToFold = (model: monaco.editor.ITextModel, lineCount: number
     }
 
     return linesToFold;
+};
+
+// 从编辑器内容计算最大层级（用于策略选择）
+const calculateMaxLevelFromEditor = (model: monaco.editor.ITextModel, lineCount: number): number => {
+    // 一次性获取所有行内容
+    const lines: string[] = [];
+    for (let i = 1; i <= lineCount; i++) {
+        lines.push(model.getLineContent(i));
+    }
+
+    let maxLevel = 0;
+    let currentDepth = 0;
+
+    let inString = false;
+    let escapeNext = false;
+
+    for (let lineNum = 1; lineNum <= lineCount; lineNum++) {
+        const lineContent = lines[lineNum - 1];
+        const len = lineContent.length;
+
+        for (let pos = 0; pos < len; pos++) {
+            const char = lineContent[pos];
+
+            // 处理转义和字符串
+            if (escapeNext) {
+                escapeNext = false;
+                continue;
+            }
+            if (char === '\\') {
+                escapeNext = true;
+                continue;
+            }
+            if (char === '"') {
+                inString = !inString;
+                continue;
+            }
+            if (inString) continue;
+
+            // 处理括号
+            if (char === '{' || char === '[') {
+                currentDepth++;
+                maxLevel = Math.max(maxLevel, currentDepth);
+            } else if (char === '}' || char === ']') {
+                currentDepth--;
+            }
+        }
+    }
+
+    return maxLevel;
 };
 
 // 处理转换
@@ -6085,6 +6164,21 @@ const handleArchiveCommand = async (command: string) => {
     outputEditor?.setValue('');
     updateLineNumberWidth(outputEditor);
     updateEditorHeight(outputEditor);
+
+    // 重置层级选择状态
+    selectedLevel.value = 0;
+
+    // 更新层级信息
+    try {
+        const parsed = JSON.parse(archive.content);
+        maxLevel.value = calculateMaxLevel(parsed);
+        if (maxLevel.value > 0) {
+            selectedLevel.value = 1;
+        }
+    } catch (e) {
+        // 解析失败，重置为0
+        maxLevel.value = 0;
+    }
 
     showMessageSuccess(`已加载存档：${archive.name}`);
 };
