@@ -748,7 +748,7 @@ const saveCurrentRule = async () => {
     let ruleName = currentRule.value.name?.trim() || '';
     if (!ruleName) {
         try {
-            const { value: inputName } = await ElMessageBox.prompt('请输入规则名称', '保存规则', {
+            const { value: inputName }: any = await ElMessageBox.prompt('请输入规则名称', '保存规则', {
                 confirmButtonText: '确定',
                 cancelButtonText: '取消',
                 inputPlaceholder: '例如：手机号脱敏',

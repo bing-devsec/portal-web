@@ -682,7 +682,7 @@ const loadShareIntoEditor = async (row: any) => {
     try {
         let passwordInput: string | undefined = undefined;
         if (row.hasPassword) {
-            const { value } = await ElMessageBox.prompt('该分享受密码保护，请输入密码', '需要密码', {
+            const { value }: any = await ElMessageBox.prompt('该分享受密码保护，请输入密码', '需要密码', {
                 inputType: 'password',
                 inputPlaceholder: '访问密码',
                 confirmButtonText: '确定',

@@ -34,9 +34,8 @@
                         <el-button v-if="buttonVisibility.fetchJson" type="primary" @click="openFetchJsonDialog">获取JSON</el-button>
                         <el-button v-if="buttonVisibility.format" type="primary" @click="formatJSON">格式化</el-button>
                         <el-button v-if="buttonVisibility.compress" type="primary" @click="compressJSON">压缩</el-button>
-                        <el-button v-if="buttonVisibility.escape" type="primary" @click="handleEscapeCommand('escape')">转义</el-button>
+                        <el-button v-if="buttonVisibility.escape" type="primary" @click="compressAndEscapeJSON">转义</el-button>
                         <el-button v-if="buttonVisibility.unescape" type="primary" @click="handleEscapeCommand('unescape')">去除转义</el-button>
-                        <el-button v-if="buttonVisibility.compressEscape" type="primary" @click="handleEscapeCommand('compress-escape')">压缩并转义</el-button>
                         <el-button v-if="buttonVisibility.masking" type="primary" @click="openDataMaskingDialog">脱敏</el-button>
                         <el-button v-if="buttonVisibility.sort" type="primary" @click="handleAdvancedCommand('sort')">排序</el-button>
                         <el-button v-if="buttonVisibility.archive" type="primary" @click="handleSaveArchive">存档</el-button>
@@ -304,7 +303,7 @@
                                         <el-checkbox v-model="buttonVisibility.unescape">去除转义</el-checkbox>
                                     </div>
                                     <div class="button-visibility-item" style="grid-column: 5; grid-row: 1">
-                                        <el-checkbox v-model="buttonVisibility.compressEscape">压缩并转义</el-checkbox>
+                                        <el-checkbox v-model="buttonVisibility.dataConvert">数据转换</el-checkbox>
                                     </div>
                                     <!-- 第二行：数据处理与管理 -->
                                     <div class="button-visibility-item" style="grid-column: 1; grid-row: 2">
@@ -317,9 +316,6 @@
                                         <el-checkbox v-model="buttonVisibility.archive">存档</el-checkbox>
                                     </div>
                                     <div class="button-visibility-item" style="grid-column: 4; grid-row: 2">
-                                        <el-checkbox v-model="buttonVisibility.dataConvert">数据转换</el-checkbox>
-                                    </div>
-                                    <div class="button-visibility-item" style="grid-column: 5; grid-row: 2">
                                         <el-checkbox v-model="buttonVisibility.share">分享</el-checkbox>
                                     </div>
                                 </div>
@@ -699,7 +695,6 @@ const defaultSettings = {
         compress: true,
         escape: true,
         unescape: true,
-        compressEscape: true,
         masking: true,
         sort: true,
         share: false,
@@ -4740,127 +4735,6 @@ const compressJSON = () => {
     }
 };
 
-// 转义 JSON
-const escapeJSON = () => {
-    try {
-        outputType.value = 'json';
-        const value = inputEditor?.getValue() || '';
-        if (!value.trim()) {
-            showMessageError('请先输入 JSON 数据');
-            return;
-        }
-
-        // 检测非法转义序列
-        const illegalCheck = detectIllegalEscapes(value);
-        if (illegalCheck.hasIllegal) {
-            // 对于包含非法编码的情况，直接拒绝处理
-            showMessageError('检测到非法转义序列，为避免数据损坏，已拒绝转义操作');
-            return;
-        }
-
-        // 预处理 JSON 字符串
-        let result;
-        try {
-            result = preprocessJSON(value);
-        } catch (error) {
-            showMessageError('请输入有效的 JSON 数据');
-            return;
-        }
-
-        // 使用 JsonPlusFormatter 进行格式化，确保转义序列正确恢复
-        const formatter = new JsonPlusFormatter(encodingMode.value, indentSize.value, arrayNewLine.value, floatPrecision.value);
-        const formatted = formatter.format(result.data, result.escapeMap);
-
-        // 有效的JSON转义序列
-        const validEscapes = ['"', '\\', '/', 'b', 'f', 'n', 'r', 't', 'u'];
-
-        // 智能转义：保留原始JSON中的转义序列（包括非法转义序列）
-        // 需要特别处理字符串值内部的转义序列，支持任意深度的嵌套
-        // 核心思想：在字符串值内部，每个反斜杠都需要被转义（\ -> \\），每个引号都需要被转义（" -> \"）
-        let escaped = '';
-        let i = 0;
-        let inString = false; // 跟踪是否在字符串值内部
-
-        while (i < formatted.length) {
-            const char = formatted[i];
-            const nextChar = formatted[i + 1] || '';
-            const nextNextChar = formatted[i + 2] || '';
-
-            if (char === '\\') {
-                // 优先处理反斜杠（避免与引号处理冲突）
-                if (inString) {
-                    // 在字符串值内部，所有反斜杠都需要被转义
-                    if (nextChar === '"') {
-                        // 字符串值内部的转义引号 \"，需要转义为 \\\"
-                        // 因为我们要转义整个JSON字符串，所以 \" 需要变成 \\\"
-                        escaped += '\\\\\\"';
-                        i += 2;
-                    } else if (nextChar === '\\') {
-                        // 连续的反斜杠 \\，需要转义为 \\\\
-                        // 检查是否是无效转义序列（如 \\a）
-                        if (nextNextChar && !validEscapes.includes(nextNextChar)) {
-                            // JSON.stringify 将无效转义序列 \a 转义成了 \\a
-                            // 我们需要将其还原为 \a（转义后变成 \\a）
-                            escaped += '\\' + nextNextChar;
-                            i += 3;
-                        } else {
-                            // 标准的 \\，转义为 \\\\
-                            escaped += '\\\\\\\\';
-                            i += 2;
-                        }
-                    } else if (nextChar === 'u' && /^[0-9a-fA-F]{4}$/i.test(formatted.substring(i + 2, i + 6))) {
-                        // Unicode转义序列 \uXXXX，在字符串值内部需要转义反斜杠
-                        escaped += '\\\\u' + formatted.substring(i + 2, i + 6);
-                        i += 6;
-                    } else if (nextChar) {
-                        // 标准转义序列（\n, \t等），在字符串值内部需要转义反斜杠
-                        escaped += '\\\\' + nextChar;
-                        i += 2;
-                    } else {
-                        // 单独的反斜杠（字符串末尾），转义它
-                        escaped += '\\\\';
-                        i++;
-                    }
-                } else {
-                    // 不在字符串值内部，保持原样（这些是JSON结构中的转义序列）
-                    if (nextChar === 'u' && /^[0-9a-fA-F]{4}$/i.test(formatted.substring(i + 2, i + 6))) {
-                        // Unicode转义序列 \uXXXX，保持原样
-                        escaped += formatted.substring(i, i + 6);
-                        i += 6;
-                    } else if (nextChar) {
-                        // 标准转义序列（\n, \t等），保持原样
-                        escaped += char + nextChar;
-                        i += 2;
-                    } else {
-                        // 单独的反斜杠，转义它
-                        escaped += '\\\\';
-                        i++;
-                    }
-                }
-            } else if (char === '"') {
-                // 处理引号（必须在反斜杠之后处理，避免重复处理）
-                // 所有引号都需要被转义
-                escaped += '\\"';
-                inString = !inString; // 切换字符串状态
-                i++;
-            } else {
-                escaped += char;
-                i++;
-            }
-        }
-
-        outputEditor?.setValue(escaped);
-
-        // 更新编辑器配置（包括模型选项，确保缩进指南线正确显示）
-        // 对于JSON输出，总是启用大文件折叠优化
-        updateOutputEditorConfig('json', true);
-
-        showMessageSuccess('转义成功');
-    } catch (error: any) {
-        showMessageError('转义失败: ' + error.message);
-    }
-};
-
 // 去除JSON转义字符
 // 检测字符串中是否存在非法转义序列
 const detectIllegalEscapes = (str: string): { hasIllegal: boolean; details: string[] } => {
@@ -5589,81 +5463,9 @@ const compressAndEscapeJSON = () => {
         const formatter = new JsonPlusFormatter(encodingMode.value, indentSize.value, arrayNewLine.value, floatPrecision.value);
         const compressed = formatter.compress(result.data, result.escapeMap);
 
-        // 有效的JSON转义序列
-        const validEscapes = ['"', '\\', '/', 'b', 'f', 'n', 'r', 't', 'u'];
-        let escaped = '';
-        let i = 0;
-        let inString = false; // 跟踪是否在字符串值内部
-
-        while (i < compressed.length) {
-            const char = compressed[i];
-            const nextChar = compressed[i + 1] || '';
-            const nextNextChar = compressed[i + 2] || '';
-
-            if (char === '\\') {
-                // 优先处理反斜杠（避免与引号处理冲突）
-                if (inString) {
-                    // 在字符串值内部，所有反斜杠都需要被转义
-                    if (nextChar === '"') {
-                        // 字符串值内部的转义引号 \"，需要转义为 \\\"
-                        // 因为我们要转义整个JSON字符串，所以 \" 需要变成 \\\"
-                        escaped += '\\\\\\"';
-                        i += 2;
-                    } else if (nextChar === '\\') {
-                        // 连续的反斜杠 \\，需要转义为 \\\\
-                        // 检查是否是无效转义序列（如 \\a）
-                        if (nextNextChar && !validEscapes.includes(nextNextChar)) {
-                            // JSON.stringify 将无效转义序列 \a 转义成了 \\a
-                            // 我们需要将其还原为 \a（转义后变成 \\a）
-                            escaped += '\\' + nextNextChar;
-                            i += 3;
-                        } else {
-                            // 标准的 \\，转义为 \\\\
-                            escaped += '\\\\\\\\';
-                            i += 2;
-                        }
-                    } else if (nextChar === 'u' && /^[0-9a-fA-F]{4}$/i.test(compressed.substring(i + 2, i + 6))) {
-                        // Unicode转义序列 \uXXXX，在字符串值内部需要转义反斜杠
-                        escaped += '\\\\u' + compressed.substring(i + 2, i + 6);
-                        i += 6;
-                    } else if (nextChar) {
-                        // 标准转义序列（\n, \t等），在字符串值内部需要转义反斜杠
-                        escaped += '\\\\' + nextChar;
-                        i += 2;
-                    } else {
-                        // 单独的反斜杠（字符串末尾），转义它
-                        escaped += '\\\\';
-                        i++;
-                    }
-                } else {
-                    // 不在字符串值内部，保持原样（这些是JSON结构中的转义序列）
-                    if (nextChar === 'u' && /^[0-9a-fA-F]{4}$/i.test(compressed.substring(i + 2, i + 6))) {
-                        // Unicode转义序列 \uXXXX，保持原样
-                        escaped += compressed.substring(i, i + 6);
-                        i += 6;
-                    } else if (nextChar) {
-                        // 标准转义序列（\n, \t等），保持原样
-                        escaped += char + nextChar;
-                        i += 2;
-                    } else {
-                        // 单独的反斜杠，转义它
-                        escaped += '\\\\';
-                        i++;
-                    }
-                }
-            } else if (char === '"') {
-                // 处理引号（必须在反斜杠之后处理，避免重复处理）
-                // 所有引号都需要被转义
-                escaped += '\\"';
-                inString = !inString; // 切换字符串状态
-                i++;
-            } else {
-                escaped += char;
-                i++;
-            }
-        }
-
-        outputEditor?.setValue(escaped);
+        // 直接用 JSON.stringify 包裹成字符串
+        const escapedString = JSON.stringify(compressed);
+        outputEditor?.setValue(escapedString);
 
         // 更新编辑器配置
         if (outputEditor) {
@@ -5680,7 +5482,7 @@ const compressAndEscapeJSON = () => {
             updateEditorHeight(outputEditor);
         }
 
-        showMessageSuccess('压缩并转义成功');
+        showMessageSuccess('转义成功');
     } catch (error: any) {
         showMessageError('压缩并转义失败: ' + error.message);
     }
@@ -6831,7 +6633,7 @@ const loadSharedDataFromUrl = async () => {
                     inputType: 'password',
                     inputPlaceholder: '请输入访问密码',
                 })
-                    .then(async ({ value }) => {
+                    .then(async ({ value }: any) => {
                         if (value) {
                             // 重新加载，带上密码
                             const newUrl = new URL(window.location.href);
@@ -6855,14 +6657,8 @@ const loadSharedDataFromUrl = async () => {
 // 处理转义相关命令
 const handleEscapeCommand = (command: string) => {
     switch (command) {
-        case 'escape':
-            escapeJSON();
-            break;
         case 'unescape':
             unescapeJSON(recursiveUnescape.value);
-            break;
-        case 'compress-escape':
-            compressAndEscapeJSON();
             break;
     }
 };
