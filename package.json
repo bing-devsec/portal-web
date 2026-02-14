@@ -23,7 +23,7 @@
         "json5": "^2.2.3",
         "markdown-it": "^14.1.0",
         "md-editor-v3": "6.2.0",
-        "mermaid": "^11.9.0",
+        "mermaid": "^10.9.5",
         "echarts": "^6.0.0",
         "highlight.js": "^11.10.0",
         "monaco-editor": "^0.52.2",

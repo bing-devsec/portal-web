@@ -342,7 +342,19 @@
                                 </div>
                             </div>
 
-                            <!-- 分隔线：菜单栏设置和字符串换行设置之间 -->
+                            <el-divider class="settings-subsection-divider" />
+
+                            <div class="settings-subsection">
+                                <div class="settings-subsection-title">缩进空格</div>
+                                <div class="settings-item">
+                                    <el-radio-group v-model="indentSize" class="settings-radio-group">
+                                        <el-radio :value="2" border>2</el-radio>
+                                        <el-radio :value="4" border>4</el-radio>
+                                        <el-radio :value="8" border>8</el-radio>
+                                    </el-radio-group>
+                                </div>
+                            </div>
+
                             <el-divider class="settings-subsection-divider" />
 
                             <!-- 字符串换行设置 -->
@@ -418,19 +430,6 @@
                             </div>
                         </template>
                         <div class="settings-collapse-content">
-                            <div class="settings-item">
-                                <div class="settings-item-header">
-                                    <span class="settings-label">缩进空格</span>
-                                </div>
-                                <el-radio-group v-model="indentSize" class="settings-radio-group">
-                                    <el-radio :value="2" border>2</el-radio>
-                                    <el-radio :value="4" border>4</el-radio>
-                                    <el-radio :value="8" border>8</el-radio>
-                                </el-radio-group>
-                            </div>
-
-                            <el-divider style="margin: 12px 0" />
-
                             <div class="settings-item">
                                 <div class="settings-item-header">
                                     <span class="settings-label">编码模式</span>
@@ -1056,18 +1055,28 @@ let asyncComputeTask: {
     cancelToken: boolean;
 } | null = null;
 
-// 预先计算所有可折叠区域的信息（异步版本）。使用分批处理，避免阻塞UI，优先计算可见区域
-// @param formattedText 格式化后的JSON文本
-// @param priorityLines 优先计算的行号范围（可选，用于优先计算可见区域）
-const precomputeFoldingInfo = async (formattedText: string, priorityLines?: { start: number; end: number }): Promise<void> => {
-    // 取消之前的计算任务
+const resetPrecomputedFoldingInfo = () => {
     if (asyncComputeTask) {
         asyncComputeTask.cancelToken = true;
         asyncComputeTask = null;
     }
-
-    // 清空之前的计算结果
     precomputedFoldingInfo.clear();
+    precomputedFoldingRanges.clear();
+};
+
+const clearOutputFoldingInfo = () => {
+    resetPrecomputedFoldingInfo();
+    const clearFunc = (outputEditor as any)?.__clearFoldingInfoElements;
+    if (clearFunc) {
+        clearFunc();
+    }
+};
+
+// 预先计算所有可折叠区域的信息（异步版本）。使用分批处理，避免阻塞UI，优先计算可见区域
+// @param formattedText 格式化后的JSON文本
+// @param priorityLines 优先计算的行号范围（可选，用于优先计算可见区域）
+const precomputeFoldingInfo = async (formattedText: string, priorityLines?: { start: number; end: number }): Promise<void> => {
+    resetPrecomputedFoldingInfo();
 
     if (!formattedText || !formattedText.trim()) {
         return;
@@ -1759,6 +1768,15 @@ const setupFoldingInfoDisplay = (editor: monaco.editor.IStandaloneCodeEditor) =>
         }, delay);
     };
 
+    const clearInfoElements = () => {
+        infoElements.forEach(info => {
+            if (info.element && info.element.parentNode) {
+                info.element.remove();
+            }
+        });
+        infoElements.clear();
+    };
+
     // 获取可见行号范围（带缓冲区，确保滚动时也能显示）
     // 统计方式：
     // 1. 通过 editor.getVisibleRanges() 获取 Monaco Editor 当前实际可见的行范围
@@ -1807,6 +1825,10 @@ const setupFoldingInfoDisplay = (editor: monaco.editor.IStandaloneCodeEditor) =>
         }
         if (isUpdateDisabled) {
             return; // 如果禁用更新，直接返回
+        }
+        if (outputType.value !== 'json') {
+            clearInfoElements();
+            return;
         }
 
         try {
@@ -2053,6 +2075,7 @@ const setupFoldingInfoDisplay = (editor: monaco.editor.IStandaloneCodeEditor) =>
 
     // 监听内容变化
     editor.onDidChangeModelContent(() => {
+        clearInfoElements();
         debouncedUpdate();
     });
 
@@ -2225,6 +2248,7 @@ const setupFoldingInfoDisplay = (editor: monaco.editor.IStandaloneCodeEditor) =>
     // 导出函数，供外部调用（层级收缩时使用）
     (editor as any).__disableFoldingInfoUpdate = disableUpdate;
     (editor as any).__enableFoldingInfoUpdateAndRefresh = enableUpdateAndRefresh;
+    (editor as any).__clearFoldingInfoElements = clearInfoElements;
 };
 
 // 查找字符串的完整范围（包括引号）
@@ -2502,42 +2526,23 @@ const setupSelectionListener = (editor: monaco.editor.IStandaloneCodeEditor | nu
 
 // 设置双击选中整个字符串并复制功能
 const setupDoubleClickSelectString = (editor: monaco.editor.IStandaloneCodeEditor) => {
-    let lastClickTime = 0;
-    let lastClickPosition: monaco.Position | null = null;
-
-    // 监听鼠标点击事件来记录点击位置
     editor.onMouseDown((e: monaco.editor.IEditorMouseEvent) => {
-        const currentTime = Date.now();
         const currentPosition = e.target.position;
 
         if (!currentPosition) {
-            lastClickTime = currentTime;
-            lastClickPosition = null;
             return;
         }
 
-        // 检测双击（两次点击间隔小于 300ms 且在同一位置附近）
-        const isDoubleClick =
-            currentTime - lastClickTime < 300 &&
-            lastClickPosition &&
-            lastClickPosition.lineNumber === currentPosition.lineNumber &&
-            Math.abs(lastClickPosition.column - currentPosition.column) <= 1;
-
-        if (isDoubleClick) {
-            // 这是双击事件
+        if (e.event.detail === 2) {
             const model = editor.getModel();
             if (!model) return;
 
-            // 保存当前点击位置（因为延迟执行时 e.target.position 可能已失效）
             const clickPosition = new monaco.Position(currentPosition.lineNumber, currentPosition.column);
 
-            // 延迟处理，让 Monaco 的双击选中先完成
             setTimeout(() => {
-                // 查找完整的字符串范围（包括引号）
                 const stringRange = findStringRange(model, clickPosition);
 
                 if (stringRange) {
-                    // 创建不包含引号的范围（排除两端的引号）
                     const stringValueRange = new monaco.Range(
                         stringRange.startLineNumber,
                         stringRange.startColumn + 1, // 跳过开始引号
@@ -2545,22 +2550,15 @@ const setupDoubleClickSelectString = (editor: monaco.editor.IStandaloneCodeEdito
                         stringRange.endColumn - 1 // 跳过结束引号
                     );
 
-                    // 获取字符串值文本（不包含引号，保持转义字符的字面形式）
                     const stringValueText = model.getValueInRange(stringValueRange);
 
-                    // 设置选中范围为字符串值（不包含引号）
                     editor.setSelection(stringValueRange);
 
-                    // 复制字符串值到剪贴板（不包含引号，保持原始转义字符形式）
                     copyToClipboard(stringValueText);
                     showMessageSuccess('字符串已复制到剪贴板');
                 }
             }, 10);
         }
-
-        // 更新记录
-        lastClickTime = currentTime;
-        lastClickPosition = new monaco.Position(currentPosition.lineNumber, currentPosition.column);
     });
 };
 
@@ -2870,6 +2868,7 @@ const configureInputEditor: () => void = () => {
                             }
                         }
                         if (outputEditor) {
+                            clearOutputFoldingInfo();
                             outputEditor.setValue('');
                             updateEditorHeight(outputEditor);
                             updateLineNumberWidth(outputEditor);
@@ -2883,7 +2882,7 @@ const configureInputEditor: () => void = () => {
                 const { data: parsed } = preprocessJSON(cleanedContent);
                 maxLevel.value = calculateMaxLevel(parsed);
                 if (maxLevel.value > 0 && selectedLevel.value === 0) {
-                    selectedLevel.value = 1;
+                    selectedLevel.value = getDefaultFoldLevel(maxLevel.value);
                 }
             } catch (error) {
                 maxLevel.value = 0;
@@ -2892,6 +2891,7 @@ const configureInputEditor: () => void = () => {
         } else {
             maxLevel.value = 0;
             selectedLevel.value = 0;
+            resetPrecomputedFoldingInfo();
             outputEditor?.setValue('');
             updateEditorHeight(outputEditor);
             updateLineNumberWidth(outputEditor);
@@ -3579,6 +3579,12 @@ const calculateMaxLevelFromEditor = (model: monaco.editor.ITextModel, lineCount:
     return maxLevel;
 };
 
+const getDefaultFoldLevel = (level: number) => {
+    if (level > 2) return 2;
+    if (level > 0) return 1;
+    return 0;
+};
+
 // 处理转换
 const handleConvert = (command: string) => {
     try {
@@ -3658,13 +3664,15 @@ class JsonPlusFormatter {
     private indentSize: number;
     private arrayNewLine: boolean;
     private floatPrecision: number;
+    private preserveNumberLiterals: boolean;
     private escapePlaceholderCounter: number;
 
-    constructor(encodingMode: number, indentSize: number, arrayNewLine: boolean, floatPrecision: number = 0) {
+    constructor(encodingMode: number, indentSize: number, arrayNewLine: boolean, floatPrecision: number = 0, preserveNumberLiterals: boolean = false) {
         this.encodingMode = encodingMode;
         this.indentSize = indentSize;
         this.arrayNewLine = arrayNewLine;
         this.floatPrecision = floatPrecision;
+        this.preserveNumberLiterals = preserveNumberLiterals;
         this.escapePlaceholderCounter = 0;
     }
 
@@ -3816,6 +3824,9 @@ class JsonPlusFormatter {
 
         // 预处理字符串，处理特殊值、转义等
         let processedInput = this.preprocessSpecialValues(input);
+        if (this.preserveNumberLiterals || this.floatPrecision > 15) {
+            processedInput = this.preprocessHighPrecisionNumbers(processedInput);
+        }
         processedInput = this.preprocessString(processedInput, escapeMap);
 
         try {
@@ -3839,6 +3850,107 @@ class JsonPlusFormatter {
 
         // 处理函数定义 - 使用更复杂的逻辑处理嵌套函数
         result = this.replaceFunctionsWithNull(result);
+
+        return result;
+    }
+
+    private preprocessHighPrecisionNumbers(input: string): string {
+        let result = '';
+        let i = 0;
+        let inString = false;
+        let stringChar = '';
+        let inLineComment = false;
+        let inBlockComment = false;
+
+        const isIdentifierChar = (ch: string) => /[A-Za-z0-9_$]/.test(ch);
+
+        while (i < input.length) {
+            const char = input[i];
+            const next = input[i + 1] || '';
+
+            if (inLineComment) {
+                result += char;
+                if (char === '\n') {
+                    inLineComment = false;
+                }
+                i++;
+                continue;
+            }
+
+            if (inBlockComment) {
+                result += char;
+                if (char === '*' && next === '/') {
+                    result += next;
+                    i += 2;
+                    inBlockComment = false;
+                    continue;
+                }
+                i++;
+                continue;
+            }
+
+            if (inString) {
+                result += char;
+                if (char === '\\' && next) {
+                    result += next;
+                    i += 2;
+                    continue;
+                }
+                if (char === stringChar) {
+                    inString = false;
+                    stringChar = '';
+                }
+                i++;
+                continue;
+            }
+
+            if (char === '/' && next === '/') {
+                result += char + next;
+                i += 2;
+                inLineComment = true;
+                continue;
+            }
+
+            if (char === '/' && next === '*') {
+                result += char + next;
+                i += 2;
+                inBlockComment = true;
+                continue;
+            }
+
+            if (char === '"' || char === "'") {
+                inString = true;
+                stringChar = char;
+                result += char;
+                i++;
+                continue;
+            }
+
+            const prevChar = i > 0 ? input[i - 1] : '';
+            if (
+                (char === '+' || char === '-' || char === '.' || (char >= '0' && char <= '9')) &&
+                !isIdentifierChar(prevChar)
+            ) {
+                const slice = input.slice(i);
+                const match = slice.match(/^[+-]?(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?/);
+                if (match && match[0]) {
+                    const token = match[0];
+                    const nextChar = input[i + token.length] || '';
+                    if (!isIdentifierChar(nextChar)) {
+                        if (token.includes('.') || token.includes('e') || token.includes('E')) {
+                            const payload = `{"__highPrecisionNumber":true,"originalString":"${token}"}`;
+                            const wrapped = `"${payload.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`;
+                            result += wrapped;
+                            i += token.length;
+                            continue;
+                        }
+                    }
+                }
+            }
+
+            result += char;
+            i++;
+        }
 
         return result;
     }
@@ -4602,8 +4714,10 @@ class JsonPlusFormatter {
 }
 
 // 兼容性函数 - 用于其他地方的JSON解析
-const preprocessJSON = (input: string) => {
-    const formatter = new JsonPlusFormatter(encodingMode.value, indentSize.value, arrayNewLine.value, floatPrecision.value);
+const preprocessJSON = (input: string, options?: { floatPrecision?: number; preserveNumberLiterals?: boolean }) => {
+    const precision = options?.floatPrecision ?? floatPrecision.value;
+    const preserveNumberLiterals = options?.preserveNumberLiterals ?? false;
+    const formatter = new JsonPlusFormatter(encodingMode.value, indentSize.value, arrayNewLine.value, precision, preserveNumberLiterals);
     const result = formatter.parseJson5(input);
     return {
         ...result,
@@ -4658,7 +4772,15 @@ const reformatJsonIndentation = (jsonString: string, newIndentSize: number): str
 
 // 兼容性函数 - 用于其他地方的JSON格式化
 const customStringify = (data: any, replacer: any, indentSize: number, originalString?: string, ...args: any[]) => {
-    const formatter = new JsonPlusFormatter(encodingMode.value, indentSize, arrayNewLine.value, floatPrecision.value);
+    const optionsArg = args.length > 0 ? args[args.length - 1] : undefined;
+    const hasOptions =
+        optionsArg &&
+        typeof optionsArg === 'object' &&
+        !Array.isArray(optionsArg) &&
+        ('floatPrecision' in optionsArg || 'preserveNumberLiterals' in optionsArg);
+    const precision = hasOptions && typeof optionsArg.floatPrecision === 'number' ? optionsArg.floatPrecision : floatPrecision.value;
+    const preserveNumberLiterals = hasOptions && optionsArg.preserveNumberLiterals === true;
+    const formatter = new JsonPlusFormatter(encodingMode.value, indentSize, arrayNewLine.value, precision, preserveNumberLiterals);
     const escapeMap = new Map<string, string>();
     return formatter.format(data, escapeMap);
 };
@@ -4714,14 +4836,14 @@ const compressJSON = () => {
         // 预处理 JSON 字符串
         let result;
         try {
-            result = preprocessJSON(value);
+            result = preprocessJSON(value, { floatPrecision: 0, preserveNumberLiterals: true });
         } catch (error) {
             showMessageError('请输入有效的 JSON 数据');
             return;
         }
 
         // 使用 JsonPlusFormatter 进行压缩，确保转义序列正确恢复
-        const formatter = new JsonPlusFormatter(encodingMode.value, indentSize.value, arrayNewLine.value, floatPrecision.value);
+        const formatter = new JsonPlusFormatter(encodingMode.value, indentSize.value, arrayNewLine.value, 0, true);
         const compressed = formatter.compress(result.data, result.escapeMap);
         outputEditor?.setValue(compressed);
 
@@ -4809,7 +4931,8 @@ const unescapeJSON = (recursive: boolean = true) => {
         // 简化解析流程：优先直接解析 -> 宽松解析 -> 迭代去除外层转义后再尝试解析
         const tryParseJSON = (str: string) => {
             try {
-                return { ok: true, value: JSON.parse(str) } as const;
+                const result = preprocessJSON(str, { floatPrecision: 0, preserveNumberLiterals: true });
+                return { ok: true, value: result.data } as const;
             } catch {
                 return { ok: false } as const;
             }
@@ -4889,7 +5012,7 @@ const unescapeJSON = (recursive: boolean = true) => {
             } else {
                 // 2. 宽松解析器（仅对合法编码使用）
                 try {
-                    const result = preprocessJSON(value);
+                    const result = preprocessJSON(value, { floatPrecision: 0, preserveNumberLiterals: true });
                     parsedInput = result.data;
                     parseAttempted = true;
                 } catch {
@@ -4949,12 +5072,19 @@ const unescapeJSON = (recursive: boolean = true) => {
                     };
 
                     // 自定义 stringify：保留 Unicode 转义序列
+                    const indentUnit = ' '.repeat(indentSize.value);
                     const stringifyWithUnicode = (obj: any, indent: string = '', unicodeMap: Map<string, string> = globalUnicodeMap): string => {
                         if (obj === null) return 'null';
                         if (typeof obj === 'boolean') return obj.toString();
                         if (typeof obj === 'number') return obj.toString();
 
                         if (typeof obj === 'string') {
+                            try {
+                                const parsed = JSON.parse(obj);
+                                if (typeof parsed === 'object' && parsed && parsed.__highPrecisionNumber && parsed.originalString) {
+                                    return parsed.originalString;
+                                }
+                            } catch (e) {}
                             let escaped = '';
                             for (let i = 0; i < obj.length; i++) {
                                 const char = obj[i];
@@ -4997,8 +5127,8 @@ const unescapeJSON = (recursive: boolean = true) => {
                         if (Array.isArray(obj)) {
                             if (obj.length === 0) return '[]';
                             const items = obj.map(item => {
-                                const itemStr = stringifyWithUnicode(item, indent + '  ', unicodeMap);
-                                return indent + '  ' + itemStr;
+                                const itemStr = stringifyWithUnicode(item, indent + indentUnit, unicodeMap);
+                                return indent + indentUnit + itemStr;
                             });
                             return '[\n' + items.join(',\n') + '\n' + indent + ']';
                         }
@@ -5007,9 +5137,9 @@ const unescapeJSON = (recursive: boolean = true) => {
                             const keys = Object.keys(obj);
                             if (keys.length === 0) return '{}';
                             const pairs = keys.map(key => {
-                                const keyStr = stringifyWithUnicode(key, indent + '  ', unicodeMap);
-                                const valueStr = stringifyWithUnicode(obj[key], indent + '  ', unicodeMap);
-                                return indent + '  ' + keyStr + ': ' + valueStr;
+                                const keyStr = stringifyWithUnicode(key, indent + indentUnit, unicodeMap);
+                                const valueStr = stringifyWithUnicode(obj[key], indent + indentUnit, unicodeMap);
+                                return indent + indentUnit + keyStr + ': ' + valueStr;
                             });
                             return '{\n' + pairs.join(',\n') + '\n' + indent + '}';
                         }
@@ -5028,6 +5158,9 @@ const unescapeJSON = (recursive: boolean = true) => {
 
                         // 处理对象
                         if (typeof obj === 'object' && !Array.isArray(obj)) {
+                            if ((obj as any).__highPrecisionNumber && (obj as any).originalString) {
+                                return JSON.stringify(obj);
+                            }
                             const result: Record<string, any> = {};
                             for (const key in obj) {
                                 if (Object.prototype.hasOwnProperty.call(obj, key)) {
@@ -5066,7 +5199,8 @@ const unescapeJSON = (recursive: boolean = true) => {
 
                                     try {
                                         // 先尝试直接解析，可能已经是有效的JSON
-                                        parsedValue = JSON.parse(obj);
+                                        const parseResult = preprocessJSON(obj, { floatPrecision: 0, preserveNumberLiterals: true });
+                                        parsedValue = parseResult.data;
                                         isValidJson = true;
                                     } catch (e: any) {
                                         // 直接解析失败，可能是包含转义的JSON，需要先去除转义
@@ -5117,7 +5251,8 @@ const unescapeJSON = (recursive: boolean = true) => {
 
                                         // 尝试解析去除转义后的字符串
                                         try {
-                                            parsedValue = JSON.parse(unescaped);
+                                            const parseResult = preprocessJSON(unescaped, { floatPrecision: 0, preserveNumberLiterals: true });
+                                            parsedValue = parseResult.data;
                                             isValidJson = true;
 
                                             parsedValue = restoreUnicodePlaceholders(parsedValue, unicodeMap);
@@ -5134,6 +5269,9 @@ const unescapeJSON = (recursive: boolean = true) => {
                                     }
 
                                     if (isValidJson) {
+                                        if (parsedValue && typeof parsedValue === 'object' && (parsedValue as any).__highPrecisionNumber && (parsedValue as any).originalString) {
+                                            return JSON.stringify(parsedValue);
+                                        }
                                         // 如果解析成功，递归处理解析后的对象
                                         if (typeof parsedValue === 'object' && parsedValue !== null) {
                                             return processObject(parsedValue, depth + 1);
@@ -5191,18 +5329,22 @@ const unescapeJSON = (recursive: boolean = true) => {
                         return target.map(item => {
                             if (typeof item === 'string') {
                                 const t = item.trim();
-                                // 检查是否包含转义字符或看起来像JSON结构
                                 if ((t.startsWith('{') && t.endsWith('}')) || (t.startsWith('[') && t.endsWith(']')) || t.includes('\\"') || t.includes('\\\\')) {
-                                    // 先尝试直接解析
                                     try {
-                                        return JSON.parse(item);
+                                        const result = preprocessJSON(item, { floatPrecision: 0, preserveNumberLiterals: true });
+                                        if (result.data && typeof result.data === 'object' && result.data.__highPrecisionNumber && result.data.originalString) {
+                                            return JSON.stringify(result.data);
+                                        }
+                                        return result.data;
                                     } catch {
-                                        // 如果直接解析失败，尝试去除转义后再解析
                                         try {
                                             const unescaped = item.replace(/\\"/g, '"').replace(/\\\\/g, '\\');
-                                            return JSON.parse(unescaped);
+                                            const result = preprocessJSON(unescaped, { floatPrecision: 0, preserveNumberLiterals: true });
+                                            if (result.data && typeof result.data === 'object' && result.data.__highPrecisionNumber && result.data.originalString) {
+                                                return JSON.stringify(result.data);
+                                            }
+                                            return result.data;
                                         } catch {
-                                            // 解析失败则保留原字符串
                                             return item;
                                         }
                                     }
@@ -5213,26 +5355,35 @@ const unescapeJSON = (recursive: boolean = true) => {
                     }
 
                     if (typeof target === 'object') {
+                        if (target.__highPrecisionNumber && target.originalString) {
+                            return JSON.stringify(target);
+                        }
                         const result: Record<string, any> = {};
                         for (const key in target) {
                             if (!Object.prototype.hasOwnProperty.call(target, key)) continue;
                             const val = target[key];
                             if (typeof val === 'string') {
                                 const t = val.trim();
-                                // 检查是否包含转义字符或看起来像JSON结构
                                 if ((t.startsWith('{') && t.endsWith('}')) || (t.startsWith('[') && t.endsWith(']')) || t.includes('\\"') || t.includes('\\\\')) {
-                                    // 先尝试直接解析
                                     try {
-                                        result[key] = JSON.parse(val);
+                                        const parseResult = preprocessJSON(val, { floatPrecision: 0, preserveNumberLiterals: true });
+                                        if (parseResult.data && typeof parseResult.data === 'object' && parseResult.data.__highPrecisionNumber && parseResult.data.originalString) {
+                                            result[key] = JSON.stringify(parseResult.data);
+                                            continue;
+                                        }
+                                        result[key] = parseResult.data;
                                         continue;
                                     } catch {
-                                        // 如果直接解析失败，尝试去除转义后再解析
                                         try {
                                             const unescaped = val.replace(/\\"/g, '"').replace(/\\\\/g, '\\');
-                                            result[key] = JSON.parse(unescaped);
+                                            const parseResult = preprocessJSON(unescaped, { floatPrecision: 0, preserveNumberLiterals: true });
+                                            if (parseResult.data && typeof parseResult.data === 'object' && parseResult.data.__highPrecisionNumber && parseResult.data.originalString) {
+                                                result[key] = JSON.stringify(parseResult.data);
+                                                continue;
+                                            }
+                                            result[key] = parseResult.data;
                                             continue;
                                         } catch {
-                                            // 解析失败则保留原字符串
                                         }
                                     }
                                 }
@@ -5245,7 +5396,7 @@ const unescapeJSON = (recursive: boolean = true) => {
                 };
 
                 const topLevelProcessed = tryParseTopLevelOnce(parsedInput);
-                const formatted = JSON.stringify(topLevelProcessed, null, 2);
+                const formatted = customStringify(topLevelProcessed, null, indentSize.value, undefined, { floatPrecision: 0, preserveNumberLiterals: true });
                 outputEditor?.setValue(formatted);
 
                 // 更新编辑器配置
@@ -5274,13 +5425,14 @@ const unescapeJSON = (recursive: boolean = true) => {
         if (typeof value === 'string' && value.trim().startsWith('"') && value.trim().endsWith('"')) {
             try {
                 // 尝试解析为JSON字符串
-                const firstUnescaped = JSON.parse(value.trim());
+                const firstUnescapedResult = preprocessJSON(value.trim(), { floatPrecision: 0, preserveNumberLiterals: true });
+                const firstUnescaped = firstUnescapedResult.data;
 
                 if (typeof firstUnescaped === 'string') {
                     // 检查解析出的字符串是否是有效的JSON
                     let isValidJson = false;
                     try {
-                        JSON.parse(firstUnescaped);
+                        preprocessJSON(firstUnescaped, { floatPrecision: 0, preserveNumberLiterals: true });
                         isValidJson = true;
                     } catch {
                         // 不是有效的JSON，应该保持原样
@@ -5290,9 +5442,10 @@ const unescapeJSON = (recursive: boolean = true) => {
                     if (isValidJson) {
                         try {
                             // 尝试解析第二层
-                            const secondUnescaped = JSON.parse(firstUnescaped);
+                            const secondUnescapedResult = preprocessJSON(firstUnescaped, { floatPrecision: 0, preserveNumberLiterals: true });
+                            const secondUnescaped = secondUnescapedResult.data;
                             if (typeof secondUnescaped === 'object' && secondUnescaped !== null) {
-                                const formatted = JSON.stringify(secondUnescaped, null, 2);
+                                const formatted = customStringify(secondUnescaped, null, indentSize.value, undefined, { floatPrecision: 0, preserveNumberLiterals: true });
                                 outputEditor?.setValue(formatted);
 
                                 // 更新编辑器配置
@@ -5453,14 +5606,14 @@ const compressAndEscapeJSON = () => {
         // 预处理 JSON 字符串
         let result;
         try {
-            result = preprocessJSON(value);
+            result = preprocessJSON(value, { floatPrecision: 0, preserveNumberLiterals: true });
         } catch (error) {
             showMessageError('请输入有效的 JSON 数据');
             return;
         }
 
         // 使用 JsonPlusFormatter 进行压缩，确保转义序列正确恢复
-        const formatter = new JsonPlusFormatter(encodingMode.value, indentSize.value, arrayNewLine.value, floatPrecision.value);
+        const formatter = new JsonPlusFormatter(encodingMode.value, indentSize.value, arrayNewLine.value, 0, true);
         const compressed = formatter.compress(result.data, result.escapeMap);
 
         // 直接用 JSON.stringify 包裹成字符串
@@ -5525,6 +5678,7 @@ const handleLevelAction = () => {
         const formatted = formatter.format(parsedData, escapeMap);
 
         // 更新预览区域内容
+        clearOutputFoldingInfo();
         outputEditor.setValue(formatted);
 
         // 更新编辑器配置
@@ -5676,7 +5830,7 @@ const handleDataMaskingApply = (maskedJson: string) => {
                 const parsed = JSON.parse(maskedJson);
                 maxLevel.value = calculateMaxLevel(parsed);
                 if (maxLevel.value > 0 && selectedLevel.value === 0) {
-                    selectedLevel.value = 1;
+                    selectedLevel.value = getDefaultFoldLevel(maxLevel.value);
                 }
             } catch {
                 maxLevel.value = 0;
@@ -5686,6 +5840,7 @@ const handleDataMaskingApply = (maskedJson: string) => {
 
         // 清空预览区域
         if (outputEditor) {
+            clearOutputFoldingInfo();
             outputEditor.setValue('');
             updateLineNumberWidth(outputEditor);
             updateEditorHeight(outputEditor);
@@ -5700,6 +5855,7 @@ const handleDataMaskingApply = (maskedJson: string) => {
 // 获取 JSON 数据后清空预览区域
 const handleFetchJsonLoaded = () => {
     if (outputEditor) {
+        clearOutputFoldingInfo();
         outputEditor.setValue('');
         updateLineNumberWidth(outputEditor);
         updateEditorHeight(outputEditor);
@@ -5963,7 +6119,10 @@ const handleArchiveCommand = async (command: string) => {
     } as any);
 
     // 清空outputEditor的内容
-    outputEditor?.setValue('');
+    if (outputEditor) {
+        clearOutputFoldingInfo();
+        outputEditor.setValue('');
+    }
     updateLineNumberWidth(outputEditor);
     updateEditorHeight(outputEditor);
 
@@ -5974,9 +6133,7 @@ const handleArchiveCommand = async (command: string) => {
     try {
         const parsed = JSON.parse(archive.content);
         maxLevel.value = calculateMaxLevel(parsed);
-        if (maxLevel.value > 0) {
-            selectedLevel.value = 1;
-        }
+        selectedLevel.value = getDefaultFoldLevel(maxLevel.value);
     } catch (e) {
         // 解析失败，重置为0
         maxLevel.value = 0;
@@ -6024,11 +6181,12 @@ const handleLoadSharedJson = (jsonData: string) => {
             // 更新层级信息
             maxLevel.value = calculateMaxLevel(parsed);
             if (maxLevel.value > 0 && selectedLevel.value === 0) {
-                selectedLevel.value = 1;
+                selectedLevel.value = getDefaultFoldLevel(maxLevel.value);
             }
 
             // 清空预览区域
             if (outputEditor) {
+                clearOutputFoldingInfo();
                 outputEditor.setValue('');
                 updateLineNumberWidth(outputEditor);
                 updateEditorHeight(outputEditor);
@@ -6288,10 +6446,6 @@ const handleRefreshArchive = (item: JsonArchive) => {
             archives.value[index].content = newContent;
             archives.value[index].size = newSize;
 
-            // 将更新后的存档移到最前面
-            const updatedArchive = archives.value.splice(index, 1)[0];
-            archives.value.unshift(updatedArchive);
-
             const saveSuccess = saveArchives();
             if (saveSuccess) {
                 showMessageSuccess(`已更新存档「${item.name}」的内容 - ${getArchivesTotalSizeInfo()}`);
@@ -6301,9 +6455,6 @@ const handleRefreshArchive = (item: JsonArchive) => {
                 if (currentIndex !== -1) {
                     archives.value[currentIndex].content = oldContent;
                     archives.value[currentIndex].size = oldSize;
-                    // 将存档移回原来的位置
-                    const rollbackArchive = archives.value.splice(currentIndex, 1)[0];
-                    archives.value.splice(index, 0, rollbackArchive);
                 }
             }
         } else {
@@ -6602,7 +6753,7 @@ const loadSharedDataFromUrl = async () => {
                     // 更新层级信息
                     maxLevel.value = calculateMaxLevel(jsonData);
                     if (maxLevel.value > 0 && selectedLevel.value === 0) {
-                        selectedLevel.value = 1;
+                        selectedLevel.value = getDefaultFoldLevel(maxLevel.value);
                     }
 
                     // 显示成功消息
@@ -7711,7 +7862,7 @@ const execAndNext = (rootPath: string, fieldName: string, nextStep: number) => {
     // 在演示中直接使用预计算/即时计算结果并写入输出编辑器（默认使用 demoData）
     const dataToUse = demoData.value;
     const result = performFieldSort(JSON.parse(JSON.stringify(dataToUse)), rootPath, fieldName);
-    const formatted = customStringify(result, null, 2, JSON.stringify(dataToUse), 0, true);
+        const formatted = customStringify(result, null, 2, JSON.stringify(dataToUse), 0, true, { floatPrecision: 0, preserveNumberLiterals: true });
     const finalOutput = formatted.replace(/\\u([0-9a-fA-F]{4})/g, '\\\\u$1');
     if (outputEditor) {
         outputEditor.setValue(finalOutput);
@@ -7724,7 +7875,7 @@ const execAndNext = (rootPath: string, fieldName: string, nextStep: number) => {
 const execAndNextMap = (rootPath: string, fieldName: string, nextStep: number) => {
     const dataToUse = demoMapData.value;
     const result = performFieldSort(JSON.parse(JSON.stringify(dataToUse)), rootPath, fieldName);
-    const formatted = customStringify(result, null, 2, JSON.stringify(dataToUse), 0, true);
+        const formatted = customStringify(result, null, 2, JSON.stringify(dataToUse), 0, true, { floatPrecision: 0, preserveNumberLiterals: true });
     const finalOutput = formatted.replace(/\\u([0-9a-fA-F]{4})/g, '\\\\u$1');
     if (outputEditor) {
         outputEditor.setValue(finalOutput);
@@ -7889,6 +8040,7 @@ const showDemoStep: (step: number) => void = (step: number) => {
         sortFieldName.value = '';
         // 每个示例开始时清空预览区域
         if (outputEditor) {
+            clearOutputFoldingInfo();
             outputEditor.setValue('');
             updateLineNumberWidth(outputEditor);
             updateEditorHeight(outputEditor);
@@ -7923,6 +8075,7 @@ const endDemoMode = () => {
         updateEditorHeight(inputEditor);
     }
     if (outputEditor) {
+        clearOutputFoldingInfo();
         outputEditor.setValue('');
         updateEditorHeight(outputEditor);
     }
@@ -7974,7 +8127,7 @@ const executeFieldSort = () => {
         let parsed;
         let originalString = value;
 
-        const result = preprocessJSON(value);
+        const result = preprocessJSON(value, { floatPrecision: 0, preserveNumberLiterals: true });
         parsed = result.data;
         originalString = result.originalString;
 
@@ -8006,7 +8159,7 @@ const executeFieldSort = () => {
             });
 
             // 格式化输出
-            const formatted = customStringify(parsed, null, 2, originalString, 0, true);
+            const formatted = customStringify(parsed, null, indentSize.value, originalString, 0, true, { floatPrecision: 0, preserveNumberLiterals: true });
             const finalOutput = formatted.replace(/\\u([0-9a-fA-F]{4})/g, '\\u$1');
 
             // 异步计算所有折叠区域的信息（不阻塞，立即返回）
@@ -8042,7 +8195,7 @@ const executeFieldSort = () => {
         }
 
         // 格式化输出
-        const formatted = customStringify(finalResult, null, indentSize.value, originalString, 0, true);
+        const formatted = customStringify(finalResult, null, indentSize.value, originalString, 0, true, { floatPrecision: 0, preserveNumberLiterals: true });
         const finalOutput = formatted.replace(/\\u([0-9a-fA-F]{4})/g, '\\u$1');
 
         // 异步计算所有折叠区域的信息（不阻塞，立即返回）
@@ -8071,44 +8224,24 @@ const executeFieldSort = () => {
     }
 };
 
-// 排序字符串行（每行一个字符串）
+// 排序字符串行（每行一个字符串，保持原始文本）
 const sortStringLines = (input: string, method: 'dictionary' | 'length', order: 'asc' | 'desc'): string => {
-    // 按行分割，去掉空行和只包含空白字符的行
     const lines = input
         .split('\n')
         .map(line => line.trim())
-        .filter(line => line.length > 0)
-        .map(line => {
-            // 自动处理引号：如果不是以引号开头结尾，则添加引号
-            if (!line.startsWith('"') && !line.endsWith('"')) {
-                // 检查是否已经是有效的JSON字符串（处理转义字符）
-                try {
-                    JSON.parse(line);
-                    return line; // 如果能解析，保持原样
-                } catch {
-                    return `"${line.replace(/"/g, '\\"')}"`; // 添加引号并转义内部引号
-                }
-            }
-            return line;
-        });
+        .filter(line => line.length > 0);
 
     // 排序
     const sortedLines = lines.sort((a, b) => {
         let result: number;
 
         if (method === 'dictionary') {
-            // 字典序比较（去除引号进行比较）
-            const strA = a.replace(/^"|"$/g, '');
-            const strB = b.replace(/^"|"$/g, '');
-            result = strA.localeCompare(strB, undefined, { numeric: false, sensitivity: 'base' });
+            result = a.localeCompare(b, undefined, { numeric: false, sensitivity: 'base' });
         } else if (method === 'length') {
-            // 按长度比较（去除引号进行比较）
-            const strA = a.replace(/^"|"$/g, '');
-            const strB = b.replace(/^"|"$/g, '');
-            if (strA.length !== strB.length) {
-                result = strA.length - strB.length;
+            if (a.length !== b.length) {
+                result = a.length - b.length;
             } else {
-                result = strA.localeCompare(strB, undefined, { numeric: false, sensitivity: 'base' });
+                result = a.localeCompare(b, undefined, { numeric: false, sensitivity: 'base' });
             }
         } else {
             result = 0;
@@ -8146,7 +8279,7 @@ const applySort = () => {
         if (sortMethod.value === 'dictionary' || sortMethod.value === 'length') {
             try {
                 // 先尝试JSON解析
-                const result = preprocessJSON(value);
+                const result = preprocessJSON(value, { floatPrecision: 0, preserveNumberLiterals: true });
                 const parsed = result.data;
                 const originalString = result.originalString;
 
@@ -8154,7 +8287,7 @@ const applySort = () => {
                 const sorted = sortJsonObject(parsed, sortMethod.value, sortOrder.value, '');
 
                 // 格式化输出
-                const formatted = customStringify(sorted, null, 2, originalString, 0, true);
+                const formatted = customStringify(sorted, null, indentSize.value, originalString, 0, true, { floatPrecision: 0, preserveNumberLiterals: true });
                 outputResult = formatted.replace(/\\u([0-9a-fA-F]{4})/g, '\\u$1');
             } catch (jsonError) {
                 // JSON解析失败，按字符串行处理
@@ -8165,12 +8298,12 @@ const applySort = () => {
         } else {
             // 其他排序方式保持原有逻辑
             outputType.value = 'json';
-            const result = preprocessJSON(value);
+            const result = preprocessJSON(value, { floatPrecision: 0, preserveNumberLiterals: true });
             const parsed = result.data;
             const originalString = result.originalString;
 
             const sorted = sortJsonObject(parsed, sortMethod.value, sortOrder.value, '');
-            const formatted = customStringify(sorted, null, indentSize.value, originalString, 0, true);
+            const formatted = customStringify(sorted, null, indentSize.value, originalString, 0, true, { floatPrecision: 0, preserveNumberLiterals: true });
             outputResult = formatted.replace(/\\u([0-9a-fA-F]{4})/g, '\\u$1');
         }
 
@@ -9148,7 +9281,10 @@ const handleFileUpload = async (uploadFile: UploadFile) => {
         }
 
         // 清空outputEditor的内容
-        outputEditor?.setValue('');
+        if (outputEditor) {
+            clearOutputFoldingInfo();
+            outputEditor.setValue('');
+        }
         updateLineNumberWidth(outputEditor);
         updateEditorHeight(outputEditor);
 
@@ -9194,6 +9330,7 @@ const clearInput = () => {
         }
 
         if (outputEditor) {
+            clearOutputFoldingInfo();
             const model = outputEditor.getModel();
             if (model) {
                 // 先将模型的语言设置为纯文本
@@ -9495,9 +9632,9 @@ const stopResize = (upEvent?: Event) => {
     resizeState = null;
 };
 
-// 分割线拖动实现（优化版）
+// 分割线拖动实现
 const startResize = (e: MouseEvent | TouchEvent | PointerEvent) => {
-    // 初始化容器引用（如果还没有）
+    // 初始化容器引用
     if (!editorContainer) {
         editorContainer = document.querySelector('.editor-container') as HTMLElement;
     }
@@ -9639,6 +9776,7 @@ const transferToInput = (e: MouseEvent) => {
 
         // 清空预览区域
         if (outputEditor) {
+            clearOutputFoldingInfo();
             outputEditor.setValue('');
             updateLineNumberWidth(outputEditor);
             updateEditorHeight(outputEditor);

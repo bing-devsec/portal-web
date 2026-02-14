@@ -402,6 +402,7 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted, watch, nextTick } from 'vue';
+import JSON5 from 'json5';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import { showMessageSuccess as showSuccess, showMessageError as showError, showMessageWarning as showWarning } from '~/utils/api';
 import { Plus, Delete, DocumentAdd, FolderOpened, ArrowRight, Warning } from '@element-plus/icons-vue';
@@ -419,6 +420,149 @@ const emit = defineEmits<{
     'update:modelValue': [value: boolean];
     apply: [maskedJson: string];
 }>();
+
+const highPrecisionMarkerPrefix = '\uE000HPN:';
+const highPrecisionMarkerSuffix = ':HPN\uE000';
+
+const isMarkedNumberString = (value: any): value is string =>
+    typeof value === 'string' && value.startsWith(highPrecisionMarkerPrefix) && value.endsWith(highPrecisionMarkerSuffix);
+
+const extractMarkedNumber = (value: string) => value.slice(highPrecisionMarkerPrefix.length, -highPrecisionMarkerSuffix.length);
+
+const markHighPrecisionNumbers = (input: string): string => {
+    let result = '';
+    let i = 0;
+    let inString = false;
+    let stringChar = '';
+    let inLineComment = false;
+    let inBlockComment = false;
+
+    const isIdentifierChar = (ch: string) => /[A-Za-z0-9_$]/.test(ch);
+
+    while (i < input.length) {
+        const char = input[i];
+        const next = input[i + 1] || '';
+
+        if (inLineComment) {
+            result += char;
+            if (char === '\n') {
+                inLineComment = false;
+            }
+            i++;
+            continue;
+        }
+
+        if (inBlockComment) {
+            result += char;
+            if (char === '*' && next === '/') {
+                result += next;
+                i += 2;
+                inBlockComment = false;
+                continue;
+            }
+            i++;
+            continue;
+        }
+
+        if (inString) {
+            result += char;
+            if (char === '\\' && next) {
+                result += next;
+                i += 2;
+                continue;
+            }
+            if (char === stringChar) {
+                inString = false;
+                stringChar = '';
+            }
+            i++;
+            continue;
+        }
+
+        if (char === '/' && next === '/') {
+            result += char + next;
+            i += 2;
+            inLineComment = true;
+            continue;
+        }
+
+        if (char === '/' && next === '*') {
+            result += char + next;
+            i += 2;
+            inBlockComment = true;
+            continue;
+        }
+
+        if (char === '"' || char === "'") {
+            inString = true;
+            stringChar = char;
+            result += char;
+            i++;
+            continue;
+        }
+
+        const prevChar = i > 0 ? input[i - 1] : '';
+        if (
+            (char === '+' || char === '-' || char === '.' || (char >= '0' && char <= '9')) &&
+            !isIdentifierChar(prevChar)
+        ) {
+            const slice = input.slice(i);
+            const match = slice.match(/^[+-]?(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?/);
+            if (match && match[0]) {
+                const token = match[0];
+                const nextChar = input[i + token.length] || '';
+                if (!isIdentifierChar(nextChar)) {
+                    if (token.includes('.') || token.includes('e') || token.includes('E')) {
+                        const wrapped = `"${highPrecisionMarkerPrefix}${token}${highPrecisionMarkerSuffix}"`;
+                        result += wrapped;
+                        i += token.length;
+                        continue;
+                    }
+                }
+            }
+        }
+
+        result += char;
+        i++;
+    }
+
+    return result;
+};
+
+const stringifyPreservingMarkedNumbers = (value: any, indentSize = 2, level = 0): string => {
+    const indent = ' '.repeat(level * indentSize);
+    const nextIndent = ' '.repeat((level + 1) * indentSize);
+
+    if (value === null || value === undefined) {
+        return 'null';
+    }
+
+    if (typeof value === 'string') {
+        if (isMarkedNumberString(value)) {
+            return extractMarkedNumber(value);
+        }
+        return JSON.stringify(value);
+    }
+
+    if (typeof value === 'number' || typeof value === 'boolean') {
+        return JSON.stringify(value);
+    }
+
+    if (Array.isArray(value)) {
+        if (value.length === 0) return '[]';
+        const items = value.map(item => nextIndent + stringifyPreservingMarkedNumbers(item, indentSize, level + 1));
+        return '[\n' + items.join(',\n') + '\n' + indent + ']';
+    }
+
+    if (typeof value === 'object') {
+        const keys = Object.keys(value);
+        if (keys.length === 0) return '{}';
+        const items = keys.map(key => `${nextIndent}${JSON.stringify(key)}: ${stringifyPreservingMarkedNumbers(value[key], indentSize, level + 1)}`);
+        return '{\n' + items.join(',\n') + '\n' + indent + '}';
+    }
+
+    return 'null';
+};
 
 // 对话框显示状态
 const dialogVisible = computed({
@@ -2096,8 +2240,8 @@ const applyMaskingStrategy = (value: any, fieldPathConfig: FieldPathConfig): any
         return value;
     }
 
-    // 根据数据类型采用不同的脱敏策略
-    const valueType = typeof value;
+    const isMarkedNumber = isMarkedNumberString(value);
+    const valueType = isMarkedNumber ? 'number' : typeof value;
     const isArray = Array.isArray(value);
     const isObject = valueType === 'object' && !isArray && value !== null;
 
@@ -2127,8 +2271,9 @@ const applyMaskingStrategy = (value: any, fieldPathConfig: FieldPathConfig): any
                 return prefix + mask + suffix;
             } else if (valueType === 'number') {
                 // 数字类型：支持部分显示数字
-                const numStr = String(Math.abs(value)); // 转为字符串，去掉负号
-                const isNegative = value < 0;
+                const rawNumStr = isMarkedNumber ? extractMarkedNumber(value) : String(value);
+                const isNegative = rawNumStr.startsWith('-');
+                const numStr = isNegative ? rawNumStr.slice(1) : rawNumStr;
                 const sign = isNegative ? '-' : '';
 
                 if (numStr.length <= prefixLen + suffixLen) {
@@ -2399,10 +2544,10 @@ const confirmApply = () => {
     applying.value = true;
 
     try {
-        // 解析JSON
         let jsonObj;
         try {
-            jsonObj = JSON.parse(props.jsonData);
+            const processedInput = markHighPrecisionNumbers(props.jsonData);
+            jsonObj = JSON5.parse(processedInput);
         } catch (error) {
             showMessageError('JSON 数据格式不正确，请先格式化 JSON 数据');
             applying.value = false;
@@ -2413,7 +2558,7 @@ const confirmApply = () => {
         const { result, count } = maskObject(jsonObj, [currentRule.value]);
 
         // 格式化输出
-        const maskedJson = JSON.stringify(result, null, 2);
+        const maskedJson = stringifyPreservingMarkedNumbers(result, 2);
 
         // 直接应用到输入区域
         emit('apply', maskedJson);
