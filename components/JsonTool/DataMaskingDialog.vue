@@ -190,7 +190,8 @@
                                                 <template #default="{ item }">
                                                     <div class="autocomplete-item">
                                                         <span class="path-text">{{ item.value }}</span>
-                                                        <span v-if="item.type" class="path-type">{{ getTypeLabel(item.type) }}</span>
+                                                        <span v-if="item.itemCount !== undefined" class="path-type">{{ item.itemCount }} items</span>
+                                                        <span v-else-if="item.keyCount !== undefined" class="path-type">{{ item.keyCount }} keys</span>
                                                     </div>
                                                 </template>
                                             </el-autocomplete>
@@ -1274,6 +1275,8 @@ const handleStrategyChange = (fieldPathConfig: FieldPathConfig, pathIndex: numbe
 interface PathSuggestion {
     value: string;
     type?: string; // 'exact' | 'wildcard' | 'array-wildcard'
+    itemCount?: number; // 数组元素个数
+    keyCount?: number; // 对象子元素个数
 }
 
 // 解析路径字符串，支持数组语法（如 settings[*] 或 settings[0]）
@@ -1389,16 +1392,17 @@ const getNextLevelKeys = (jsonObj: any, currentPath: string): PathSuggestion[] =
     if (!currentPath || !currentPath.trim()) {
         // 如果数据本身是数组，直接提示 [*]
         if (Array.isArray(jsonObj)) {
-            suggestions.push({ value: '[*]', type: 'array-wildcard' });
+            suggestions.push({ value: '[*]', type: 'array-wildcard', itemCount: jsonObj.length });
             return suggestions;
         }
 
         if (jsonObj && typeof jsonObj === 'object' && !Array.isArray(jsonObj)) {
             for (const [key, value] of Object.entries(jsonObj)) {
-                // 如果值是数组，添加两个建议：带[*]和不带[*]的
+                // 如果值是数组，只添加带[*]的建议
                 if (Array.isArray(value)) {
-                    suggestions.push({ value: key, type: 'exact' });
-                    suggestions.push({ value: `${key}[*]`, type: 'array-wildcard' });
+                    suggestions.push({ value: `${key}[*]`, type: 'array-wildcard', itemCount: value.length });
+                } else if (value && typeof value === 'object') {
+                    suggestions.push({ value: key, type: 'exact', keyCount: Object.keys(value).length });
                 } else {
                     suggestions.push({ value: key, type: 'exact' });
                 }
@@ -1444,8 +1448,9 @@ const getNextLevelKeys = (jsonObj: any, currentPath: string): PathSuggestion[] =
             if (firstElement && typeof firstElement === 'object' && !Array.isArray(firstElement)) {
                 for (const [key, value] of Object.entries(firstElement)) {
                     if (Array.isArray(value)) {
-                        suggestions.push({ value: key, type: 'exact' });
-                        suggestions.push({ value: `${key}[*]`, type: 'array-wildcard' });
+                        suggestions.push({ value: `${key}[*]`, type: 'array-wildcard', itemCount: value.length });
+                    } else if (value && typeof value === 'object') {
+                        suggestions.push({ value: key, type: 'exact', keyCount: Object.keys(value).length });
                     } else {
                         suggestions.push({ value: key, type: 'exact' });
                     }
@@ -1457,8 +1462,9 @@ const getNextLevelKeys = (jsonObj: any, currentPath: string): PathSuggestion[] =
     else if (typeof targetValue === 'object') {
         for (const [key, value] of Object.entries(targetValue)) {
             if (Array.isArray(value)) {
-                suggestions.push({ value: key, type: 'exact' });
-                suggestions.push({ value: `${key}[*]`, type: 'array-wildcard' });
+                suggestions.push({ value: `${key}[*]`, type: 'array-wildcard', itemCount: value.length });
+            } else if (value && typeof value === 'object') {
+                suggestions.push({ value: key, type: 'exact', keyCount: Object.keys(value).length });
             } else {
                 suggestions.push({ value: key, type: 'exact' });
             }
@@ -1466,17 +1472,6 @@ const getNextLevelKeys = (jsonObj: any, currentPath: string): PathSuggestion[] =
     }
 
     return suggestions.sort((a, b) => a.value.localeCompare(b.value));
-};
-
-// 获取类型标签的中文显示
-const getTypeLabel = (type: string): string => {
-    const typeMap: Record<string, string> = {
-        exact: '精确匹配',
-        'array-wildcard': '数组通配符',
-        wildcard: '通配符',
-        or: '或运算符',
-    };
-    return typeMap[type] || type;
 };
 
 // 查询字段路径建议（基于上下文）
@@ -1492,7 +1487,7 @@ const queryFieldPaths = (queryString: string, cb: (suggestions: PathSuggestion[]
         // 获取当前路径
         let currentPath = queryString || '';
 
-        // 如果输入为空，返回一级key（如果数组，提示两个：带[*]和不带[*]的）
+        // 如果输入为空，返回一级key（如果数组，提示带[*]的）
         if (!currentPath.trim()) {
             const suggestions = getNextLevelKeys(jsonObj, '');
             cb(suggestions);
@@ -1550,7 +1545,7 @@ const queryFieldPaths = (queryString: string, cb: (suggestions: PathSuggestion[]
 
         if (pathEndIndex === -1) {
             // 没有点或括号，说明是第一个key，过滤一级key
-            // 如果数组，提示两个：带[*]和不带[*]的
+            // 如果数组，提示带[*]的
             const allFirstLevelKeys = getNextLevelKeys(jsonObj, '');
             const currentInput = currentPath.toLowerCase();
 
@@ -1659,7 +1654,7 @@ const handleFieldPathInput = (value: string, pathIndex?: number) => {
             // 如果之前保存的值包含 | 运算符，说明是多个路径的组合，不应该清除
             const prevHasOr = previousValue && previousValue.includes('|');
             const prevHasPathPrefix = previousValue && (previousValue.includes('.') || previousValue.includes(']') || previousValue.includes('|'));
-            const valueIsBareKey = value && !value.includes('.') && !value.includes(']') && !value.includes('|');
+            const valueIsBareKey = value && !value.includes('.') && !value.includes('|');
 
             // 如果之前保存的值包含 | 运算符，说明是多个路径的组合
             if (prevHasOr) {
@@ -2362,12 +2357,12 @@ const isFieldMatched = (fieldPath: string[], fieldName: string, fieldPathConfig:
 
 // 应用脱敏策略（根据数据类型智能处理）
 const applyMaskingStrategy = (value: any, fieldPathConfig: FieldPathConfig): any => {
-    if (value === null || value === undefined) {
+    if (value === undefined) {
         return value;
     }
 
     const isMarkedNumber = isMarkedNumberString(value);
-    const valueType = isMarkedNumber ? 'number' : typeof value;
+    const valueType = value === null ? 'null' : (isMarkedNumber ? 'number' : typeof value);
     const isArray = Array.isArray(value);
     const isObject = valueType === 'object' && !isArray && value !== null;
 

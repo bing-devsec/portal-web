@@ -2709,41 +2709,36 @@ const createInputEditor = () => {
     const inputOptions = getEditorOptions(indentSize.value, false, 'json', true);
     inputEditor = monaco.editor.create(inputEditorContainer.value, inputOptions);
 
-    // 添加拖拽事件处理，防止存档拖拽到输入区域时出现意外行为
     const container = inputEditorContainer.value;
-    container.addEventListener('dragover', (event: DragEvent) => {
-        // 检查是否是存档拖拽
-        if (event.dataTransfer?.types.includes('application/json-archive')) {
-            event.preventDefault();
-            event.dataTransfer.dropEffect = 'none'; // 不允许放置
-            // 添加视觉反馈样式
-            container.classList.add('drag-over-archive');
-        }
-    });
-
-    container.addEventListener('dragleave', (event: DragEvent) => {
-        // 检查是否是存档拖拽离开
-        if (event.dataTransfer?.types.includes('application/json-archive')) {
-            // 移除视觉反馈样式
-            container.classList.remove('drag-over-archive');
-        }
-    });
-
-    container.addEventListener('drop', (event: DragEvent) => {
-        // 如果是存档拖拽，阻止默认行为，避免插入意外数据
-        if (event.dataTransfer?.types.includes('application/json-archive')) {
-            event.preventDefault();
-            showMessageWarning('请将存档拖拽到存档列表中重新排序，不要拖拽到编辑区域');
-        }
-        // 移除视觉反馈样式
-        container.classList.remove('drag-over-archive');
-    });
-
     nextTick(() => {
         const textarea = container.querySelector('textarea');
         if (textarea) {
             textarea.setAttribute('id', 'monaco-input-editor');
             textarea.setAttribute('name', 'monaco-input-editor');
+        }
+
+        // 监听粘贴事件，自动检测并调整缩进
+        if (inputEditor) {
+            // 保存 editor 引用到局部变量，避免闭包中的类型检查问题
+            // 使用非空断言，因为外部已经检查了 inputEditor
+            const editor = inputEditor!;
+            editor.onDidPaste((e) => {
+                const model = editor.getModel();
+                if (!model) return;
+
+                // 使用 Monaco Editor 内置的缩进检测 API
+                // 注意：由于 TypeScript 类型定义可能不完整，这里使用 as any 来绕过类型检查
+                // 某些情况下 detectIndentation 可能不存在或返回 undefined，需要进行空值检查
+                const detected = (model as any).detectIndentation ? (model as any).detectIndentation(true, 2) : null;
+
+                // 如果检测到使用了空格缩进，且缩进大小与当前设置不同
+                if (detected && detected.insertSpaces && detected.tabSize !== indentSize.value) {
+                    // 只要检测到有效的正整数缩进（通常是2, 4, 8等），就自动调整编辑器的显示配置
+                    // 但不修改全局的缩进设置（indentSize），因为用户希望保留手动设置的值
+                    model.updateOptions({ tabSize: detected.tabSize, indentSize: detected.tabSize, insertSpaces: true });
+                    editor.updateOptions({ tabSize: detected.tabSize, indentSize: detected.tabSize } as any);
+                }
+            });
         }
     });
 };
@@ -2766,10 +2761,6 @@ const createOutputEditor = () => {
 
 // 配置JSON Schema支持
 const configureJsonSchemaSupport = () => {
-    // 配置JSON Schema诊断选项，提供完整的Schema URL建议
-    // 禁用远程Schema验证以避免网络加载警告，但保留基本的JSON语法检查
-    // 启用基本的 JSON 语法校验（仅语法层面），但禁用远程 Schema 请求以避免网络警告\n+    monaco.languages.json.jsonDefaults.setDiagnosticsOptions({\n+        validate: true, // 启用语法和基本校验\n+        allowComments: true, // 允许注释（支持 JSONC 风格输入）\n+        enableSchemaRequest: false, // 禁用远程 schema 请求\n+        schemas: [], // 不主动注册远程 schema，避免额外的网络请求\n+    });\n*** End Patch"}EOF辑ICENSE_PROBLEM_KEEP_GOINGность_JSON_SAMPLE_WARNING_USERNAME_REPLACED_DIFF_TRACE_BLOCK_CONTINUE_TRANSLATION_OUTPUT_BLOCK_LABELUnexpected token in JSON at position 0
-
     // 配置JSON语言服务，提供更好的自动补全
     monaco.languages.json.jsonDefaults.setModeConfiguration({
         documentFormattingEdits: false,
@@ -2808,17 +2799,6 @@ const configureInputEditor: () => void = () => {
 
     // 监听输入变化
     inputEditor.onDidChangeModelContent(() => {
-        // 确保输入编辑器使用用户设置的缩进大小
-        const model = inputEditor?.getModel();
-        if (model) {
-            const indentSizeValue = indentSize.value;
-            const currentTabSize = model.getOptions().tabSize;
-            const currentIndentSize = (model.getOptions() as any).indentSize;
-            if (currentTabSize !== indentSizeValue || currentIndentSize !== indentSizeValue) {
-                model.updateOptions({ tabSize: indentSizeValue, indentSize: indentSizeValue, insertSpaces: true });
-                inputEditor?.updateOptions({ tabSize: indentSizeValue, indentSize: indentSizeValue } as any);
-            }
-        }
         // 使用防抖更新行号宽度，避免频繁调用
         debouncedUpdateLineNumberWidth(inputEditor);
 
@@ -3378,7 +3358,7 @@ const foldInBatchesAsync = async (
     }
 };
 
-// 🚀 优化方案：使用智能批处理（适用于 8 层以上的深层级）
+// 优化方案：使用智能批处理（适用于 8 层以上的深层级）
 const foldUsingCustomProvider = async (model: monaco.editor.ITextModel, lineCount: number, targetLevel: number) => {
     // 1. 先展开所有
     outputEditor?.trigger('unfold', 'editor.unfoldAll', null);
@@ -3435,8 +3415,6 @@ const foldUsingCustomProvider = async (model: monaco.editor.ITextModel, lineCoun
             // 只有在数据量大时才显示进度，避免频繁更新UI
             if (showProgress && completed % progressInterval < batchSize) {
                 const percent = ((completed / total) * 100).toFixed(1);
-                // 使用 console 而非消息提示，避免刷屏
-                console.log(`收缩进度: ${percent}% (${completed}/${total})`);
             }
         },
         totalCount
@@ -8604,17 +8582,23 @@ const convertToGo = (obj: any): string => {
         // 数字开头
         if (/^\d/.test(key)) return true;
 
-        // 含有大量数字（超过 key 长度的 30%）
-        const digitCount = (key.match(/\d/g) || []).length;
-        if (digitCount / key.length > 0.3) return true;
+        // 包含特殊字符（除了下划线）
+        if (/[^a-zA-Z0-9_]/.test(key)) return true;
+
+        // Go 关键字
+        const goKeywords = [
+            'break', 'default', 'func', 'interface', 'select', 'case', 'defer', 'go', 'map', 'struct',
+            'chan', 'else', 'goto', 'package', 'switch', 'const', 'fallthrough', 'if', 'range', 'type',
+            'continue', 'for', 'import', 'return', 'var'
+        ];
+        if (goKeywords.includes(key)) return true;
 
         // 看起来像业务 ID（uuid、hash、code 等模式）
+        // 只有当所有 key 都像 ID 时才认为是 Map，单个 key 像 ID 不一定
+        // 这里只是辅助判断，不直接决定
         const idPatterns = [
             /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i, // UUID
             /^[0-9a-f]{32,}$/i, // Hash
-            /^[a-z0-9]{16,}$/i, // 长 ID
-            /_\d{4,}/, // 下划线+年份等
-            /-\d{4,}/, // 横线+年份等
         ];
         if (idPatterns.some(pattern => pattern.test(key))) return true;
 
@@ -8691,23 +8675,21 @@ const convertToGo = (obj: any): string => {
             if (keys.some(k => /^\d/.test(k))) {
                 return true; // 数字开头的 key 必须用 map
             }
-            // 其他无效 key，如果超过 50% 也使用 map
-            if (invalidKeyCount / keys.length >= 0.5) {
+            // 其他无效 key，如果超过 80% 也使用 map (提高阈值，原来是 50%)
+            if (invalidKeyCount / keys.length >= 0.8) {
                 return true;
             }
         }
 
-        // 规则3：Key 数量阈值（>= 5 个开始考虑 map）
-        if (keys.length >= 5) {
-            // 继续检查其他规则
-        } else if (keys.length < 3) {
-            // 少于 3 个 key，倾向于 struct（但前提是 key 都是有效的）
+        // 规则3：Key 数量阈值（>= 20 个才考虑 map，原来是 5 个）
+        // 只有当 key 数量非常多时，才考虑 map，否则优先 struct
+        if (keys.length < 20) {
             return false;
         }
 
         // 规则1：Key 形态一致性 + Value 结构一致性
         const keyAnalysis = analyzeKeyPattern(keys);
-        if (keyAnalysis.pattern && keyAnalysis.similarity >= 0.7) {
+        if (keyAnalysis.pattern && keyAnalysis.similarity >= 0.9) { // 提高相似度阈值到 0.9
             // Key 有相似模式，检查 value 结构一致性
             if (values.length >= 2) {
                 // 检查所有 value 是否具有相同形状
@@ -8727,8 +8709,8 @@ const convertToGo = (obj: any): string => {
                     }
                 }
                 const shapeSimilarity = sameShapeCount / (values.length - 1);
-                // 如果 80% 以上的 value 形状相同，使用 map
-                if (shapeSimilarity >= 0.8) {
+                // 如果 90% 以上的 value 形状相同，使用 map (提高阈值到 0.9)
+                if (shapeSimilarity >= 0.9) {
                     return true;
                 }
             }
@@ -8741,14 +8723,14 @@ const convertToGo = (obj: any): string => {
     // 获取 Go 类型
     const getGoType = (value: any, key: string, parentKey: string = '', isMapValue: boolean = false): string => {
         if (Array.isArray(value)) {
-            if (value.length === 0) return '[]interface{}';
+            if (value.length === 0) return '[]any';
             if (typeof value[0] === 'string') return '[]string';
             if (typeof value[0] === 'number') return Number.isInteger(value[0]) ? '[]int' : '[]float64';
             if (typeof value[0] === 'object' && value[0] !== null) {
                 const itemType = getStructName(key);
                 return `[]${itemType}`;
             }
-            return '[]interface{}';
+            return '[]any';
         }
 
         if (typeof value === 'object' && value !== null) {
@@ -8758,7 +8740,7 @@ const convertToGo = (obj: any): string => {
         if (typeof value === 'string') return 'string';
         if (typeof value === 'number') return Number.isInteger(value) ? 'int' : 'float64';
         if (typeof value === 'boolean') return 'bool';
-        return 'interface{}';
+        return 'any';
     };
 
     // 处理结构体或 map
@@ -8827,10 +8809,10 @@ const convertToGo = (obj: any): string => {
                         const mapTypeName = elementTypeName;
                         return valueStructDef + `type ${mapTypeName} map[string]${valueTypeName}\n\n` + (isRoot ? `type ${finalTypeName} []${mapTypeName}\n\n` : '');
                     } else {
-                        // Value 结构不一致，使用 map[string]interface{}
+                        // Value 结构不一致，使用 map[string]any
                         const finalTypeName = isRoot ? structName : elementTypeName;
                         const mapTypeName = elementTypeName;
-                        return `type ${mapTypeName} map[string]interface{}\n\n` + (isRoot ? `type ${finalTypeName} []${mapTypeName}\n\n` : '');
+                        return `type ${mapTypeName} map[string]any\n\n` + (isRoot ? `type ${finalTypeName} []${mapTypeName}\n\n` : '');
                     }
                 }
             }
@@ -8889,12 +8871,12 @@ const convertToGo = (obj: any): string => {
 
                 return mapDef;
             } else {
-                // 所有 value 都是基本类型，使用 map[string]interface{}
+                // 所有 value 都是基本类型，使用 map[string]any
                 if (isRoot) {
-                    return `type ${structName} map[string]interface{}\n\n`;
+                    return `type ${structName} map[string]any\n\n`;
                 }
                 // 非根对象返回特殊标记
-                return `__MAP_TYPE__:interface{}:`;
+                return `__MAP_TYPE__:any:`;
             }
         }
 
@@ -9078,61 +9060,42 @@ const handleFileUpload = async (uploadFile: UploadFile) => {
         let formattedContent = content;
         let isValidJson = false;
 
-        try {
-            // 尝试解析并重新格式化为2个空格缩进
-            const parsed = JSON.parse(content);
-            formattedContent = JSON.stringify(parsed, null, 2);
-            isValidJson = true;
-        } catch (error) {
-            // 如果不是有效的JSON，保持原始内容
-            formattedContent = content;
-        }
+        // 不对上传的内容进行自动格式化，保持原样
+        // try {
+        //     // 尝试解析并重新格式化为2个空格缩进
+        //     const parsed = JSON.parse(content);
+        //     formattedContent = JSON.stringify(parsed, null, 2);
+        //     isValidJson = true;
+        // } catch (error) {
+        //     // 如果不是有效的JSON，保持原始内容
+        //     formattedContent = content;
+        // }
 
         // 更新编辑器 - 将格式化后的内容展示到输入区域
         if (inputEditor) {
             inputEditor.setValue(formattedContent);
 
             // 根据内容类型设置缩进配置
-            let size: number;
-            let insertSpaces: boolean;
+            // 使用 Monaco Editor 内置的缩进检测 API
+            const model = inputEditor.getModel();
+            if (model) {
+                // 某些情况下 detectIndentation 可能不存在或返回 undefined，需要进行空值检查
+                const detected = (model as any).detectIndentation ? (model as any).detectIndentation(true, 2) : null;
 
-            if (isValidJson) {
-                // 对于有效的JSON，统一使用2个空格缩进
-                size = 2;
-                insertSpaces = true;
-            } else {
-                // 对于无效JSON或纯文本，根据内容自动检测缩进
-                const detectIndentSize = (text: string): { size: number; insertSpaces: boolean } => {
-                    const lines = text.split('\n');
-                    for (const line of lines) {
-                        const match = line.match(/^[ \t]+(?=\S)/);
-                        if (match) {
-                            const indentStr = match[0];
-                            if (indentStr.includes('\t')) {
-                                return { size: 4, insertSpaces: false };
-                            }
-                            return { size: indentStr.length || 2, insertSpaces: true };
-                        }
-                    }
-                    return { size: 2, insertSpaces: true };
-                };
-
-                const detected = detectIndentSize(formattedContent);
-                size = detected.size;
-                insertSpaces = detected.insertSpaces;
+                // 如果检测到使用了空格缩进，且缩进大小与当前设置不同
+                if (detected && detected.insertSpaces && detected.tabSize !== indentSize.value) {
+                    // 只要检测到有效的正整数缩进（通常是2, 4, 8等），就自动调整编辑器的显示配置
+                    // 但不修改全局的缩进设置（indentSize），因为用户希望保留手动设置的值
+                    model.updateOptions({ tabSize: detected.tabSize, indentSize: detected.tabSize, insertSpaces: true });
+                    inputEditor.updateOptions({ tabSize: detected.tabSize, indentSize: detected.tabSize } as any);
+                    
+                    // 提示用户已临时调整显示
+                    showMessageSuccess(`已检测到 ${detected.tabSize} 格缩进，仅临时调整编辑器显示，全局设置保持不变`);
+                }
             }
 
             updateLineNumberWidth(inputEditor);
             updateEditorHeight(inputEditor);
-
-            const model = inputEditor.getModel();
-            model?.updateOptions({
-                tabSize: size,
-                indentSize: size,
-                insertSpaces,
-            });
-            // 同时更新编辑器选项
-            inputEditor.updateOptions({ tabSize: indentSize.value, indentSize: indentSize.value } as any);
         }
 
         // 清空outputEditor的内容
