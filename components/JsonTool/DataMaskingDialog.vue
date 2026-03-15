@@ -18,7 +18,7 @@
                     <template #title>
                         <div style="font-size: 12px; line-height: 1.6">
                             <p style="margin: 0 0 8px 0">
-                                <strong>功能说明：</strong>对JSON数据中的敏感字段进行脱敏处理。适用于分享数据前隐藏敏感信息，如密码、手机号、邮箱、身份证号等。
+                                <strong>功能说明：</strong>对JSON数据中的敏感字段进行脱敏处理。适用于分享数据前隐藏敏感信息，如密码、手机号、邮箱、身份证号等信息。
                             </p>
                             <div style="margin-top: 8px">
                                 <el-button text type="primary" size="small" @click="togglePathHelp" style="padding: 0; font-size: 12px; height: auto">
@@ -29,7 +29,7 @@
                                 </el-button>
                             </div>
                             <el-collapse-transition>
-                                <div v-show="showPathHelp" style="margin-top: 12px; padding: 12px; background-color: #f5f7fa; border-radius: 4px; border-left: 3px solid #409eff">
+                                <div v-show="showPathHelp" style="margin-top: 12px; padding: 8px 12px; border-left: 3px solid #409eff">
                                     <div style="font-size: 12px; line-height: 1.8; color: #606266">
                                         <p style="margin: 0 0 10px 0; font-weight: 600; color: #303133">字段路径匹配规则：</p>
 
@@ -526,6 +526,87 @@ const markHighPrecisionNumbers = (input: string): string => {
         i++;
     }
 
+    return result;
+};
+
+const detectIndentSize = (text: string): number => {
+    const lines = text.split(/\r?\n/);
+    let minIndent = Infinity;
+
+    for (const line of lines) {
+        const m = line.match(/^([ \t]+)\S/);
+        if (!m) continue;
+        const indent = m[1];
+        let count = 0;
+        for (const ch of indent) {
+            if (ch === '\t') count += 4;
+            else count += 1;
+        }
+        if (count > 0 && count < minIndent) minIndent = count;
+    }
+
+    if (Number.isFinite(minIndent)) return minIndent;
+    return 2;
+};
+
+const preserveUnicodeEscapes = (input: string) => {
+    const placeholderByHex = new Map<string, string>();
+    const placeholderToEscape = new Map<string, string>();
+    const used = new Set<string>();
+    for (const ch of input) used.add(ch);
+
+    let nextCodePoint = 0xe100;
+    const allocPlaceholder = () => {
+        while (nextCodePoint <= 0xf8ff) {
+            const ch = String.fromCharCode(nextCodePoint++);
+            if (!used.has(ch)) {
+                used.add(ch);
+                return ch;
+            }
+        }
+        const fallback = `__UNI_${Date.now()}_${Math.random().toString(16).slice(2)}__`;
+        used.add(fallback);
+        return fallback;
+    };
+
+    let out = '';
+    let i = 0;
+    while (i < input.length) {
+        if (input[i] === '\\' && i + 5 < input.length && input[i + 1] === 'u') {
+            const hex = input.slice(i + 2, i + 6);
+            if (/^[0-9a-fA-F]{4}$/.test(hex)) {
+                let backslashCount = 0;
+                let k = i - 1;
+                while (k >= 0 && input[k] === '\\') {
+                    backslashCount++;
+                    k--;
+                }
+                const isEscapedBackslash = backslashCount % 2 === 1;
+                if (!isEscapedBackslash) {
+                    let placeholder = placeholderByHex.get(hex);
+                    if (!placeholder) {
+                        placeholder = allocPlaceholder();
+                        placeholderByHex.set(hex, placeholder);
+                        placeholderToEscape.set(placeholder, `\\u${hex}`);
+                    }
+                    out += placeholder;
+                    i += 6;
+                    continue;
+                }
+            }
+        }
+        out += input[i];
+        i++;
+    }
+
+    return { transformed: out, placeholderToEscape };
+};
+
+const restoreUnicodeEscapes = (output: string, placeholderToEscape: Map<string, string>) => {
+    let result = output;
+    placeholderToEscape.forEach((escape, placeholder) => {
+        result = result.split(placeholder).join(escape);
+    });
     return result;
 };
 
@@ -1577,6 +1658,18 @@ const handleFieldPathInput = (value: string, pathIndex?: number) => {
         if (!value.includes('|')) {
             // 如果之前保存的值包含 | 运算符，说明是多个路径的组合，不应该清除
             const prevHasOr = previousValue && previousValue.includes('|');
+            const prevHasPathPrefix = previousValue && (previousValue.includes('.') || previousValue.includes(']') || previousValue.includes('|'));
+            const valueIsBareKey = value && !value.includes('.') && !value.includes(']') && !value.includes('|');
+
+            // 如果之前保存的值包含 | 运算符，说明是多个路径的组合
+            if (prevHasOr) {
+                // 如果当前值不包含 | 运算符，且不是之前值的前缀（说明不是用户在删除）
+                // 这很可能是自动补全导致的整个值被替换（例如：[0].number|[*].t -> type）
+                // 应该阻止更新，保留之前的完整路径
+                if (!previousValue.startsWith(value)) {
+                    return;
+                }
+            }
 
             if (!prevHasOr) {
                 // 如果之前保存的值以 "."、"]" 或 "|" 结尾，说明用户已经输入了路径前缀
@@ -1588,6 +1681,9 @@ const handleFieldPathInput = (value: string, pathIndex?: number) => {
                 // 如果当前值不以之前保存的值开头，说明用户开始输入新的路径，清除旧值
                 // 但是，如果之前的值以路径分隔符结尾，说明这是路径前缀，不应该删除
                 if (previousValue && !value.startsWith(previousValue) && !prevEndsWithPathSeparator) {
+                    if (prevHasPathPrefix && valueIsBareKey) {
+                        return;
+                    }
                     fieldPathBeforeSelect.value.delete(pathIndex);
                 }
             }
@@ -1665,23 +1761,22 @@ const handleFieldPathInput = (value: string, pathIndex?: number) => {
             // 说明这是从下拉选项中选择的值（如 employees 或 employees[*]），不应该覆盖保存的前缀值
             // 但是如果当前值以 | 结尾，说明用户正在输入新的路径，应该允许更新
             if (value !== previousValue && !value.startsWith(previousValue) && !/\|\s*$/.test(value)) {
-                // 不更新 fieldPathBeforeSelect，保持之前保存的值
-                return;
+                // 检查是否保持了分隔符结尾（针对中间插入/修改的情况，如 [] -> [0]）
+                // 如果 previousValue 以分隔符结尾，而 value 也以分隔符结尾，说明用户可能是在中间插入了内容
+                // 例如：[] -> [0]，previousValue=[] (end with ]), value=[0] (end with ])
+                // 这种情况下应该允许更新
+                let keptSeparator = false;
+                if (previousValue.endsWith('.') && value.endsWith('.')) keptSeparator = true;
+                if (previousValue.endsWith(']') && value.endsWith(']')) keptSeparator = true;
+                if (/\|\s*$/.test(previousValue) && /\|\s*$/.test(value)) keptSeparator = true;
+
+                // 如果没有保持分隔符结尾，且不是手动删除，那很可能是自动补全替换（如 [0]. -> number），阻止更新
+                if (!keptSeparator) {
+                    return;
+                }
             }
         }
-
-        // 额外检查：如果之前保存的值包含 | 运算符（但不以 | 结尾，比如 name|na）
-        // 且当前值不包含 | 运算符，且当前值不以之前保存的值开头
-        // 说明这是 autocomplete 在选择时自动更新的值，不应该覆盖保存的值
-        if (previousValue && previousValue.includes('|')) {
-            // 如果当前值不包含 | 运算符，且当前值不等于之前保存的值，且当前值不以之前保存的值开头
-            // 说明这是 autocomplete 在选择时自动更新的值（比如从 name|na 变成 name），不应该覆盖
-            if (!value.includes('|') && value !== previousValue && !value.startsWith(previousValue)) {
-                // 不更新 fieldPathBeforeSelect，保持之前保存的值
-                return;
-            }
-        }
-
+        
         fieldPathBeforeSelect.value.set(pathIndex, value);
     }
 
@@ -1966,6 +2061,10 @@ const handleFieldPathEnter = (event: KeyboardEvent, pathIndex?: number) => {
             event.preventDefault();
             event.stopPropagation();
 
+            // 立即设置 isHandlingSelect 标志，防止 handleFieldPathInput 覆盖 fieldPathBeforeSelect
+            // 这必须在检查 savedValue 之前设置，因为 autocomplete 可能会先触发 input 事件
+            isHandlingSelect.value.set(pathIndex, true);
+
             // 重要：在调用 handleFieldPathSelect 之前，确保 fieldPathBeforeSelect 有正确的值
             // 优先使用已经保存的 fieldPathBeforeSelect，因为它保存了用户输入时的完整路径
             // 如果 fieldPathBeforeSelect 不存在，才从输入框获取值
@@ -2003,12 +2102,9 @@ const handleFieldPathEnter = (event: KeyboardEvent, pathIndex?: number) => {
                 }
             }
 
-            // 在调用 handleFieldPathSelect 之前，先设置 isHandlingSelect 标志
-            // 这样可以防止 handleFieldPathInput 在处理选择时覆盖 fieldPathBeforeSelect
-            isHandlingSelect.value.set(pathIndex, true);
-
             // 调用相同的选择处理函数，确保行为一致
             handleFieldPathSelect(selectedItem, pathIndex);
+            autocompleteInstance.activated = false; // 手动关闭下拉框
         }
     }
 };
@@ -2103,6 +2199,10 @@ const joinFieldPath = (fieldPath: string[]): string => {
     return result;
 };
 
+const escapeRegExp = (string: string) => {
+    return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+};
+
 // 检查字段是否匹配字段路径配置
 const isFieldMatched = (fieldPath: string[], fieldName: string, fieldPathConfig: FieldPathConfig): boolean => {
     const parsed = parseFieldPath(fieldPathConfig.fieldPath);
@@ -2150,7 +2250,10 @@ const isFieldMatched = (fieldPath: string[], fieldName: string, fieldPathConfig:
             // 通配符匹配：检查字段名是否匹配模式
             if (typeof parsed.pattern === 'string') {
                 const fullPath = joinFieldPath(fieldPath);
-                const wildcardPattern = parsed.pattern.replace(/\*/g, '.*');
+                // 使用占位符保护通配符 *
+                const placeholder = '___WILDCARD___';
+                const escapedPattern = escapeRegExp(parsed.pattern.replace(/\*/g, placeholder));
+                const wildcardPattern = escapedPattern.replace(new RegExp(placeholder, 'g'), '.*');
                 const regex = new RegExp(`^${wildcardPattern}$`);
 
                 // 检查字段名和完整路径
@@ -2166,11 +2269,20 @@ const isFieldMatched = (fieldPath: string[], fieldName: string, fieldPathConfig:
                 // 使用正确的路径连接方式（数组索引前不加点号）
                 const pathStr = joinFieldPath(fieldPath);
 
-                // 将模式转换为正则表达式
-                // helpers[*].name -> helpers\[\d+\]\.name
-                const normalizedPattern = parsed.pattern
-                    .replace(/\[\*\]/g, '\\[\\d+\\]') // [*] -> \[\d+\]
-                    .replace(/\*/g, '.*'); // * -> .*
+                // 使用占位符保护通配符 [*] 和 *
+                const placeholderArray = '___ARRAY_WILDCARD___';
+                const placeholderStar = '___STAR_WILDCARD___';
+                
+                const escapedPattern = escapeRegExp(
+                    parsed.pattern
+                        .replace(/\[\*\]/g, placeholderArray)
+                        .replace(/\*/g, placeholderStar)
+                );
+                
+                const normalizedPattern = escapedPattern
+                    .replace(new RegExp(placeholderArray, 'g'), '\\[\\d+\\]')
+                    .replace(new RegExp(placeholderStar, 'g'), '.*');
+                    
                 const regex = new RegExp(`^${normalizedPattern}$`);
 
                 // 检查完整路径是否匹配
@@ -2187,8 +2299,19 @@ const isFieldMatched = (fieldPath: string[], fieldName: string, fieldPathConfig:
                         return true;
                     }
                     // 检查是否是匹配完整路径（例如：users.name[*] 匹配 users.name）
-                    const patternPath = patternWithoutBrackets.split('.').filter(p => p);
-                    if (patternPath.length === fieldPath.length && patternPath.every((part, idx) => part === fieldPath[idx])) {
+                    const escapedPrefix = escapeRegExp(
+                        patternWithoutBrackets
+                            .replace(/\[\*\]/g, placeholderArray)
+                            .replace(/\*/g, placeholderStar)
+                    );
+                    
+                    const normalizedPrefix = escapedPrefix
+                        .replace(new RegExp(placeholderArray, 'g'), '\\[\\d+\\]')
+                        .replace(new RegExp(placeholderStar, 'g'), '.*');
+                        
+                    const prefixRegex = new RegExp(`^${normalizedPrefix}$`);
+                    
+                    if (prefixRegex.test(pathStr)) {
                         return true;
                     }
                 }
@@ -2198,28 +2321,31 @@ const isFieldMatched = (fieldPath: string[], fieldName: string, fieldPathConfig:
                 const patternParts = parsed.pattern.split(/\[.*?\]|\./).filter(p => p);
                 if (patternParts.length > 0) {
                     const lastPart = patternParts[patternParts.length - 1];
+                    
+                    let lastRegex;
                     if (lastPart.includes('*')) {
-                        const lastPattern = lastPart.replace(/\*/g, '.*');
-                        const lastRegex = new RegExp(`^${lastPattern}$`);
-                        if (lastRegex.test(fieldName)) {
-                            // 检查当前路径是否在数组元素中
-                            const pathStrForCheck = joinFieldPath(fieldPath.slice(0, -1));
-                            const arrayPattern = parsed.pattern.replace(/\[\*\]/g, '\\[\\d+\\]');
-                            const beforeLastPart = arrayPattern.substring(0, arrayPattern.lastIndexOf('.'));
-                            if (beforeLastPart) {
-                                const beforeRegex = new RegExp(`^${beforeLastPart.replace(/\*/g, '.*')}$`);
-                                if (beforeRegex.test(pathStrForCheck)) {
-                                    return true;
-                                }
-                            }
-                        }
-                    } else if (lastPart === fieldName) {
-                        // 精确匹配最后一部分
+                        const escapedLastPart = escapeRegExp(lastPart.replace(/\*/g, placeholderStar));
+                        const lastPattern = escapedLastPart.replace(new RegExp(placeholderStar, 'g'), '.*');
+                        lastRegex = new RegExp(`^${lastPattern}$`);
+                    } else {
+                        // 精确匹配，也要转义
+                        lastRegex = new RegExp(`^${escapeRegExp(lastPart)}$`);
+                    }
+
+                    if (lastRegex.test(fieldName)) {
+                        // 检查当前路径是否在数组元素中
                         const pathStrForCheck = joinFieldPath(fieldPath.slice(0, -1));
-                        const arrayPattern = parsed.pattern.replace(/\[\*\]/g, '\\[\\d+\\]');
-                        const beforeLastPart = arrayPattern.substring(0, arrayPattern.lastIndexOf('.'));
-                        if (beforeLastPart) {
-                            const beforeRegex = new RegExp(`^${beforeLastPart.replace(/\*/g, '.*')}$`);
+                        
+                        // 我们需要匹配前缀
+                        // 既然我们已经确认 lastPart 匹配 fieldName
+                        // 我们只需要确认剩余的路径部分匹配 pattern 的剩余部分
+                        
+                        // 在 normalizedPattern 中找最后一个 \.
+                        const lastDotIndex = normalizedPattern.lastIndexOf('\\.');
+                        
+                        if (lastDotIndex !== -1) {
+                            const beforeLastPart = normalizedPattern.substring(0, lastDotIndex);
+                            const beforeRegex = new RegExp(`^${beforeLastPart}$`);
                             if (beforeRegex.test(pathStrForCheck)) {
                                 return true;
                             }
@@ -2545,8 +2671,10 @@ const confirmApply = () => {
 
     try {
         let jsonObj;
+        const unicodePreserve = preserveUnicodeEscapes(props.jsonData);
+        const indentSize = detectIndentSize(props.jsonData);
         try {
-            const processedInput = markHighPrecisionNumbers(props.jsonData);
+            const processedInput = markHighPrecisionNumbers(unicodePreserve.transformed);
             jsonObj = JSON5.parse(processedInput);
         } catch (error) {
             showMessageError('JSON 数据格式不正确，请先格式化 JSON 数据');
@@ -2558,7 +2686,8 @@ const confirmApply = () => {
         const { result, count } = maskObject(jsonObj, [currentRule.value]);
 
         // 格式化输出
-        const maskedJson = stringifyPreservingMarkedNumbers(result, 2);
+        const maskedJsonRaw = stringifyPreservingMarkedNumbers(result, indentSize);
+        const maskedJson = restoreUnicodeEscapes(maskedJsonRaw, unicodePreserve.placeholderToEscape);
 
         // 直接应用到输入区域
         emit('apply', maskedJson);
@@ -2649,7 +2778,7 @@ watch(
 
 .rule-item {
     border: 1px solid #e4e7ed;
-    border-radius: 6px;
+    border-radius: 4px;
     padding: 16px;
     background-color: #fafafa;
 }
@@ -2705,7 +2834,7 @@ watch(
     padding: 16px;
     background-color: #ffffff;
     border: 1px solid #e4e7ed;
-    border-radius: 6px;
+    border-radius: 4px;
     position: relative;
 }
 
@@ -2884,7 +3013,7 @@ watch(
     align-items: center;
     padding: 12px 16px;
     border: 1px solid #e4e7ed;
-    border-radius: 6px;
+    border-radius: 4px;
     background-color: #fafafa;
     transition: all 0.2s;
 }
@@ -2928,7 +3057,7 @@ watch(
     padding: 12px 16px;
     background-color: #fef0f0;
     border: 1px solid #fbc4c4;
-    border-radius: 6px;
+    border-radius: 4px;
     display: flex;
     justify-content: space-between;
     align-items: center;

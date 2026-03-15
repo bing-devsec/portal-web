@@ -1838,7 +1838,7 @@ onUnmounted(() => {
     color: #909399;
     font-size: 13px;
     background-color: #f5f7fa;
-    border-radius: 6px;
+    border-radius: 4px;
     border: 1px dashed #dcdfe6;
 }
 
@@ -1846,7 +1846,7 @@ onUnmounted(() => {
     margin-top: 12px;
     padding: 16px;
     background-color: #fafafa;
-    border-radius: 6px;
+    border-radius: 4px;
     border: 1px solid #e4e7ed;
 }
 
@@ -1890,7 +1890,7 @@ onUnmounted(() => {
 .config-preview {
     padding: 16px;
     background-color: #f5f7fa;
-    border-radius: 6px;
+    border-radius: 4px;
     border: 1px solid #e4e7ed;
 }
 
@@ -1950,7 +1950,7 @@ onUnmounted(() => {
     align-items: center;
     padding: 16px;
     background-color: #f5f7fa;
-    border-radius: 6px;
+    border-radius: 4px;
     border: 1px solid #e4e7ed;
     transition: all 0.3s;
 }
@@ -2019,7 +2019,7 @@ onUnmounted(() => {
     padding: 12px 16px;
     background-color: #fef0f0;
     border: 1px solid #fbc4c4;
-    border-radius: 6px;
+    border-radius: 4px;
     display: flex;
     justify-content: space-between;
     align-items: center;

@@ -357,9 +357,26 @@
 
                             <el-divider class="settings-subsection-divider" />
 
+                            <div class="settings-subsection">
+                                <div class="settings-subsection-title">
+                                    <span class="settings-subsection-title-label">浮点数处理</span>
+                                    <span class="settings-subsection-title-desc">
+                                        {{ preserveNumberLiterals ? '数字字面量保持不变' : '标准 JSON 格式化' }}
+                                    </span>
+                                </div>
+                                <div class="settings-item">
+                                    <el-switch v-model="preserveNumberLiterals" active-text="控制" inactive-text="不控制" size="default" />
+                                </div>
+                            </div>
+
+                            <el-divider class="settings-subsection-divider" />
+
                             <!-- 字符串换行设置 -->
                             <div class="settings-subsection">
-                                <div class="settings-subsection-title">字符串换行设置</div>
+                                <div class="settings-subsection-title">
+                                    <span class="settings-subsection-title-label">换行显示</span>
+                                    <span class="settings-subsection-title-desc">包括超长字符串、超长数字等</span>
+                                </div>
                                 <div class="settings-item">
                                     <el-switch v-model="wordWrap" active-text="不换行" inactive-text="换行" size="default" @change="updateWordWrap" />
                                 </div>
@@ -446,30 +463,12 @@
                             <div class="settings-item">
                                 <div class="settings-item-header">
                                     <span class="settings-label">数组样式</span>
+                                    <span class="settings-description">紧凑仅对基础类型数组生效，复杂类型仍换行</span>
                                 </div>
                                 <el-switch v-model="arrayNewLine" active-text="换行" inactive-text="紧凑" size="default" />
                             </div>
 
                             <el-divider style="margin: 12px 0" />
-
-                            <div class="settings-item">
-                                <div class="settings-item-header">
-                                    <span class="settings-label">浮点数精度</span>
-                                    <span class="settings-description">{{ floatPrecision === 0 ? '不控制' : `保留 ${floatPrecision} 位小数` }}</span>
-                                </div>
-                                <el-slider
-                                    v-model="floatPrecision"
-                                    :min="0"
-                                    :max="64"
-                                    :step="1"
-                                    show-input
-                                    size="small"
-                                    :show-stops="false"
-                                    style="width: 100%"
-                                    @input="onFloatPrecisionInput"
-                                    @change="onFloatPrecisionInput"
-                                />
-                            </div>
                         </div>
                     </el-collapse-item>
 
@@ -720,7 +719,7 @@ const defaultSettings = {
     indentSize: 2,
     encodingMode: 0,
     arrayNewLine: true,
-    floatPrecision: 0, // 浮点数精度控制：0表示不控制，1-64表示保留的小数位数
+    preserveNumberLiterals: false,
     // 排序设置
     sortMethod: 'dictionary' as 'dictionary' | 'length' | 'field',
     sortOrder: 'asc' as 'asc' | 'desc',
@@ -770,7 +769,7 @@ const saveSettings = () => {
             indentSize: indentSize.value,
             encodingMode: encodingMode.value,
             arrayNewLine: arrayNewLine.value,
-            floatPrecision: floatPrecision.value,
+            preserveNumberLiterals: preserveNumberLiterals.value,
             sortMethod: sortMethod.value,
             sortOrder: sortOrder.value,
             customArchiveName: customArchiveName.value,
@@ -790,23 +789,7 @@ const wordWrap = ref(savedSettings.wordWrap); // 字符串换行设置
 const fontSize = ref(savedSettings.fontSize || 14); // 字体大小设置
 const showIndentGuide = ref(savedSettings.showIndentGuide); // 添加缩进指南状态
 const arrayNewLine = ref(savedSettings.arrayNewLine); // 添加数组换行控制开关
-const floatPrecision = ref(savedSettings.floatPrecision); // 浮点数精度控制
-
-// 限制并规范化浮点精度输入（确保介于 0 - 64 之间并为整数）
-const clampFloatPrecisionValue = (raw: number | string): number => {
-    let n = Number(raw);
-    if (!isFinite(n) || isNaN(n)) n = 0;
-    // 向下取整，保持与 slider step 兼容
-    n = Math.floor(n);
-    if (n < 0) return 0;
-    if (n > 64) return 64;
-    return n;
-};
-
-const onFloatPrecisionInput = (val: number | number[] | string) => {
-    const raw = Array.isArray(val) ? val[0] ?? 0 : val;
-    floatPrecision.value = clampFloatPrecisionValue(raw as number | string);
-};
+const preserveNumberLiterals = ref<boolean>(savedSettings.preserveNumberLiterals ?? ((savedSettings as any).floatPrecision ?? 0) > 0);
 
 const startInFullscreen = ref(savedSettings.startInFullscreen ?? false); // 控制是否默认全屏
 const isFullscreen = ref(startInFullscreen.value); // 全屏状态控制，初始化遵循设置
@@ -880,7 +863,7 @@ const saveArchives = (): boolean => {
 
 // 设置对话框相关状态
 const settingsDialogVisible = ref(false);
-const settingsCollapseActiveNames = ref<string | number>('settings'); // 手风琴展开项，默认展开"设置"
+const settingsCollapseActiveNames = ref<string | number>('format'); // 手风琴展开项，默认展开"格式化设置"
 
 // 字段排序对话框相关状态
 const fieldSortDialogVisible = ref(false);
@@ -2623,7 +2606,7 @@ watch(showMinimap, () => {
 });
 
 // 监听格式化设置的变化
-watch([indentSize, arrayNewLine, showIndentGuide, floatPrecision], () => {
+watch([indentSize, arrayNewLine, showIndentGuide, preserveNumberLiterals], () => {
     // 如果输入区域为空，不进行任何操作
     if (!inputEditor?.getValue()?.trim()) {
         selectedLevel.value = 0;
@@ -2683,7 +2666,7 @@ watch(
         indentSize.value,
         encodingMode.value,
         arrayNewLine.value,
-        floatPrecision.value,
+        preserveNumberLiterals.value,
         sortMethod.value,
         sortOrder.value,
         customArchiveName.value,
@@ -3663,15 +3646,13 @@ class JsonPlusFormatter {
     private encodingMode: number;
     private indentSize: number;
     private arrayNewLine: boolean;
-    private floatPrecision: number;
     private preserveNumberLiterals: boolean;
     private escapePlaceholderCounter: number;
 
-    constructor(encodingMode: number, indentSize: number, arrayNewLine: boolean, floatPrecision: number = 0, preserveNumberLiterals: boolean = false) {
+    constructor(encodingMode: number, indentSize: number, arrayNewLine: boolean, preserveNumberLiterals: boolean = false) {
         this.encodingMode = encodingMode;
         this.indentSize = indentSize;
         this.arrayNewLine = arrayNewLine;
-        this.floatPrecision = floatPrecision;
         this.preserveNumberLiterals = preserveNumberLiterals;
         this.escapePlaceholderCounter = 0;
     }
@@ -3824,7 +3805,7 @@ class JsonPlusFormatter {
 
         // 预处理字符串，处理特殊值、转义等
         let processedInput = this.preprocessSpecialValues(input);
-        if (this.preserveNumberLiterals || this.floatPrecision > 15) {
+        if (this.preserveNumberLiterals) {
             processedInput = this.preprocessHighPrecisionNumbers(processedInput);
         }
         processedInput = this.preprocessString(processedInput, escapeMap);
@@ -4110,6 +4091,27 @@ class JsonPlusFormatter {
                         if (i + 1 < input.length) {
                             const nextChar = input[i + 1];
 
+                            if (nextChar === '\r' || nextChar === '\n' || nextChar === '\u2028' || nextChar === '\u2029' || nextChar === ' ' || nextChar === '\t') {
+                                let j = i + 1;
+                                while (j < input.length && (input[j] === ' ' || input[j] === '\t')) {
+                                    j++;
+                                }
+                                const ch = input[j] || '';
+                                if (ch === '\r' || ch === '\n' || ch === '\u2028' || ch === '\u2029') {
+                                    if (pendingBytes.length > 0) {
+                                        stringContent += this.escapeDecodedString(this.decodeUTF8(pendingBytes));
+                                        pendingBytes.length = 0;
+                                    }
+
+                                    if (ch === '\r' && input[j + 1] === '\n') {
+                                        i = j + 2;
+                                    } else {
+                                        i = j + 1;
+                                    }
+                                    continue;
+                                }
+                            }
+
                             // 对于非标准转义
                             if (!['"', '\\', '/', 'b', 'f', 'n', 'r', 't'].includes(nextChar)) {
                                 // 特殊处理 \u转义（包括非法格式）
@@ -4203,174 +4205,9 @@ class JsonPlusFormatter {
         return this.customStringify(data, escapeMap, 0, true);
     }
 
-    // 格式化数字，支持精度控制和大数字处理
+    // 格式化数字
     private formatNumber(num: number): string {
-        // 如果精度为0，不进行任何处理
-        if (this.floatPrecision === 0) {
-            return num.toString();
-        }
-
-        // 检查是否为整数
-        if (Number.isInteger(num)) {
-            return num.toString();
-        }
-
-        // 获取原始字符串表示
-        const numStr = num.toString();
-
-        // 对于科学计数法或极大数据，使用高精度处理
-        if (numStr.includes('e') || Math.abs(num) >= 1e15 || (Math.abs(num) < 1e-6 && num !== 0)) {
-            return this.formatHighPrecisionNumber(num);
-        }
-
-        // 对于普通浮点数，如果需要高精度，我们在原始字符串基础上填充0
-        if (this.floatPrecision > 15 && numStr.includes('.')) {
-            const parts = numStr.split('.');
-            if (parts[1]) {
-                if (parts[1].length >= this.floatPrecision) {
-                    // 原始字符串已经具有所需精度，直接使用
-                    return numStr;
-                } else {
-                    // 在原始精度基础上填充0到指定精度，避免显示浮点数误差
-                    return parts[0] + '.' + parts[1] + '0'.repeat(this.floatPrecision - parts[1].length);
-                }
-            }
-        }
-
-        // 普通浮点数使用toFixed进行精度控制
-        try {
-            return num.toFixed(this.floatPrecision);
-        } catch (error) {
-            // 如果toFixed失败，回退到原始字符串
-            return num.toString();
-        }
-    }
-
-    // 处理大数字或科学计数法的高精度格式化
-    private formatHighPrecisionNumber(num: number): string {
-        const str = num.toString();
-
-        // 如果不需要精度控制，直接返回原始字符串
-        if (this.floatPrecision === 0) {
-            return str;
-        }
-
-        // 处理科学计数法
-        if (str.includes('e')) {
-            const [mantissa, exponent] = str.split('e');
-            const exp = parseInt(exponent);
-
-            if (exp > 0) {
-                // 正指数：123.45e+2 -> 12345
-                const parts = mantissa.split('.');
-                const integerPart = parts[0];
-                const decimalPart = parts[1] || '';
-
-                // 计算需要移动的小数位数
-                let result = integerPart + decimalPart;
-                const zerosToAdd = exp - decimalPart.length;
-
-                if (zerosToAdd > 0) {
-                    result += '0'.repeat(zerosToAdd);
-                } else if (zerosToAdd < 0) {
-                    const insertPos = result.length + zerosToAdd;
-                    if (insertPos > 0) {
-                        result = result.slice(0, insertPos) + '.' + result.slice(insertPos);
-                    } else {
-                        result = '0.' + '0'.repeat(-insertPos) + result;
-                    }
-                }
-
-                // 如果需要精度控制且不是整数，截取到指定精度
-                if (this.floatPrecision > 0 && result.includes('.')) {
-                    const dotIndex = result.indexOf('.');
-                    const decimalPlaces = result.length - dotIndex - 1;
-                    if (decimalPlaces > this.floatPrecision) {
-                        // 直接截取字符串，避免再次转换为数字丢失精度
-                        result = result.slice(0, dotIndex + this.floatPrecision + 1);
-                        // 移除末尾的0，但保留至少一个小数位如果有小数点
-                        result = result.replace(/\.?0+$/, match => (match.includes('.') ? '.0' : ''));
-                    }
-                }
-
-                return result;
-            } else {
-                // 负指数：1.2345e-2 -> 0.012345
-                const parts = mantissa.split('.');
-                const integerPart = parts[0];
-                const decimalPart = parts[1] || '';
-
-                const totalDigits = integerPart + decimalPart;
-                const zerosToAdd = -exp - 1;
-
-                let result = '0.' + '0'.repeat(zerosToAdd) + totalDigits;
-
-                // 如果需要精度控制，截取小数部分
-                if (this.floatPrecision > 0 && result.includes('.')) {
-                    const dotIndex = result.indexOf('.');
-                    const maxLength = dotIndex + this.floatPrecision + 1;
-                    if (result.length > maxLength) {
-                        result = result.slice(0, maxLength);
-                        // 移除末尾的0，但保留至少一个小数位如果有小数点
-                        result = result.replace(/\.?0+$/, match => (match.includes('.') ? '.0' : ''));
-                    }
-                }
-
-                return result;
-            }
-        }
-
-        // 对于其他大数字，如果精度要求不高，使用toFixed
-        if (this.floatPrecision <= 15) {
-            try {
-                return num.toFixed(this.floatPrecision);
-            } catch (error) {
-                return str;
-            }
-        }
-
-        // 对于高精度要求，直接返回原始字符串（如果它已经足够精确）
-        return str;
-    }
-
-    // 检查数字是否需要包装为高精度数字对象
-    private shouldWrapAsHighPrecisionNumber(num: number): boolean {
-        // 如果精度设置为0，不进行包装
-        if (this.floatPrecision <= 17) {
-            return false;
-        }
-
-        const numStr = num.toString();
-
-        // 检查是否为科学计数法或极大数据
-        if (numStr.includes('e') || Math.abs(num) >= 1e15 || (Math.abs(num) < 1e-6 && num !== 0)) {
-            return true;
-        }
-
-        // 检查小数位数
-        if (numStr.includes('.')) {
-            const decimalPart = numStr.split('.')[1].replace(/e[+-]?.*$/, '');
-            if (decimalPart.length > 17) {
-                return true;
-            }
-        }
-
-        // 检查总位数
-        const totalDigits = numStr.replace(/[e.]/g, '').length;
-        if (totalDigits > 17) {
-            return true;
-        }
-
-        return false;
-    }
-
-    // 将数字包装为高精度数字对象
-    private wrapAsHighPrecisionNumber(num: number): any {
-        return {
-            __highPrecisionNumber: true,
-            originalString: num.toString(),
-            parsedValue: num,
-        };
+        return num.toString();
     }
 
     // 格式化高精度数字对象
@@ -4379,83 +4216,7 @@ class JsonPlusFormatter {
             return 'null';
         }
 
-        const originalStr = data.originalString;
-
-        // 如果不需要精度控制，直接返回原始字符串
-        if (this.floatPrecision === 0) {
-            return originalStr;
-        }
-
-        // 先将科学计数法转换为普通格式
-        let normalizedStr = originalStr;
-        if (originalStr.includes('e')) {
-            // 使用 formatHighPrecisionNumber 的逻辑来转换科学计数法
-            normalizedStr = this.convertScientificToDecimal(originalStr);
-        }
-
-        // 处理小数精度控制
-        if (normalizedStr.includes('.')) {
-            const parts = normalizedStr.split('.');
-            const integerPart = parts[0];
-            const decimalPart = parts[1];
-
-            if (decimalPart.length > this.floatPrecision) {
-                // 截取到指定精度
-                let result = integerPart + '.' + decimalPart.slice(0, this.floatPrecision);
-                // 移除末尾的0，但保留至少一个小数位如果有小数点
-                result = result.replace(/\.?0+$/, match => (match.includes('.') ? '.0' : ''));
-                return result;
-            } else if (decimalPart.length < this.floatPrecision) {
-                // 填充末尾的0到指定精度
-                return integerPart + '.' + decimalPart + '0'.repeat(this.floatPrecision - decimalPart.length);
-            }
-            // 小数位数正好等于精度要求，直接返回
-        }
-
-        return normalizedStr;
-    }
-
-    // 将科学计数法转换为普通十进制格式
-    private convertScientificToDecimal(scientificStr: string): string {
-        if (!scientificStr.includes('e')) {
-            return scientificStr;
-        }
-
-        const [mantissa, exponentStr] = scientificStr.split('e');
-        const exp = parseInt(exponentStr);
-
-        if (exp >= 0) {
-            // 正指数：123.45e+2 -> 12345
-            const parts = mantissa.split('.');
-            const integerPart = parts[0];
-            const decimalPart = parts[1] || '';
-
-            let result = integerPart + decimalPart;
-            const zerosToAdd = exp - decimalPart.length;
-
-            if (zerosToAdd > 0) {
-                result += '0'.repeat(zerosToAdd);
-            } else if (zerosToAdd < 0) {
-                const insertPos = result.length + zerosToAdd;
-                if (insertPos > 0) {
-                    result = result.slice(0, insertPos) + '.' + result.slice(insertPos);
-                } else {
-                    result = '0.' + '0'.repeat(-insertPos) + result;
-                }
-            }
-
-            return result;
-        } else {
-            // 负指数：1.2345e-2 -> 0.012345
-            const parts = mantissa.split('.');
-            const integerPart = parts[0];
-            const decimalPart = parts[1] || '';
-
-            const totalDigits = integerPart + decimalPart;
-            const zerosToAdd = -exp - 1;
-
-            return '0.' + '0'.repeat(zerosToAdd) + totalDigits;
-        }
+        return data.originalString;
     }
 
     // 自定义字符串化函数
@@ -4478,12 +4239,6 @@ class JsonPlusFormatter {
             if (isNaN(data) || !isFinite(data)) {
                 return 'null';
             }
-
-            // 检查是否需要高精度处理
-            if (this.shouldWrapAsHighPrecisionNumber(data)) {
-                return this.formatHighPrecisionNumberObject(this.wrapAsHighPrecisionNumber(data));
-            }
-
             return this.formatNumber(data);
         }
 
@@ -4514,13 +4269,7 @@ class JsonPlusFormatter {
 
     // 格式化字符串
     private formatString(str: string, escapeMap: Map<string, string>): string {
-        // 首先检查是否有占位符需要替换
-        let processedStr = str;
-        for (const [placeholder, originalEscape] of escapeMap.entries()) {
-            if (processedStr.includes(placeholder)) {
-                processedStr = processedStr.replace(new RegExp(placeholder.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g'), originalEscape);
-            }
-        }
+        const processedStr = str;
 
         // 检查是否是高精度数字对象的JSON字符串，如果是则直接返回数字字符串
         try {
@@ -4534,8 +4283,30 @@ class JsonPlusFormatter {
 
         let result = '"';
 
+        const isValidJsonEscape = (escape: string): boolean => {
+            if (escape.length === 2) {
+                return ['\\"', '\\\\', '\\/', '\\b', '\\f', '\\n', '\\r', '\\t'].includes(escape);
+            }
+            return /^\\u[0-9a-fA-F]{4}$/.test(escape);
+        };
+        const formatEscapePlaceholder = (escape: string): string => {
+            if (isValidJsonEscape(escape)) {
+                return escape;
+            }
+            return '\\\\' + escape.slice(1);
+        };
+
         for (let i = 0; i < processedStr.length; i++) {
             const char = processedStr[i];
+            if (char === '\uE000' && i + 1 < processedStr.length) {
+                const placeholder = processedStr.slice(i, i + 2);
+                const originalEscape = escapeMap.get(placeholder);
+                if (originalEscape) {
+                    result += formatEscapePlaceholder(originalEscape);
+                    i += 1;
+                    continue;
+                }
+            }
             const code = processedStr.charCodeAt(i);
 
             // 控制字符必须保持转义
@@ -4552,46 +4323,7 @@ class JsonPlusFormatter {
             } else if (char === '"') {
                 result += '\\"';
             } else if (char === '\\') {
-                // 智能处理转义：对于合法的单字符转义（如 \n \t \r \b \f \" \\ \/）保持单斜杠；
-                // 对于 \uXXXX 和 \xHH 以及未知/非法转义则输出双反斜杠以保证原样显示（或变为合法的 JSON 字符串）
-                const nextChar = processedStr[i + 1] || '';
-                const nextCode = processedStr.charCodeAt(i + 1) || 0;
-                // 如果反斜杠后是实际的控制字符（例如真实换行），不要把它作为换行插入字符串中
-                // 而是把它当作字面量的转义序列保留为 \\uXXXX 格式，避免字符串换行
-                if (nextCode < 32 || nextCode === 127) {
-                    const hex = nextCode.toString(16).padStart(4, '0');
-                    result += '\\\\u' + hex;
-                    i = i + 1; // 跳过实际的控制字符
-                    continue;
-                }
-
-                if (nextChar === 'u' && i + 5 < processedStr.length && /^[0-9a-fA-F]{4}$/.test(processedStr.substr(i + 2, 4))) {
-                    // \uXXXX - 合法的 Unicode 转义，保持单反斜杠形式（合法 JSON）
-                    result += '\\u' + processedStr.substr(i + 2, 4);
-                    i = i + 5; // 跳到最后一个已消费字符
-                    continue;
-                } else if (nextChar === 'x' && i + 2 < processedStr.length && /^[0-9a-fA-F]{2}$/.test(processedStr.substr(i + 2, 2))) {
-                    // \xHH - 非标准 JSON 转义，需要变为 \\xHH（保留字面）
-                    result += '\\\\x' + processedStr.substr(i + 2, 2);
-                    i = i + 3; // 跳到最后一个已消费字符
-                    continue;
-                } else if (['n', 'r', 't', 'b', 'f', '"', '\\', '/'].includes(nextChar)) {
-                    // 合法的单字符转义，保持单斜杠形式
-                    result += '\\' + nextChar;
-                    i = i + 1; // 跳到最后一个已消费字符
-                    continue;
-                } else {
-                    // 其他未知或非法转义：用双反斜杠加上后续字符（如果有）
-                    if (nextChar) {
-                        result += '\\\\' + nextChar;
-                        i = i + 1;
-                        continue;
-                    } else {
-                        // 仅单个反斜杠，保留它
-                        result += '\\\\';
-                        continue;
-                    }
-                }
+                result += '\\\\';
             } else if (code < 32 || code === 127) {
                 // 其他控制字符
                 result += '\\u' + code.toString(16).padStart(4, '0');
@@ -4714,10 +4446,10 @@ class JsonPlusFormatter {
 }
 
 // 兼容性函数 - 用于其他地方的JSON解析
-const preprocessJSON = (input: string, options?: { floatPrecision?: number; preserveNumberLiterals?: boolean }) => {
-    const precision = options?.floatPrecision ?? floatPrecision.value;
-    const preserveNumberLiterals = options?.preserveNumberLiterals ?? false;
-    const formatter = new JsonPlusFormatter(encodingMode.value, indentSize.value, arrayNewLine.value, precision, preserveNumberLiterals);
+const preprocessJSON = (input: string, options?: { preserveNumberLiterals?: boolean; encodingMode?: number }) => {
+    const preserveNumbers = options?.preserveNumberLiterals ?? preserveNumberLiterals.value;
+    const mode = options?.encodingMode ?? 0;
+    const formatter = new JsonPlusFormatter(mode, indentSize.value, arrayNewLine.value, preserveNumbers);
     const result = formatter.parseJson5(input);
     return {
         ...result,
@@ -4777,10 +4509,10 @@ const customStringify = (data: any, replacer: any, indentSize: number, originalS
         optionsArg &&
         typeof optionsArg === 'object' &&
         !Array.isArray(optionsArg) &&
-        ('floatPrecision' in optionsArg || 'preserveNumberLiterals' in optionsArg);
-    const precision = hasOptions && typeof optionsArg.floatPrecision === 'number' ? optionsArg.floatPrecision : floatPrecision.value;
-    const preserveNumberLiterals = hasOptions && optionsArg.preserveNumberLiterals === true;
-    const formatter = new JsonPlusFormatter(encodingMode.value, indentSize, arrayNewLine.value, precision, preserveNumberLiterals);
+        ('preserveNumberLiterals' in optionsArg || 'encodingMode' in optionsArg);
+    const preserveNumbers = hasOptions ? optionsArg.preserveNumberLiterals === true : preserveNumberLiterals.value;
+    const mode = hasOptions && typeof optionsArg.encodingMode === 'number' ? optionsArg.encodingMode : 0;
+    const formatter = new JsonPlusFormatter(mode, indentSize, arrayNewLine.value, preserveNumbers);
     const escapeMap = new Map<string, string>();
     return formatter.format(data, escapeMap);
 };
@@ -4797,7 +4529,7 @@ const formatJSON = () => {
         }
 
         // 创建格式化器
-        const formatter = new JsonPlusFormatter(encodingMode.value, indentSize.value, arrayNewLine.value, floatPrecision.value);
+        const formatter = new JsonPlusFormatter(encodingMode.value, indentSize.value, arrayNewLine.value, preserveNumberLiterals.value);
 
         // 解析 JSON5
         const { data, escapeMap } = formatter.parseJson5(value);
@@ -4836,14 +4568,14 @@ const compressJSON = () => {
         // 预处理 JSON 字符串
         let result;
         try {
-            result = preprocessJSON(value, { floatPrecision: 0, preserveNumberLiterals: true });
+            result = preprocessJSON(value, { preserveNumberLiterals: preserveNumberLiterals.value });
         } catch (error) {
             showMessageError('请输入有效的 JSON 数据');
             return;
         }
 
         // 使用 JsonPlusFormatter 进行压缩，确保转义序列正确恢复
-        const formatter = new JsonPlusFormatter(encodingMode.value, indentSize.value, arrayNewLine.value, 0, true);
+        const formatter = new JsonPlusFormatter(0, indentSize.value, arrayNewLine.value, preserveNumberLiterals.value);
         const compressed = formatter.compress(result.data, result.escapeMap);
         outputEditor?.setValue(compressed);
 
@@ -4928,10 +4660,122 @@ const unescapeJSON = (recursive: boolean = true) => {
             return;
         }
 
+        const globalUnicodeMap = new Map<string, string>();
+        const unicodePlaceholderByHex = new Map<string, string>();
+        let nextUnicodePlaceholderCodePoint = 0xe000;
+        const replaceUnicodeEscapes = (str: string) => {
+            let out = '';
+            let i = 0;
+            while (i < str.length) {
+                const ch = str[i];
+                if (ch === '\\' && i + 5 < str.length && str[i + 1] === 'u') {
+                    const hex = str.slice(i + 2, i + 6);
+                    if (/^[0-9a-fA-F]{4}$/.test(hex)) {
+                        let backslashCount = 0;
+                        let k = i - 1;
+                        while (k >= 0 && str[k] === '\\') {
+                            backslashCount++;
+                            k--;
+                        }
+                        const isEscapedBackslash = backslashCount % 2 === 1;
+                        if (!isEscapedBackslash) {
+                            let placeholder = unicodePlaceholderByHex.get(hex);
+                            if (!placeholder) {
+                                placeholder = String.fromCharCode(nextUnicodePlaceholderCodePoint++);
+                                unicodePlaceholderByHex.set(hex, placeholder);
+                            }
+                            globalUnicodeMap.set(placeholder, `\\u${hex}`);
+                            out += placeholder;
+                            i += 6;
+                            continue;
+                        }
+                    }
+                }
+                out += ch;
+                i++;
+            }
+            return out;
+        };
+
+        const indentUnitForUnicode = ' '.repeat(indentSize.value);
+        const stringifyWithUnicodeForUnescape = (obj: any, indent: string = ''): string => {
+            if (obj === null) return 'null';
+            if (typeof obj === 'boolean') return obj.toString();
+            if (typeof obj === 'number') return obj.toString();
+
+            if (typeof obj === 'string') {
+                try {
+                    const parsed = JSON.parse(obj);
+                    if (typeof parsed === 'object' && parsed && parsed.__highPrecisionNumber && parsed.originalString) {
+                        return parsed.originalString;
+                    }
+                } catch {}
+                let escaped = '';
+                for (let i = 0; i < obj.length; i++) {
+                    const char = obj[i];
+                    const code = char.charCodeAt(0);
+                    if (globalUnicodeMap.has(char)) {
+                        escaped += globalUnicodeMap.get(char)!;
+                    } else if (code < 32 || code === 34 || code === 92) {
+                        switch (char) {
+                            case '"':
+                                escaped += '\\"';
+                                break;
+                            case '\\':
+                                escaped += '\\\\';
+                                break;
+                            case '\b':
+                                escaped += '\\b';
+                                break;
+                            case '\f':
+                                escaped += '\\f';
+                                break;
+                            case '\n':
+                                escaped += '\\n';
+                                break;
+                            case '\r':
+                                escaped += '\\r';
+                                break;
+                            case '\t':
+                                escaped += '\\t';
+                                break;
+                            default:
+                                escaped += '\\u' + ('0000' + code.toString(16)).slice(-4);
+                        }
+                    } else {
+                        escaped += char;
+                    }
+                }
+                return '"' + escaped + '"';
+            }
+
+            if (Array.isArray(obj)) {
+                if (obj.length === 0) return '[]';
+                const items = obj.map(item => {
+                    const itemStr = stringifyWithUnicodeForUnescape(item, indent + indentUnitForUnicode);
+                    return indent + indentUnitForUnicode + itemStr;
+                });
+                return '[\n' + items.join(',\n') + '\n' + indent + ']';
+            }
+
+            if (typeof obj === 'object') {
+                const keys = Object.keys(obj);
+                if (keys.length === 0) return '{}';
+                const pairs = keys.map(key => {
+                    const keyStr = stringifyWithUnicodeForUnescape(key, indent + indentUnitForUnicode);
+                    const valueStr = stringifyWithUnicodeForUnescape(obj[key], indent + indentUnitForUnicode);
+                    return indent + indentUnitForUnicode + keyStr + ': ' + valueStr;
+                });
+                return '{\n' + pairs.join(',\n') + '\n' + indent + '}';
+            }
+
+            return JSON.stringify(obj);
+        };
+
         // 简化解析流程：优先直接解析 -> 宽松解析 -> 迭代去除外层转义后再尝试解析
         const tryParseJSON = (str: string) => {
             try {
-                const result = preprocessJSON(str, { floatPrecision: 0, preserveNumberLiterals: true });
+                const result = preprocessJSON(replaceUnicodeEscapes(str), { preserveNumberLiterals: true, encodingMode: 0 });
                 return { ok: true, value: result.data } as const;
             } catch {
                 return { ok: false } as const;
@@ -4963,10 +4807,12 @@ const unescapeJSON = (recursive: boolean = true) => {
 
         // 1. 先尝试直接解析
         let parseAttempted = false;
+        let isDirectParse = false;
         const direct = tryParseJSON(value);
         if (direct.ok) {
             parsedInput = direct.value;
             parseAttempted = true;
+            isDirectParse = true;
         } else {
             // 如果检测到非法编码，使用保守的字符串处理方式
             if (illegalCheck.hasIllegal) {
@@ -5011,11 +4857,11 @@ const unescapeJSON = (recursive: boolean = true) => {
                 return;
             } else {
                 // 2. 宽松解析器（仅对合法编码使用）
-                try {
-                    const result = preprocessJSON(value, { floatPrecision: 0, preserveNumberLiterals: true });
-                    parsedInput = result.data;
+                const res = tryParseJSON(value);
+                if (res.ok) {
+                    parsedInput = res.value;
                     parseAttempted = true;
-                } catch {
+                } else {
                     // 3. 迭代去除外层转义再尝试解析
                     parsedInput = iterativeParse(value);
                 }
@@ -5029,9 +4875,6 @@ const unescapeJSON = (recursive: boolean = true) => {
                 const objectDepth = getObjectDepth(parsedInput);
                 // 如果对象深度在可接受范围内，进行递归解析；深度过大时跳过以防止栈溢出或性能问题
                 if (objectDepth <= 50) {
-                    // 全局 Unicode 映射收集器（在处理开始前创建，用于收集所有需要保留的 Unicode 转义序列）
-                    const globalUnicodeMap = new Map<string, string>();
-
                     // 恢复 Unicode 占位符（从 map 中恢复 \uXXXX）
                     const restoreUnicodePlaceholders = (val: any, map: Map<string, string>): any => {
                         if (typeof val === 'string') {
@@ -5199,24 +5042,12 @@ const unescapeJSON = (recursive: boolean = true) => {
 
                                     try {
                                         // 先尝试直接解析，可能已经是有效的JSON
-                                        const parseResult = preprocessJSON(obj, { floatPrecision: 0, preserveNumberLiterals: true });
+                                        const parseResult = preprocessJSON(replaceUnicodeEscapes(obj), { preserveNumberLiterals: true, encodingMode: 0 });
                                         parsedValue = parseResult.data;
                                         isValidJson = true;
                                     } catch (e: any) {
                                         // 直接解析失败，可能是包含转义的JSON，需要先去除转义
-                                        // 先保存 Unicode 转义序列，避免被 JSON.parse 解码
-                                        const unicodeMap = new Map<string, string>(); // 字符 -> Unicode转义序列
                                         let tempStr = obj;
-
-                                        // 查找并替换所有 Unicode 转义序列（\uXXXX）为占位符
-                                        tempStr = tempStr.replace(/\\u([0-9a-fA-F]{4})/g, (match, hex) => {
-                                            const codePoint = parseInt(hex, 16);
-                                            const char = String.fromCharCode(codePoint);
-                                            const placeholder = `__UNI_HEX_${hex}__`;
-                                            // 记录字符到 Unicode 转义序列的映射
-                                            unicodeMap.set(char, match);
-                                            return placeholder;
-                                        });
 
                                         // 去除转义：使用逐字符处理，避免替换顺序问题
                                         let unescaped = '';
@@ -5251,18 +5082,9 @@ const unescapeJSON = (recursive: boolean = true) => {
 
                                         // 尝试解析去除转义后的字符串
                                         try {
-                                            const parseResult = preprocessJSON(unescaped, { floatPrecision: 0, preserveNumberLiterals: true });
+                                            const parseResult = preprocessJSON(replaceUnicodeEscapes(unescaped), { preserveNumberLiterals: true, encodingMode: 0 });
                                             parsedValue = parseResult.data;
                                             isValidJson = true;
-
-                                            parsedValue = restoreUnicodePlaceholders(parsedValue, unicodeMap);
-                                            // 将 unicodeMap 合并到全局映射中
-                                            if (isValidJson) {
-                                                unicodeMap.forEach((unicode, char) => {
-                                                    globalUnicodeMap.set(char, unicode);
-                                                });
-                                            }
-                                            (parsedValue as any).__unicodeMap__ = unicodeMap;
                                         } catch (parseError) {
                                             isValidJson = false;
                                         }
@@ -5331,7 +5153,7 @@ const unescapeJSON = (recursive: boolean = true) => {
                                 const t = item.trim();
                                 if ((t.startsWith('{') && t.endsWith('}')) || (t.startsWith('[') && t.endsWith(']')) || t.includes('\\"') || t.includes('\\\\')) {
                                     try {
-                                        const result = preprocessJSON(item, { floatPrecision: 0, preserveNumberLiterals: true });
+                                        const result = preprocessJSON(replaceUnicodeEscapes(item), { preserveNumberLiterals: true, encodingMode: 0 });
                                         if (result.data && typeof result.data === 'object' && result.data.__highPrecisionNumber && result.data.originalString) {
                                             return JSON.stringify(result.data);
                                         }
@@ -5339,7 +5161,7 @@ const unescapeJSON = (recursive: boolean = true) => {
                                     } catch {
                                         try {
                                             const unescaped = item.replace(/\\"/g, '"').replace(/\\\\/g, '\\');
-                                            const result = preprocessJSON(unescaped, { floatPrecision: 0, preserveNumberLiterals: true });
+                                            const result = preprocessJSON(replaceUnicodeEscapes(unescaped), { preserveNumberLiterals: true, encodingMode: 0 });
                                             if (result.data && typeof result.data === 'object' && result.data.__highPrecisionNumber && result.data.originalString) {
                                                 return JSON.stringify(result.data);
                                             }
@@ -5366,7 +5188,7 @@ const unescapeJSON = (recursive: boolean = true) => {
                                 const t = val.trim();
                                 if ((t.startsWith('{') && t.endsWith('}')) || (t.startsWith('[') && t.endsWith(']')) || t.includes('\\"') || t.includes('\\\\')) {
                                     try {
-                                        const parseResult = preprocessJSON(val, { floatPrecision: 0, preserveNumberLiterals: true });
+                                        const parseResult = preprocessJSON(replaceUnicodeEscapes(val), { preserveNumberLiterals: true, encodingMode: 0 });
                                         if (parseResult.data && typeof parseResult.data === 'object' && parseResult.data.__highPrecisionNumber && parseResult.data.originalString) {
                                             result[key] = JSON.stringify(parseResult.data);
                                             continue;
@@ -5376,7 +5198,7 @@ const unescapeJSON = (recursive: boolean = true) => {
                                     } catch {
                                         try {
                                             const unescaped = val.replace(/\\"/g, '"').replace(/\\\\/g, '\\');
-                                            const parseResult = preprocessJSON(unescaped, { floatPrecision: 0, preserveNumberLiterals: true });
+                                            const parseResult = preprocessJSON(replaceUnicodeEscapes(unescaped), { preserveNumberLiterals: true, encodingMode: 0 });
                                             if (parseResult.data && typeof parseResult.data === 'object' && parseResult.data.__highPrecisionNumber && parseResult.data.originalString) {
                                                 result[key] = JSON.stringify(parseResult.data);
                                                 continue;
@@ -5395,8 +5217,8 @@ const unescapeJSON = (recursive: boolean = true) => {
                     return target;
                 };
 
-                const topLevelProcessed = tryParseTopLevelOnce(parsedInput);
-                const formatted = customStringify(topLevelProcessed, null, indentSize.value, undefined, { floatPrecision: 0, preserveNumberLiterals: true });
+                const topLevelProcessed = isDirectParse ? tryParseTopLevelOnce(parsedInput) : parsedInput;
+                const formatted = stringifyWithUnicodeForUnescape(topLevelProcessed);
                 outputEditor?.setValue(formatted);
 
                 // 更新编辑器配置
@@ -5425,14 +5247,14 @@ const unescapeJSON = (recursive: boolean = true) => {
         if (typeof value === 'string' && value.trim().startsWith('"') && value.trim().endsWith('"')) {
             try {
                 // 尝试解析为JSON字符串
-                const firstUnescapedResult = preprocessJSON(value.trim(), { floatPrecision: 0, preserveNumberLiterals: true });
+                const firstUnescapedResult = preprocessJSON(replaceUnicodeEscapes(value.trim()), { preserveNumberLiterals: true, encodingMode: 0 });
                 const firstUnescaped = firstUnescapedResult.data;
 
                 if (typeof firstUnescaped === 'string') {
                     // 检查解析出的字符串是否是有效的JSON
                     let isValidJson = false;
                     try {
-                        preprocessJSON(firstUnescaped, { floatPrecision: 0, preserveNumberLiterals: true });
+                        preprocessJSON(replaceUnicodeEscapes(firstUnescaped), { preserveNumberLiterals: true, encodingMode: 0 });
                         isValidJson = true;
                     } catch {
                         // 不是有效的JSON，应该保持原样
@@ -5442,10 +5264,10 @@ const unescapeJSON = (recursive: boolean = true) => {
                     if (isValidJson) {
                         try {
                             // 尝试解析第二层
-                            const secondUnescapedResult = preprocessJSON(firstUnescaped, { floatPrecision: 0, preserveNumberLiterals: true });
+                            const secondUnescapedResult = preprocessJSON(replaceUnicodeEscapes(firstUnescaped), { preserveNumberLiterals: true, encodingMode: 0 });
                             const secondUnescaped = secondUnescapedResult.data;
                             if (typeof secondUnescaped === 'object' && secondUnescaped !== null) {
-                                const formatted = customStringify(secondUnescaped, null, indentSize.value, undefined, { floatPrecision: 0, preserveNumberLiterals: true });
+                                const formatted = stringifyWithUnicodeForUnescape(secondUnescaped);
                                 outputEditor?.setValue(formatted);
 
                                 // 更新编辑器配置
@@ -5606,14 +5428,14 @@ const compressAndEscapeJSON = () => {
         // 预处理 JSON 字符串
         let result;
         try {
-            result = preprocessJSON(value, { floatPrecision: 0, preserveNumberLiterals: true });
+            result = preprocessJSON(value, { preserveNumberLiterals: true });
         } catch (error) {
             showMessageError('请输入有效的 JSON 数据');
             return;
         }
 
         // 使用 JsonPlusFormatter 进行压缩，确保转义序列正确恢复
-        const formatter = new JsonPlusFormatter(encodingMode.value, indentSize.value, arrayNewLine.value, 0, true);
+        const formatter = new JsonPlusFormatter(0, indentSize.value, arrayNewLine.value, true);
         const compressed = formatter.compress(result.data, result.escapeMap);
 
         // 直接用 JSON.stringify 包裹成字符串
@@ -5674,7 +5496,7 @@ const handleLevelAction = () => {
         }
 
         // 使用JsonPlusFormatter格式化JSON，保持原始转义序列
-        const formatter = new JsonPlusFormatter(encodingMode.value, indentSize.value, arrayNewLine.value, floatPrecision.value);
+        const formatter = new JsonPlusFormatter(0, indentSize.value, arrayNewLine.value);
         const formatted = formatter.format(parsedData, escapeMap);
 
         // 更新预览区域内容
@@ -6086,7 +5908,17 @@ const handleArchiveCommand = async (command: string) => {
     }
 
     // 直接加载存档内容，保持原有格式（不重新格式化以避免缩进不一致）
-    inputEditor.setValue(archive.content);
+    const inputModel = inputEditor.getModel();
+    if (inputModel) {
+        inputEditor.pushUndoStop();
+        inputEditor.executeEdits('load-archive', [
+            {
+                range: inputModel.getFullModelRange(),
+                text: archive.content,
+            },
+        ]);
+        inputEditor.pushUndoStop();
+    }
 
     // 检测存档内容的缩进设置，并更新编辑器以匹配
     const detectIndentSize = (text: string): { size: number; insertSpaces: boolean } => {
@@ -6155,14 +5987,21 @@ const handleLoadSharedJson = (jsonData: string) => {
             return;
         }
 
-        // 验证并格式化JSON数据
+        // 验证JSON数据并计算层级，但不重新格式化，保持分享者原样
         try {
-            const parsed = JSON.parse(jsonData);
-            // 使用自定义格式化函数格式化JSON，保持原有缩进格式
-            const formattedJson = customStringify(parsed, null, 2, jsonData);
+            let parsed;
+            try {
+                // 使用 true 强制保留数字字面量，避免解析超长浮点数时丢失精度导致的问题
+                const formatter = new JsonPlusFormatter(0, 2, false, true);
+                const result = formatter.parseJson5(jsonData);
+                parsed = result.data;
+            } catch (e) {
+                // 回退到原生解析
+                parsed = JSON.parse(jsonData);
+            }
 
-            // 将格式化后的JSON设置到输入编辑器
-            inputEditor.setValue(formattedJson);
+            // 直接将分享的原始JSON字符串设置到输入编辑器，百分百保持精度和原样
+            inputEditor.setValue(jsonData);
 
             // 更新编辑器配置
             const model = inputEditor.getModel();
@@ -6727,11 +6566,19 @@ const loadSharedDataFromUrl = async () => {
             // 成功加载数据，加载JSON数据到编辑器
             if (inputEditor && response.data.jsonData) {
                 try {
-                    // 验证JSON格式
-                    const jsonData = JSON.parse(response.data.jsonData);
-                    // 保持原有缩进格式，避免与现有内容格式不一致
-                    const formattedJson = customStringify(jsonData, null, 2, response.data.jsonData);
-                    inputEditor.setValue(formattedJson);
+                    // 验证JSON格式并计算层级，但不重新格式化，保持分享者原样
+                    let parsedData;
+                    try {
+                        const formatter = new JsonPlusFormatter(0, 2, false, true);
+                        const result = formatter.parseJson5(response.data.jsonData);
+                        parsedData = result.data;
+                    } catch (e) {
+                        // 回退到原生解析
+                        parsedData = JSON.parse(response.data.jsonData);
+                    }
+                    
+                    // 直接将分享的原始JSON字符串设置到输入编辑器，百分百保持精度和原样
+                    inputEditor.setValue(response.data.jsonData);
 
                     // 更新编辑器配置，确保使用2空格缩进
                     const model = inputEditor.getModel();
@@ -6751,7 +6598,7 @@ const loadSharedDataFromUrl = async () => {
                     updateEditorHeight(inputEditor);
 
                     // 更新层级信息
-                    maxLevel.value = calculateMaxLevel(jsonData);
+                    maxLevel.value = calculateMaxLevel(parsedData);
                     if (maxLevel.value > 0 && selectedLevel.value === 0) {
                         selectedLevel.value = getDefaultFoldLevel(maxLevel.value);
                     }
@@ -6831,6 +6678,7 @@ const handleAdvancedCommand = (command: string) => {
 // 打开设置对话框
 const openSettingsDialog = () => {
     settingsDialogVisible.value = true;
+    settingsCollapseActiveNames.value = 'format';
 };
 
 // 比较函数：字典序
@@ -7862,7 +7710,7 @@ const execAndNext = (rootPath: string, fieldName: string, nextStep: number) => {
     // 在演示中直接使用预计算/即时计算结果并写入输出编辑器（默认使用 demoData）
     const dataToUse = demoData.value;
     const result = performFieldSort(JSON.parse(JSON.stringify(dataToUse)), rootPath, fieldName);
-        const formatted = customStringify(result, null, 2, JSON.stringify(dataToUse), 0, true, { floatPrecision: 0, preserveNumberLiterals: true });
+    const formatted = customStringify(result, null, 2, JSON.stringify(dataToUse), 0, true, { preserveNumberLiterals: true });
     const finalOutput = formatted.replace(/\\u([0-9a-fA-F]{4})/g, '\\\\u$1');
     if (outputEditor) {
         outputEditor.setValue(finalOutput);
@@ -7875,7 +7723,7 @@ const execAndNext = (rootPath: string, fieldName: string, nextStep: number) => {
 const execAndNextMap = (rootPath: string, fieldName: string, nextStep: number) => {
     const dataToUse = demoMapData.value;
     const result = performFieldSort(JSON.parse(JSON.stringify(dataToUse)), rootPath, fieldName);
-        const formatted = customStringify(result, null, 2, JSON.stringify(dataToUse), 0, true, { floatPrecision: 0, preserveNumberLiterals: true });
+    const formatted = customStringify(result, null, 2, JSON.stringify(dataToUse), 0, true, { preserveNumberLiterals: true });
     const finalOutput = formatted.replace(/\\u([0-9a-fA-F]{4})/g, '\\\\u$1');
     if (outputEditor) {
         outputEditor.setValue(finalOutput);
@@ -8127,9 +7975,10 @@ const executeFieldSort = () => {
         let parsed;
         let originalString = value;
 
-        const result = preprocessJSON(value, { floatPrecision: 0, preserveNumberLiterals: true });
+        const result = preprocessJSON(value, { preserveNumberLiterals: true });
         parsed = result.data;
         originalString = result.originalString;
+        const escapeMap = result.escapeMap;
 
         // 处理嵌套数组排序的情况
         if (sortRootPath.value.trim() && sortRootPath.value.trim().includes('[*]')) {
@@ -8159,7 +8008,8 @@ const executeFieldSort = () => {
             });
 
             // 格式化输出
-            const formatted = customStringify(parsed, null, indentSize.value, originalString, 0, true, { floatPrecision: 0, preserveNumberLiterals: true });
+            const formatter = new JsonPlusFormatter(0, indentSize.value, arrayNewLine.value, preserveNumberLiterals.value);
+            const formatted = formatter.format(parsed, escapeMap);
             const finalOutput = formatted.replace(/\\u([0-9a-fA-F]{4})/g, '\\u$1');
 
             // 异步计算所有折叠区域的信息（不阻塞，立即返回）
@@ -8195,7 +8045,8 @@ const executeFieldSort = () => {
         }
 
         // 格式化输出
-        const formatted = customStringify(finalResult, null, indentSize.value, originalString, 0, true, { floatPrecision: 0, preserveNumberLiterals: true });
+        const formatter = new JsonPlusFormatter(0, indentSize.value, arrayNewLine.value, preserveNumberLiterals.value);
+        const formatted = formatter.format(finalResult, escapeMap);
         const finalOutput = formatted.replace(/\\u([0-9a-fA-F]{4})/g, '\\u$1');
 
         // 异步计算所有折叠区域的信息（不阻塞，立即返回）
@@ -8279,15 +8130,17 @@ const applySort = () => {
         if (sortMethod.value === 'dictionary' || sortMethod.value === 'length') {
             try {
                 // 先尝试JSON解析
-                const result = preprocessJSON(value, { floatPrecision: 0, preserveNumberLiterals: true });
+                const result = preprocessJSON(value, { preserveNumberLiterals: true });
                 const parsed = result.data;
                 const originalString = result.originalString;
+                const escapeMap = result.escapeMap;
 
                 // 执行JSON对象排序
                 const sorted = sortJsonObject(parsed, sortMethod.value, sortOrder.value, '');
 
                 // 格式化输出
-                const formatted = customStringify(sorted, null, indentSize.value, originalString, 0, true, { floatPrecision: 0, preserveNumberLiterals: true });
+                const formatter = new JsonPlusFormatter(0, indentSize.value, arrayNewLine.value, preserveNumberLiterals.value);
+                const formatted = formatter.format(sorted, escapeMap);
                 outputResult = formatted.replace(/\\u([0-9a-fA-F]{4})/g, '\\u$1');
             } catch (jsonError) {
                 // JSON解析失败，按字符串行处理
@@ -8298,12 +8151,14 @@ const applySort = () => {
         } else {
             // 其他排序方式保持原有逻辑
             outputType.value = 'json';
-            const result = preprocessJSON(value, { floatPrecision: 0, preserveNumberLiterals: true });
+            const result = preprocessJSON(value, { preserveNumberLiterals: true });
             const parsed = result.data;
             const originalString = result.originalString;
+            const escapeMap = result.escapeMap;
 
             const sorted = sortJsonObject(parsed, sortMethod.value, sortOrder.value, '');
-            const formatted = customStringify(sorted, null, indentSize.value, originalString, 0, true, { floatPrecision: 0, preserveNumberLiterals: true });
+            const formatter = new JsonPlusFormatter(0, indentSize.value, arrayNewLine.value, preserveNumberLiterals.value);
+            const formatted = formatter.format(sorted, escapeMap);
             outputResult = formatted.replace(/\\u([0-9a-fA-F]{4})/g, '\\u$1');
         }
 
@@ -9736,6 +9591,9 @@ const transferToInput = (e: MouseEvent) => {
             return;
         }
 
+        // 保存预览区域的视图状态（包含折叠状态、滚动位置等）
+        const viewState = outputEditor?.saveViewState();
+
         const targetIndentSize = indentSize.value; // 使用用户设置的缩进大小
         let formattedContent: string;
 
@@ -9751,11 +9609,10 @@ const transferToInput = (e: MouseEvent) => {
         if (inputEditor) {
             const inputModel = inputEditor.getModel();
             if (inputModel) {
-                const fullRange = inputModel.getFullModelRange();
                 inputEditor.pushUndoStop();
                 inputEditor.executeEdits('transfer-to-input', [
                     {
-                        range: fullRange,
+                        range: inputModel.getFullModelRange(),
                         text: formattedContent,
                     },
                 ]);
@@ -9771,6 +9628,25 @@ const transferToInput = (e: MouseEvent) => {
                 });
                 // 同时更新编辑器选项
                 inputEditor.updateOptions({ tabSize: indentSize.value, indentSize: indentSize.value } as any);
+
+                // 恢复视图状态（折叠状态、滚动位置等）
+                if (viewState) {
+                    // 使用 nextTick 确保内容更新后再恢复状态
+                    nextTick(() => {
+                        // 先强制展开所有折叠，确保与预览区域状态一致（特别是预览区域全展开的情况）
+                        // 使用 run() 方法确保执行完成
+                        const unfoldAction = inputEditor?.getAction('editor.unfoldAll');
+                        if (unfoldAction) {
+                            unfoldAction.run().then(() => {
+                                // 展开完成后，再恢复预览区域的视图状态（如果有折叠，会再次应用）
+                                inputEditor?.restoreViewState(viewState);
+                            });
+                        } else {
+                            // 如果找不到 unfoldAll 动作，直接恢复
+                            inputEditor?.restoreViewState(viewState);
+                        }
+                    });
+                }
             }
         }
 
@@ -10473,7 +10349,6 @@ const transferToInput = (e: MouseEvent) => {
 /* 极简单行展示：紧凑无间距，像 '排序方向：正序（升序）' */
 .form-value-quote--compact {
     padding: 12px 16px;
-    border-radius: 8px;
     background: #f6f7f9;
     border: 1px solid rgba(20, 30, 40, 0.04);
     box-sizing: border-box;
@@ -10653,6 +10528,12 @@ const transferToInput = (e: MouseEvent) => {
     color: #303133;
 }
 
+.settings-description {
+    font-size: 12px;
+    font-weight: 400;
+    color: #909399;
+}
+
 .settings-radio-group {
     display: flex;
     gap: 8px;
@@ -10727,6 +10608,17 @@ const transferToInput = (e: MouseEvent) => {
     font-weight: 600;
     color: #606266;
     margin-bottom: 12px;
+}
+
+.settings-subsection-title-label {
+    color: #606266;
+}
+
+.settings-subsection-title-desc {
+    margin-left: 8px;
+    font-size: 12px;
+    font-weight: 400;
+    color: #909399;
 }
 
 .settings-subsection-divider {
@@ -10924,7 +10816,7 @@ const transferToInput = (e: MouseEvent) => {
     margin-bottom: 24px;
     padding: 16px;
     border: 1px solid #e4e7ed;
-    border-radius: 6px;
+    border-radius: 4px;
     background: #fafbfc;
 }
 
@@ -10994,7 +10886,7 @@ const transferToInput = (e: MouseEvent) => {
 
 .demo-guide-popup {
     background: white;
-    border-radius: 12px;
+    border-radius: 2px;
     box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
     width: 640px;
     animation: demoPopup 0.3s ease-out;
@@ -11102,7 +10994,7 @@ const transferToInput = (e: MouseEvent) => {
     right: -4px;
     bottom: -4px;
     background: #409eff;
-    border-radius: 6px;
+    border-radius: 4px;
     z-index: -1;
     animation: highlightPulse 2s infinite;
 }

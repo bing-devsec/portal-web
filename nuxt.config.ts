@@ -3,6 +3,7 @@ import { resolve } from "path";
 
 export default defineNuxtConfig({
   // ==================== 核心配置 ====================
+  devtools: { enabled: false },
   app: {
     head: {
       // 基础元信息

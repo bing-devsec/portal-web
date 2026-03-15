@@ -723,8 +723,7 @@ const loadShareIntoEditor = async (row: any) => {
 .my-shares {
     margin-bottom: 16px;
     background: #fafafa;
-    border: 1px solid #ebeef5;
-    border-radius: 6px;
+    border-radius: 4px;
     overflow: hidden;
 }
 .my-shares-header {
@@ -733,7 +732,6 @@ const loadShareIntoEditor = async (row: any) => {
     align-items: center;
     padding: 10px 12px;
     background: #f5f7fa;
-    border-bottom: 1px solid #ebeef5;
     cursor: pointer;
     user-select: none;
 }

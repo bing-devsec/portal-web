@@ -766,7 +766,7 @@ watch(
   color: #555;
   font-size: 14px;
   gap: 12px 20px;
-  border-radius: 8px;
+  border-radius: 4px;
   background-color: #f8f9fa;
   border: 1px solid #e9ecef;
 }
