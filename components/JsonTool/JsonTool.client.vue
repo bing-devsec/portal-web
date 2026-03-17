@@ -4199,8 +4199,6 @@ class JsonPlusFormatter {
 
     // 自定义字符串化函数
     private customStringify(data: any, escapeMap: Map<string, string>, indent: number = 0, compressed: boolean = false): string {
-        const indentStr = ' '.repeat(indent * this.indentSize);
-
         if (data === null) {
             return 'null';
         }

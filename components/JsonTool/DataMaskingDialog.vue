@@ -182,6 +182,7 @@
                                                 show-word-limit
                                                 :trigger-on-focus="true"
                                                 :debounce="100"
+                                                :fit-input-width="true"
                                                 popper-class="field-path-autocomplete"
                                                 @select="item => handleFieldPathSelect(item, pathIndex)"
                                                 @input="value => handleFieldPathInput(String(value), pathIndex)"
@@ -1560,7 +1561,7 @@ const queryFieldPaths = (queryString: string, cb: (suggestions: PathSuggestion[]
             }
 
             // 不完全匹配，返回过滤后的建议（用于部分输入时的过滤）
-            const filtered = allFirstLevelKeys.filter(item => item.value.toLowerCase().startsWith(currentInput));
+            const filtered = allFirstLevelKeys.filter(item => item.value.toLowerCase().includes(currentInput));
             cb(filtered);
             return;
         }
@@ -1604,7 +1605,7 @@ const queryFieldPaths = (queryString: string, cb: (suggestions: PathSuggestion[]
 
             // 根据当前输入的key部分进行过滤（不区分大小写）
             const currentInputLower = currentKeyInput.toLowerCase();
-            const filtered = nextLevelKeys.filter(item => item.value.toLowerCase().startsWith(currentInputLower));
+            const filtered = nextLevelKeys.filter(item => item.value.toLowerCase().includes(currentInputLower));
 
             cb(filtered);
         } else {
@@ -1619,7 +1620,7 @@ const queryFieldPaths = (queryString: string, cb: (suggestions: PathSuggestion[]
                 const filtered = allKeys.filter(item => {
                     const itemLower = item.value.toLowerCase();
                     const fullPathLower = fullPath.toLowerCase();
-                    return itemLower.startsWith(fullPathLower);
+                    return itemLower.includes(fullPathLower);
                 });
                 cb(filtered);
             } else {
