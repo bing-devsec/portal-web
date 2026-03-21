@@ -109,7 +109,7 @@
                                 size="small"
                                 @click="saveCurrentRule"
                                 :disabled="!canSaveNewRule"
-                                :title="savedRulesList.length >= 5 && !canSaveNewRule ? '脱敏规则数量已达上限（5条），无法保存新规则。请先删除旧规则后再保存。' : ''"
+                                :title="savedRulesList.length >= 5 && !canSaveNewRule ? '脱敏规则数量已达上限（5条），无法保存新规则，请先删除旧规则后再保存。' : ''"
                             >
                                 <el-icon style="margin-right: 3px"><DocumentAdd /></el-icon>保存规则
                             </el-button>
@@ -1036,7 +1036,7 @@ const saveCurrentRule = async () => {
 
         // 情况1.2：同名但内容不同，提示规则覆盖
         try {
-            await ElMessageBox.confirm(`规则"${ruleName}"已存在，但内容不同。是否覆盖现有规则？`, '确认覆盖', {
+            await ElMessageBox.confirm(`规则"${ruleName}"已存在，但内容不同，是否覆盖现有规则？`, '确认覆盖', {
                 confirmButtonText: '覆盖',
                 cancelButtonText: '取消',
                 type: 'warning',
@@ -1280,109 +1280,86 @@ interface PathSuggestion {
     keyCount?: number; // 对象子元素个数
 }
 
-// 解析路径字符串，支持数组语法（如 settings[*] 或 settings[0]）
-const parsePathToParts = (path: string): Array<{ key: string; isArray?: boolean; arrayIndex?: number | string }> => {
-    const parts: Array<{ key: string; isArray?: boolean; arrayIndex?: number | string }> = [];
-    let current = '';
-    let inBrackets = false;
-    let bracketContent = '';
+type PathToken = { type: 'key'; value: string } | { type: 'index'; value: '*' | number };
 
-    for (let i = 0; i < path.length; i++) {
+const parsePathToTokens = (path: string): PathToken[] => {
+    const tokens: PathToken[] = [];
+    let i = 0;
+
+    while (i < path.length) {
         const char = path[i];
 
-        if (char === '[') {
-            if (current) {
-                parts.push({ key: current });
-                current = '';
-            }
-            inBrackets = true;
-            bracketContent = '';
-        } else if (char === ']') {
-            if (inBrackets) {
-                if (bracketContent === '*' || /^\d+$/.test(bracketContent)) {
-                    // 数组通配符或索引
-                    if (parts.length > 0) {
-                        parts[parts.length - 1].isArray = true;
-                        parts[parts.length - 1].arrayIndex = bracketContent === '*' ? '*' : parseInt(bracketContent, 10);
-                    } else if (current) {
-                        // 如果还没有添加到parts，先添加key，然后标记为数组
-                        parts.push({ key: current, isArray: true, arrayIndex: bracketContent === '*' ? '*' : parseInt(bracketContent, 10) });
-                        current = '';
-                    } else {
-                        // 根级别的数组访问，如 [1] 或 [*]
-                        parts.push({ key: '', isArray: true, arrayIndex: bracketContent === '*' ? '*' : parseInt(bracketContent, 10) });
-                    }
-                }
-                inBrackets = false;
-                bracketContent = '';
-            }
-        } else if (inBrackets) {
-            bracketContent += char;
-        } else if (char === '.') {
-            if (current) {
-                parts.push({ key: current });
-                current = '';
-            }
-        } else {
-            current += char;
-        }
-    }
-
-    if (current) {
-        parts.push({ key: current });
-    }
-
-    return parts;
-};
-
-// 根据路径获取JSON对象中的值
-const getValueByPathParts = (obj: any, parts: Array<{ key: string; isArray?: boolean; arrayIndex?: number | string }>): any => {
-    let current = obj;
-
-    for (const part of parts) {
-        if (current === null || current === undefined) {
-            return null;
-        }
-
-        // 处理根级别的数组访问（key为空，isArray为true）
-        if (part.isArray && !part.key && Array.isArray(current)) {
-            if (part.arrayIndex === '*') {
-                // 通配符，返回第一个元素用于获取下一级key
-                current = current.length > 0 ? current[0] : null;
-            } else if (typeof part.arrayIndex === 'number') {
-                // 具体索引
-                current = current[part.arrayIndex] || null;
-            } else {
-                // 默认返回第一个元素
-                current = current.length > 0 ? current[0] : null;
-            }
+        if (char === '.') {
+            i++;
             continue;
         }
 
-        if (part.key) {
-            if (typeof current === 'object' && part.key in current) {
-                current = current[part.key];
+        if (char === '[') {
+            const closeIndex = path.indexOf(']', i + 1);
+            if (closeIndex === -1) {
+                break;
+            }
+            const content = path.slice(i + 1, closeIndex).trim();
+            if (content === '*') {
+                tokens.push({ type: 'index', value: '*' });
+            } else if (/^\d+$/.test(content)) {
+                tokens.push({ type: 'index', value: parseInt(content, 10) });
+            }
+            i = closeIndex + 1;
+            continue;
+        }
+
+        let j = i;
+        while (j < path.length && path[j] !== '.' && path[j] !== '[') {
+            j++;
+        }
+        const key = path.slice(i, j).trim();
+        if (key) {
+            tokens.push({ type: 'key', value: key });
+        }
+        i = j;
+    }
+
+    return tokens;
+};
+
+const getCandidateValuesByTokens = (obj: any, tokens: PathToken[], limit: number = 20): any[] => {
+    let candidates: any[] = [obj];
+
+    for (const token of tokens) {
+        const next: any[] = [];
+
+        for (const candidate of candidates) {
+            if (next.length >= limit) break;
+            if (candidate === null || candidate === undefined) continue;
+
+            if (token.type === 'key') {
+                if (typeof candidate === 'object' && !Array.isArray(candidate) && token.value in candidate) {
+                    next.push((candidate as any)[token.value]);
+                }
             } else {
-                return null;
+                if (Array.isArray(candidate)) {
+                    if (token.value === '*') {
+                        for (let idx = 0; idx < candidate.length && next.length < limit; idx++) {
+                            next.push(candidate[idx]);
+                        }
+                    } else {
+                        const value = candidate[token.value];
+                        if (value !== undefined) {
+                            next.push(value);
+                        }
+                    }
+                }
             }
         }
 
-        if (part.isArray && Array.isArray(current)) {
-            // 如果是数组，根据arrayIndex返回对应元素
-            if (part.arrayIndex === '*') {
-                // 通配符，返回第一个元素用于获取下一级key
-                current = current.length > 0 ? current[0] : null;
-            } else if (typeof part.arrayIndex === 'number') {
-                // 具体索引
-                current = current[part.arrayIndex] || null;
-            } else {
-                // 默认返回第一个元素
-                current = current.length > 0 ? current[0] : null;
-            }
+        candidates = next;
+        if (candidates.length === 0) {
+            return [];
         }
     }
 
-    return current;
+    return candidates;
 };
 
 // 获取下一级的key建议（基于当前输入内容）
@@ -1423,52 +1400,60 @@ const getNextLevelKeys = (jsonObj: any, currentPath: string): PathSuggestion[] =
         return getNextLevelKeys(jsonObj, '');
     }
 
-    // 解析路径
-    const parts = parsePathToParts(pathToParse);
-    const targetValue = getValueByPathParts(jsonObj, parts);
+    const tokens = parsePathToTokens(pathToParse);
+    const candidates = getCandidateValuesByTokens(jsonObj, tokens);
 
-    if (targetValue === null || targetValue === undefined) {
+    if (!candidates.length) {
         return [];
     }
 
-    // 检查路径是否以数组访问结尾（如 [1] 或 [*]）
-    const endsWithArrayAccess = /\[(\*|\d+)\]$/.test(pathToParse);
+    const endsWithArrayAccess = /\[(\*|\d+)\]\s*$/.test(pathToParse);
 
-    // 如果目标是数组，且路径以 "." 结尾
-    if (Array.isArray(targetValue)) {
-        // 如果路径以 "." 结尾，且前面不是数组访问（如 "数组名."），这是无效的语法
-        // 不应该提示数组元素的key，应该返回空数组
-        if (trimmedPath.endsWith('.') && !endsWithArrayAccess) {
+    if (trimmedPath.endsWith('.') && !endsWithArrayAccess) {
+        const hasAnyObjectCandidate = candidates.some(v => v && typeof v === 'object' && !Array.isArray(v));
+        const hasAnyArrayCandidate = candidates.some(v => Array.isArray(v));
+        if (!hasAnyObjectCandidate && !hasAnyArrayCandidate) {
             return [];
         }
+    }
 
-        // 如果路径以数组访问结尾（如 "数组名[*]" 或 "[*]"），或者路径以 "." 结尾且前面是数组访问（如 "[*]." 或 "[1]."）
-        // 这种情况下，应该返回数组元素的key
-        if (targetValue.length > 0) {
-            const firstElement = targetValue[0];
-            if (firstElement && typeof firstElement === 'object' && !Array.isArray(firstElement)) {
-                for (const [key, value] of Object.entries(firstElement)) {
-                    if (Array.isArray(value)) {
-                        suggestions.push({ value: `${key}[*]`, type: 'array-wildcard', itemCount: value.length });
-                    } else if (value && typeof value === 'object') {
-                        suggestions.push({ value: key, type: 'exact', keyCount: Object.keys(value).length });
-                    } else {
-                        suggestions.push({ value: key, type: 'exact' });
-                    }
+    const keyMeta = new Map<string, { hasArray: boolean; itemCount?: number; keyCount?: number }>();
+    let maxArrayLength: number | undefined;
+    let hasArrayCandidate = false;
+
+    for (const candidate of candidates) {
+        if (Array.isArray(candidate)) {
+            hasArrayCandidate = true;
+            maxArrayLength = maxArrayLength === undefined ? candidate.length : Math.max(maxArrayLength, candidate.length);
+            continue;
+        }
+
+        if (candidate && typeof candidate === 'object') {
+            for (const [key, value] of Object.entries(candidate)) {
+                const prev = keyMeta.get(key);
+                const nextMeta = prev || { hasArray: false, itemCount: undefined, keyCount: undefined };
+                if (Array.isArray(value)) {
+                    nextMeta.hasArray = true;
+                    nextMeta.itemCount = nextMeta.itemCount === undefined ? value.length : Math.max(nextMeta.itemCount, value.length);
+                } else if (value && typeof value === 'object') {
+                    nextMeta.keyCount = nextMeta.keyCount === undefined ? Object.keys(value).length : Math.max(nextMeta.keyCount, Object.keys(value).length);
                 }
+                keyMeta.set(key, nextMeta);
             }
         }
     }
-    // 如果目标是对象，返回对象的key
-    else if (typeof targetValue === 'object') {
-        for (const [key, value] of Object.entries(targetValue)) {
-            if (Array.isArray(value)) {
-                suggestions.push({ value: `${key}[*]`, type: 'array-wildcard', itemCount: value.length });
-            } else if (value && typeof value === 'object') {
-                suggestions.push({ value: key, type: 'exact', keyCount: Object.keys(value).length });
-            } else {
-                suggestions.push({ value: key, type: 'exact' });
-            }
+
+    if (hasArrayCandidate) {
+        suggestions.push({ value: '[*]', type: 'array-wildcard', itemCount: maxArrayLength });
+    }
+
+    for (const [key, meta] of keyMeta.entries()) {
+        if (meta.hasArray) {
+            suggestions.push({ value: `${key}[*]`, type: 'array-wildcard', itemCount: meta.itemCount });
+        } else if (meta.keyCount !== undefined) {
+            suggestions.push({ value: key, type: 'exact', keyCount: meta.keyCount });
+        } else {
+            suggestions.push({ value: key, type: 'exact' });
         }
     }
 
@@ -1644,6 +1629,7 @@ const handleFieldPathInput = (value: string, pathIndex?: number) => {
         // 如果用户清空了输入框，清除保存的值
         if (!value || !value.trim()) {
             fieldPathBeforeSelect.value.delete(pathIndex);
+            fieldPathLastDotValue.value.delete(pathIndex);
             return;
         }
 
@@ -1774,6 +1760,9 @@ const handleFieldPathInput = (value: string, pathIndex?: number) => {
         }
         
         fieldPathBeforeSelect.value.set(pathIndex, value);
+        if (value.endsWith('.')) {
+            fieldPathLastDotValue.value.set(pathIndex, value);
+        }
     }
 
     // 当输入以 "." 结尾时，手动触发查询以确保提示显示
@@ -1860,6 +1849,7 @@ const handleFieldPathInput = (value: string, pathIndex?: number) => {
 
 // 保存每个字段路径输入框选择前的值，用于拼接路径
 const fieldPathBeforeSelect = ref<Map<number, string>>(new Map());
+const fieldPathLastDotValue = ref<Map<number, string>>(new Map());
 // 标志：正在处理选择事件，忽略后续的 input 事件
 const isHandlingSelect = ref<Map<number, boolean>>(new Map());
 
@@ -1885,7 +1875,13 @@ const handleFieldPathSelect = (item: Record<string, any>, pathIndex?: number) =>
     // 如果保存的值包含 | 运算符，说明用户已经输入了 | 前的路径，必须使用保存的值
     // 如果当前输入框的值是空的，使用空字符串（说明用户清空了输入框，应该从头开始）
     // 如果保存的值不存在，使用当前值
-    const beforeSelectValue = savedValue ? savedValue : !currentValue || !currentValue.trim() ? '' : currentValue;
+    let beforeSelectValue = savedValue ? savedValue : !currentValue || !currentValue.trim() ? '' : currentValue;
+    if (item.value.startsWith('[') && beforeSelectValue === item.value) {
+        const dotValue = fieldPathLastDotValue.value.get(pathIndex);
+        if (dotValue && dotValue.endsWith('.') && dotValue.slice(0, -1) === item.value) {
+            beforeSelectValue = dotValue;
+        }
+    }
 
     // 检查是否包含 | 运算符，支持多个 | 运算符
     // 找到最后一个 | 运算符的位置（考虑前后可能有空格）
@@ -1950,7 +1946,7 @@ const handleFieldPathSelect = (item: Record<string, any>, pathIndex?: number) =>
     }
     // 如果 | 后的值以 "." 结尾，说明需要拼接下一级，直接拼接
     else if (pathAfterOr.endsWith('.')) {
-        newPathAfterOr = pathAfterOr + item.value;
+        newPathAfterOr = item.value.startsWith('[') ? pathAfterOr.slice(0, -1) + item.value : pathAfterOr + item.value;
     }
     // 如果 | 后的值以 "]" 结尾，需要判断拼接的内容类型
     else if (pathAfterOr.endsWith(']')) {
@@ -2095,6 +2091,9 @@ const handleFieldPathEnter = (event: KeyboardEvent, pathIndex?: number) => {
                 if (currentInputValue) {
                     // 保存当前值，确保 handleFieldPathSelect 能获取到正确的路径前缀
                     fieldPathBeforeSelect.value.set(pathIndex, currentInputValue);
+                    if (currentInputValue.endsWith('.')) {
+                        fieldPathLastDotValue.value.set(pathIndex, currentInputValue);
+                    }
                 }
             }
 
