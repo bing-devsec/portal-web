@@ -398,7 +398,7 @@
                                 <div class="settings-subsection-title">是否默认全屏</div>
                                 <div class="settings-item">
                                     <el-switch
-                                        v-model="startInFullscreen"
+                                        v-model="isFullscreen"
                                         :inactive-value="false"
                                         :active-value="true"
                                         inactive-text="非全屏"
@@ -470,9 +470,9 @@
                                     <span class="settings-label">编码模式</span>
                                 </div>
                                 <el-radio-group v-model="encodingMode" class="settings-radio-group">
-                                    <el-radio :value="0">保持原样</el-radio>
-                                    <el-radio :value="1">转中文</el-radio>
-                                    <el-radio :value="2">转Unicode</el-radio>
+                                    <el-radio :value="0" border>保持原样</el-radio>
+                                    <el-radio :value="1" border>转中文</el-radio>
+                                    <el-radio :value="2" border>转Unicode</el-radio>
                                 </el-radio-group>
                             </div>
 
@@ -699,36 +699,55 @@ import DataMaskingDialog from './DataMaskingDialog.vue';
 import ArchiveNameDialog from './ArchiveNameDialog.vue';
 import JSON5 from 'json5';
 
-// ==================== 设置持久化管理 ====================
+// ==================== 常量与全局状态 ====================
+const MAX_FILE_SIZE = 5 * 1024 * 1024; // 文件大小限制：5MB
+const MAX_LINES = 100000; // 最大行数限制
+let isInitializing = true; // 标记是否正在初始化，避免初始化时触发保存
+const outputType = ref<'json' | 'yaml' | 'toml' | 'xml' | 'go' | 'text'>('json'); // 当前输出类型的状态
+const maxLevel = ref(0); // 最大层级
+const selectedLevel = ref<number>(0); // 当前选中的层级
+const isResizing = ref(false); // 是否正在调整宽度控制
+const leftPanelWidth = ref(50); // 面板宽度控制（实时值，用于布局）
+const stableLeftPanelWidth = ref(50); // 稳定宽度值，用于计算按钮显示状态（防抖更新）
+const fetchJsonDialogVisible = ref(false); // 获取JSON数据对话框相关状态
+const shareDialogVisible = ref(false); // 分享对话框相关状态
+const dataMaskingDialogVisible = ref(false); // 数据脱敏对话框相关状态
+const archiveNameDialogVisible = ref(false); // 是否显示“保存存档”对话框
+const archiveNameDialogTitle = ref('保存存档'); // 对话框标题文本
+const archiveNameDialogInputValue = ref(''); // 对话框输入的当前值（存档名称）
+const archiveNameDialogPlaceholder = ref('例如：测试数据1'); // 对话框输入框的占位符文本示例
+const archiveNameDialogExcludeId = ref<string>(''); // 编辑时排除的存档ID（用于避免与自身重复）
+const archiveNameDialogCallback = ref<((name: string) => void) | null>(null); // 确认时调用的回调函数
+const settingsDialogVisible = ref(false); // 对话框开启/关闭状态
+const settingsCollapseActiveNames = ref<string | number>('format'); // 手风琴展开项，默认展开"格式化设置"
+
+// ==================== 设置管理 ====================
 const SETTINGS_STORAGE_KEY = 'json-tool-settings';
 
-// 默认设置
+// 默认展示功能设置
 const defaultSettings = {
     // 菜单栏设置
     buttonVisibility: {
         fetchJson: false,
-        format: true,
         compress: true,
         escape: true,
         unescape: true,
+        dataConvert: true,
         masking: true,
         sort: true,
-        share: false,
-        dataConvert: true,
-        collapse: true,
         archive: true,
-        fullscreen: true,
+        share: false
     },
     // 去除转义设置
     recursiveUnescape: true, // 是否递归去除转义，默认开启
-    // 字符串换行设置（反转逻辑：false=换行，true=不换行，默认不换行）
+    // 字符串换行设置
     wordWrap: false,
     // 字体大小设置
     fontSize: 14,
     // 缩进指南设置
     showIndentGuide: true,
     // 默认进入页面时是否全屏
-    startInFullscreen: false,
+    isFullscreen: false,
     // 同步滚动设置
     syncScrollEnabled: false,
     // 缩略图设置
@@ -737,11 +756,15 @@ const defaultSettings = {
     enableDiagnostics: true,
     // 格式化设置
     indentSize: 2,
+    // 编码模式设置
     encodingMode: 0,
+    // 数组风格
     arrayNewLine: true,
+    // 保留数字字面值设置
     preserveNumberLiterals: false,
     // 排序设置
     sortMethod: 'dictionary' as 'dictionary' | 'length' | 'field',
+    // 排序方向
     sortOrder: 'asc' as 'asc' | 'desc',
     // 存档设置
     customArchiveName: false,
@@ -752,17 +775,14 @@ const loadSettings = () => {
     if (typeof window === 'undefined') return defaultSettings;
 
     try {
-        const saved = localStorage.getItem(SETTINGS_STORAGE_KEY);
-        if (saved) {
-            const parsed = JSON.parse(saved);
-
-            // 合并默认设置和保存的设置，确保新添加的设置项有默认值
+        const parsed = JSON.parse(localStorage.getItem(SETTINGS_STORAGE_KEY) || 'null');
+        if (parsed) {
             return {
                 ...defaultSettings,
                 ...parsed,
                 buttonVisibility: {
                     ...defaultSettings.buttonVisibility,
-                    ...(parsed.buttonVisibility || {}),
+                    ...parsed.buttonVisibility,
                 },
             };
         }
@@ -772,7 +792,6 @@ const loadSettings = () => {
 };
 
 // 保存设置
-let isInitializing = true; // 标记是否正在初始化，避免初始化时触发保存
 const saveSettings = () => {
     if (typeof window === 'undefined' || isInitializing) return;
 
@@ -783,7 +802,7 @@ const saveSettings = () => {
             wordWrap: wordWrap.value,
             fontSize: fontSize.value,
             showIndentGuide: showIndentGuide.value,
-            startInFullscreen: startInFullscreen.value,
+            isFullscreen: isFullscreen.value,
             syncScrollEnabled: syncScrollEnabled.value,
             showMinimap: showMinimap.value,
             enableDiagnostics: enableDiagnostics.value,
@@ -799,10 +818,6 @@ const saveSettings = () => {
     } catch (error) {}
 };
 
-const MAX_FILE_SIZE = 5 * 1024 * 1024; // 文件大小限制：5MB
-const MAX_LINES = 100000; // 最大行数限制
-const maxLevel = ref(0); // 最大层级
-const selectedLevel = ref<number>(0); // 当前选中的层级
 const savedSettings = loadSettings(); // 从 localStorage 加载设置
 const indentSize = ref(savedSettings.indentSize); // 缩进大小
 const recursiveUnescape = ref(savedSettings.recursiveUnescape ?? true); // 递归去除转义设置
@@ -811,29 +826,29 @@ const fontSize = ref(savedSettings.fontSize || 14); // 字体大小设置
 const showIndentGuide = ref(savedSettings.showIndentGuide); // 添加缩进指南状态
 const arrayNewLine = ref(savedSettings.arrayNewLine); // 添加数组换行控制开关
 const preserveNumberLiterals = ref<boolean>(savedSettings.preserveNumberLiterals ?? ((savedSettings as any).floatPrecision ?? 0) > 0);
-
-const startInFullscreen = ref(savedSettings.startInFullscreen ?? false);
-const isFullscreen = ref(startInFullscreen.value);
-const isResizing = ref(false); // 添加是否正在调整宽度控制
+const isFullscreen = ref(savedSettings.isFullscreen ?? false);
 const showMinimap = ref(savedSettings.showMinimap ?? false); // 是否显示缩略图
 const enableDiagnostics = ref(savedSettings.enableDiagnostics ?? true); // 是否启用JSON语法检查
-const leftPanelWidth = ref(50); // 添加面板宽度控制（实时值，用于布局）
-const stableLeftPanelWidth = ref(50); // 稳定宽度值，用于计算按钮显示状态（防抖更新）
 const encodingMode = ref(savedSettings.encodingMode); // 添加编码处理模式：0-保持原样，1-转中文，2-转Unicode
-const outputType = ref<'json' | 'yaml' | 'toml' | 'xml' | 'go' | 'text'>('json'); // 添加当前输出类型的状态
-const fetchJsonDialogVisible = ref(false); // 获取JSON数据对话框相关状态
-const shareDialogVisible = ref(false); // 分享对话框相关状态
-const dataMaskingDialogVisible = ref(false); // 数据脱敏对话框相关状态
-const archiveNameDialogVisible = ref(false); // 是否显示“保存存档”对话框
-const archiveNameDialogTitle = ref('保存存档'); // 对话框标题文本（默认显示 “保存存档”）
-const archiveNameDialogInputValue = ref(''); // 对话框输入的当前值（存档名称）
-const archiveNameDialogPlaceholder = ref('例如：测试数据1'); // 对话框输入框的占位符文本示例
-const archiveNameDialogExcludeId = ref<string>(''); // 编辑时排除的存档ID（用于避免与自身重复）
-const archiveNameDialogCallback = ref<((name: string) => void) | null>(null); // 确认时调用的回调函数，接收最终的存档名称；若为 null 则表示未设置
 const sortMethod = ref<'dictionary' | 'length' | 'field'>(savedSettings.sortMethod); // 排序方法
 const sortOrder = ref<'asc' | 'desc'>(savedSettings.sortOrder); // 排序方向
 const customArchiveName = ref<boolean>(savedSettings.customArchiveName ?? false); // 是否自定义存档名称
 const buttonVisibility = ref(savedSettings.buttonVisibility); // 菜单栏按钮显示控制状态
+
+// ==================== 全屏管理 ====================
+
+// 切换全屏状态
+const toggleFullscreen = () => {isFullscreen.value = !isFullscreen.value;};
+
+// 处理默认全屏设置切换，同时同步当前全屏状态
+const handleInitialFullscreenChange = (value: boolean | string | number) => {isFullscreen.value = value === true || value === 'true' || value === 1;};
+
+// 监听 ESC 键退出全屏
+const handleEscapeKey = (event: KeyboardEvent) => {
+    if (event.key === 'Escape' && isFullscreen.value) {
+        isFullscreen.value = false;
+    }
+};
 
 // ==================== JSON 存档管理 ====================
 interface JsonArchive {
@@ -844,19 +859,17 @@ interface JsonArchive {
 }
 
 const ARCHIVE_STORAGE_KEY = 'json-tool-archives';
-// 存档总大小限制：10MB（逻辑限制，实际上限由浏览器决定）
-const MAX_ARCHIVE_TOTAL_SIZE = 5 * 1024 * 1024;
-// 存档数量上限
-const MAX_ARCHIVE_COUNT = 20;
-
+const MAX_ARCHIVE_TOTAL_SIZE = 5 * 1024 * 1024; // 存档总大小限制：5MB
+const MAX_ARCHIVE_COUNT = 20; // 存档数量上限
+let archiveLongPressTimer: number | null = null;
 const archives = ref<JsonArchive[]>([]);
 const draggingArchiveId = ref<string | null>(null);
 const dragOverArchiveId = ref<string | null>(null);
 const dragEnabledArchiveId = ref<string | null>(null);
 const dropIndicatorIndex = ref<number | null>(null);
-let archiveLongPressTimer: number | null = null;
 const archiveListRef = ref<HTMLElement | null>(null);
 
+// 加载存档
 const loadArchives = () => {
     if (typeof window === 'undefined') return;
     try {
@@ -871,20 +884,19 @@ const loadArchives = () => {
     }
 };
 
+// 保存存档
 const saveArchives = (): boolean => {
     if (typeof window === 'undefined') return true;
     try {
         sessionStorage.setItem(ARCHIVE_STORAGE_KEY, JSON.stringify(archives.value));
-        return true; // 保存成功
+        return true;
     } catch (error) {
         showMessageError('存档保存失败：浏览器存储空间可能已满');
-        return false; // 保存失败
+        return false;
     }
 };
 
-// 设置对话框相关状态
-const settingsDialogVisible = ref(false);
-const settingsCollapseActiveNames = ref<string | number>('format'); // 手风琴展开项，默认展开"格式化设置"
+loadArchives(); // 初始化存档数据
 
 // 字段排序对话框相关状态
 const fieldSortDialogVisible = ref(false);
@@ -895,84 +907,12 @@ const sortFieldName = ref<string>('');
 const isDemoMode = ref(false);
 const demoGuideVisible = ref(false);
 const currentDemoStepData = ref<any>(null);
-const demoData = ref([
-    {
-        id: 1,
-        name: 'Dylan Mullins',
-        education: [
-            {
-                university: 'MIT',
-                graduationYear: 2003,
-            },
-            {
-                university: 'Harvard University',
-                graduationYear: 1983,
-            },
-        ],
-    },
-    {
-        id: 2,
-        name: 'Logan Boyle',
-        education: [
-            {
-                university: 'Yale University',
-                graduationYear: 2000,
-            },
-            {
-                university: 'University of Pennsylvania',
-                graduationYear: 2020,
-            },
-        ],
-    },
-    {
-        id: 3,
-        name: 'Emma Davis',
-        education: [
-            {
-                university: 'Stanford University',
-                graduationYear: 2010,
-            },
-            {
-                university: 'Columbia University',
-                graduationYear: 2015,
-            },
-        ],
-    },
-]);
+const savedInputContent = ref<string | null>(null);
 const demoResults = ref<any>({});
 const currentDemoStep = ref(0);
 const demoStepsCount = ref(0);
-// 保存演示开始前的输入编辑器内容，演示结束时恢复
-const savedInputContent = ref<string | null>(null);
-
-// 演示用 map 数据（用于展示对 map 的排序）
-const demoMapData = ref({
-    B: {
-        id: 102,
-        key: 'task-B',
-        value: { score: 100 },
-    },
-    A: {
-        id: 101,
-        key: 'task-A',
-        value: { score: 70 },
-    },
-    C: {
-        id: 103,
-        key: 'task-C',
-        value: { score: 80 },
-    },
-    E: {
-        id: 105,
-        key: 'task-E',
-        value: { score: 60 },
-    },
-    D: {
-        id: 104,
-        key: 'task-D',
-        value: { score: null },
-    },
-});
+const demoData = ref(JSON.parse('[{"id":1,"name":"Dylan Mullins","education":[{"university":"MIT","graduationYear":2003},{"university":"Harvard University","graduationYear":1983}]},{"id":2,"name":"Logan Boyle","education":[{"university":"Yale University","graduationYear":2000},{"university":"University of Pennsylvania","graduationYear":2020}]},{"id":3,"name":"Emma Davis","education":[{"university":"Stanford University","graduationYear":2010},{"university":"Columbia University","graduationYear":2015}]}]'));
+const demoMapData = ref(JSON.parse('{"B":{"id":102,"key":"task-B","value":{"score":100}},"A":{"id":101,"key":"task-A","value":{"score":70}},"C":{"id":103,"key":"task-C","value":{"score":80}},"E":{"id":105,"key":"task-E","value":{"score":60}},"D":{"id":104,"key":"task-D","value":{"score":null}}}'));
 
 // 拖拽相关状态
 const popupLeft = ref(0);
@@ -1417,9 +1357,6 @@ const foldProgressVisible = ref(false);
 const foldTotalLines = ref(0);
 const foldPercent = computed(() => Math.round(foldProgress.value * 100));
 const foldCurrentLine = computed(() => Math.min(foldTotalLines.value, Math.round(foldProgress.value * foldTotalLines.value)));
-
-// 初始化存档数据（该组件为 .client，确保只在客户端执行）
-loadArchives();
 
 // 拖动相关状态（提升到外层作用域，避免每次拖动创建新变量）
 let resizeState: {
@@ -2683,7 +2620,7 @@ watch(
         wordWrap.value,
         fontSize.value,
         showIndentGuide.value,
-        startInFullscreen.value,
+        isFullscreen.value,
         syncScrollEnabled.value,
         showMinimap.value,
         enableDiagnostics.value,
@@ -9287,25 +9224,6 @@ const downloadOutput = async () => {
         showMessageSuccess('下载成功');
     } catch (error: any) {
         showMessageError('下载失败：' + (error?.message || '未知错误'));
-    }
-};
-
-// 切换全屏状态
-const toggleFullscreen = () => {
-    isFullscreen.value = !isFullscreen.value;
-};
-
-// 处理默认全屏设置切换，同时同步当前全屏状态
-const handleInitialFullscreenChange = (value: boolean | string | number) => {
-    const normalizedValue = value === true || value === 'true' || value === 1;
-    startInFullscreen.value = normalizedValue;
-    isFullscreen.value = normalizedValue;
-};
-
-// 监听 ESC 键退出全屏
-const handleEscapeKey = (event: KeyboardEvent) => {
-    if (event.key === 'Escape' && isFullscreen.value) {
-        isFullscreen.value = false;
     }
 };
 
