@@ -404,10 +404,9 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted, watch, nextTick } from 'vue';
-import JSON5 from 'json5';
-import { ElMessage, ElMessageBox } from 'element-plus';
-import { showMessageSuccess as showSuccess, showMessageError as showError, showMessageWarning as showWarning } from '~/utils/api';
+import { ElMessageBox } from 'element-plus';
 import { Plus, Delete, DocumentAdd, FolderOpened, ArrowRight, Warning } from '@element-plus/icons-vue';
+import JSON5 from 'json5';
 
 // Props
 interface Props {

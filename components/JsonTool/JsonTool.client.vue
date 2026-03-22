@@ -358,9 +358,9 @@
 
                             <div class="settings-subsection">
                                 <div class="settings-subsection-title">
-                                    <span class="settings-subsection-title-label">浮点数处理</span>
+                                    <span class="settings-subsection-title-label">数字处理</span>
                                     <span class="settings-subsection-title-desc">
-                                        {{ preserveNumberLiterals ? '数字字面量保持不变' : '标准 JSON 格式化处理' }}
+                                        {{ preserveNumberLiterals ? '保留原始输入（防止长数字精度丢失）' : '使用标准 JSON 解析（长数字可能丢失精度）' }}
                                     </span>
                                 </div>
                                 <div class="settings-item">
@@ -428,7 +428,7 @@
                             <div class="settings-subsection">
                                 <div class="settings-subsection-title">同步滚动设置</div>
                                 <div class="settings-item">
-                                    <el-switch v-model="syncScrollEnabled" active-text="启用" inactive-text="禁用" size="default" />
+                                    <el-switch v-model="syncScrollEnabled" active-text="开启" inactive-text="关闭" size="default" />
                                 </div>
                             </div>
 
