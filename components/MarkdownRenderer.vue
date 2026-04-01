@@ -11,7 +11,6 @@
       style="word-break: normal"
       :previewTheme="previewTheme"
       :codeTheme="codeTheme"
-      :sanitize="sanitize"
     >
     </MdPreview>
   </div>
@@ -20,7 +19,6 @@
 <script setup lang="ts">
 import { computed, ref, onMounted, onBeforeUnmount, watch, nextTick } from "vue";
 import { MdPreview } from "md-editor-v3";
-import DOMPurify from 'dompurify';
 import "md-editor-v3/lib/preview.css";
 
 const props = defineProps<{
@@ -31,11 +29,6 @@ const props = defineProps<{
 
 const previewTheme = "default";
 const codeTheme = "atom";
-
-// 消毒HTML内容，防止XSS攻击
-const sanitize = (html: string) => {
-  return DOMPurify.sanitize(html);
-};
 
 const renderedContent = computed(() => {
   if (!props.content) return "";
