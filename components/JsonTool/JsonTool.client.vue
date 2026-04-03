@@ -701,7 +701,7 @@ import JSON5 from 'json5';
 
 // ==================== 常量与全局状态 ====================
 const MAX_FILE_SIZE = 5 * 1024 * 1024; // 文件大小限制：5MB
-const MAX_LINES = 100000; // 最大行数限制
+const MAX_LINES = 500000; // 最大行数限制
 let isInitializing = true; // 标记是否正在初始化，避免初始化时触发保存
 const outputType = ref<'json' | 'yaml' | 'toml' | 'xml' | 'go' | 'text'>('json'); // 当前输出类型的状态
 const maxLevel = ref(0); // 最大层级
@@ -1524,7 +1524,7 @@ const getEditorOptions = (size: number, isReadOnly: boolean = false, language: s
     formatOnPaste: false, // 启用粘贴时自动格式化
     maxUndoRedoEntries: 100, // 历史记录可撤销/重做的最大步数为100
     useTabStops: false, // 禁用TabStop
-    maxTokenizationLineLength: 100000,
+    maxTokenizationLineLength: 500000,
     guides: {
         indentation: showIndentGuide.value, // 根据设置显示缩进引导线
         bracketPairs: showIndentGuide.value, // 根据设置显示括号配对引导线
@@ -2722,6 +2722,13 @@ const createOutputEditor = () => {
 
 // 配置JSON Schema支持
 const configureJsonSchemaSupport = () => {
+    const model = inputEditor?.getModel();
+
+    // 关闭语法检查时，需要手动清除已有的 markers，否则红色波浪线不会消失
+    if (!enableDiagnostics.value && model) {
+        monaco.editor.setModelMarkers(model, 'json', []);
+    }
+
     // 配置JSON语言服务，提供更好的自动补全
     monaco.languages.json.jsonDefaults.setModeConfiguration({
         documentFormattingEdits: false,
@@ -2735,6 +2742,13 @@ const configureJsonSchemaSupport = () => {
         diagnostics: enableDiagnostics.value, // 启用/关闭JSON语法检查和错误提示
         selectionRanges: true,
     });
+
+    // 开启语法检查时，强制语言服务重新验证，清除之前关闭时遗留的 markers
+    if (enableDiagnostics.value && model) {
+        const currentValue = model.getValue();
+        model.setValue(''); // 强制触发重新验证
+        model.setValue(currentValue);
+    }
 };
 
 // 配置输入编辑器
@@ -9422,8 +9436,8 @@ const startResize = (e: MouseEvent | TouchEvent | PointerEvent) => {
     const rect = editorContainer.getBoundingClientRect();
     editorContainerWidth.value = rect.width;
 
-    // 计算最小/最大宽度限制
-    const minWidthPx = 150; // 最小宽度（像素）
+    // 计算最小/最大宽度限制（允许折叠到0）
+    const minWidthPx = 0;
     const minWidthPercent = (minWidthPx / rect.width) * 100;
     const maxWidthPercent = 100 - minWidthPercent;
 
@@ -9825,10 +9839,8 @@ const transferToInput = (e: MouseEvent) => {
     transition: width 0.1s ease;
     box-shadow: 0 2px 12px 0 rgba(0, 0, 0, 0.05);
     margin: 0;
-    min-width: 150px;
-    /* 减小最小宽度，因为按钮可以隐藏 */
+    min-width: 0; /* 允许面板宽度为0以实现折叠效果 */
     position: relative;
-    /* 添加相对定位 */
 }
 
 /* 添加分隔线样式 */

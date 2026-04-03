@@ -218,7 +218,7 @@ const customAmount = ref<number>(1);
 const customUnit = ref<'minutes' | 'hours' | 'days'>('hours');
 const customMin = computed(() => {
     if (customUnit.value === 'minutes') return 3;
-    if (customUnit.value === 'hours') return 0.1;
+    if (customUnit.value === 'hours') return 0.05;
     return 0.01;
 });
 const customMax = computed(() => {
