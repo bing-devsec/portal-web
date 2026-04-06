@@ -398,13 +398,12 @@
                                 <div class="settings-subsection-title">是否默认全屏</div>
                                 <div class="settings-item">
                                     <el-switch
-                                        v-model="isFullscreen"
+                                        v-model="defaultFullscreen"
                                         :inactive-value="false"
                                         :active-value="true"
                                         inactive-text="非全屏"
                                         active-text="全屏"
                                         size="default"
-                                        @change="handleInitialFullscreenChange"
                                     />
                                 </div>
                             </div>
@@ -798,7 +797,7 @@ const saveSettings = () => {
         wordWrap: wordWrap.value,
         fontSize: fontSize.value,
         showIndentGuide: showIndentGuide.value,
-        isFullscreen: isFullscreen.value,
+        defaultFullscreen: defaultFullscreen.value,
         syncScrollEnabled: syncScrollEnabled.value,
         showMinimap: showMinimap.value,
         enableDiagnostics: enableDiagnostics.value,
@@ -821,7 +820,11 @@ const fontSize = ref(savedSettings.fontSize || 14); // 字体大小设置
 const showIndentGuide = ref(savedSettings.showIndentGuide); // 添加缩进指南状态
 const arrayNewLine = ref(savedSettings.arrayNewLine); // 添加数组换行控制开关
 const preserveNumberLiterals = ref<boolean>(savedSettings.preserveNumberLiterals ?? ((savedSettings as any).floatPrecision ?? 0) > 0);
-const isFullscreen = ref(savedSettings.isFullscreen ?? false);
+const isFullscreen = ref(false);
+const defaultFullscreen = ref(savedSettings.defaultFullscreen ?? savedSettings.isFullscreen ?? false); // 是否默认全屏
+
+// 页面加载时，isFullscreen 跟随 defaultFullscreen 设置
+watch(defaultFullscreen, (val) => { isFullscreen.value = val; }, { immediate: true });
 const showMinimap = ref(savedSettings.showMinimap ?? false); // 是否显示缩略图
 const enableDiagnostics = ref(savedSettings.enableDiagnostics ?? true); // 是否启用JSON语法检查
 const encodingMode = ref(savedSettings.encodingMode); // 添加编码处理模式：0-保持原样，1-转中文，2-转Unicode
@@ -835,8 +838,6 @@ const buttonVisibility = ref(savedSettings.buttonVisibility); // 菜单栏按钮
 // 切换全屏状态
 const toggleFullscreen = () => {isFullscreen.value = !isFullscreen.value;};
 
-// 处理默认全屏设置切换，同时同步当前全屏状态
-const handleInitialFullscreenChange = (value: boolean | string | number) => {isFullscreen.value = value === true || value === 'true' || value === 1;};
 
 // 监听 ESC 键退出全屏
 const handleEscapeKey = (event: KeyboardEvent) => {
@@ -2427,26 +2428,12 @@ const debouncedUpdateLineNumberWidth = debounce(updateLineNumberWidth, 150);
 
 // 监听全屏状态变化
 watch(isFullscreen, () => {
-    // 等待 DOM 更新
     nextTick(() => {
         setTimeout(() => {
-            if (inputEditor) {
-                const model = inputEditor.getModel();
-                if (model) {
-                    // 触发编辑器内容变化以强制重新渲染
-                    const value = model.getValue();
-                    model.setValue(value);
-                }
-            }
-            if (outputEditor) {
-                const model = outputEditor.getModel();
-                if (model) {
-                    const value = model.getValue();
-                    model.setValue(value);
-                }
-            }
+            if (inputEditor) inputEditor.layout();
+            if (outputEditor) outputEditor.layout();
             handleResize();
-        }, 200);
+        }, 80);
     });
 });
 
@@ -9527,43 +9514,44 @@ const transferToInput = (e: MouseEvent) => {
 .json-tool-container.fullscreen {
     position: fixed;
     inset: 0;
-    bottom: 0;
     z-index: 1500;
-    left: 0;
-    right: 0;
     width: 100%;
     height: 100%;
     background-color: #f0f2f5;
-    animation: fullscreenEnter 0.4s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
-/* 添加进入全屏的动画 */
-@keyframes fullscreenEnter {
-    from {
-        opacity: 0.8;
-        transform: scale(0.98);
-    }
+/* 全屏过渡动画 */
+.json-tool-container {
+    transition: background-color 0.25s ease, box-shadow 0.25s ease;
+}
 
+.json-tool-container.fullscreen {
+    animation: fullscreenSlideIn 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+@keyframes fullscreenSlideIn {
+    from {
+        opacity: 0.6;
+        transform: translateY(-12px);
+    }
     to {
         opacity: 1;
-        transform: none;
+        transform: translateY(0);
     }
 }
 
-/* 添加退出全屏的动画 */
 .json-tool-container:not(.fullscreen) {
-    animation: fullscreenExit 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+    animation: fullscreenSlideOut 0.25s cubic-bezier(0.4, 0, 1, 1) forwards;
 }
 
-@keyframes fullscreenExit {
+@keyframes fullscreenSlideOut {
     from {
-        opacity: 0.8;
-        transform: scale(1.02);
+        opacity: 0.6;
+        transform: translateY(8px);
     }
-
     to {
         opacity: 1;
-        transform: scale(1);
+        transform: translateY(0);
     }
 }
 
