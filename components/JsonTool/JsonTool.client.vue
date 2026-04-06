@@ -63,7 +63,7 @@
 
                     <!-- 层级控制 -->
                     <div v-if="buttonVisibility.collapse" class="collapse-control">
-                        <el-select v-model="selectedLevel" placeholder="层级" class="level-select" :disabled="maxLevel === 0">
+                        <el-select v-model="selectedLevel" placeholder="层级" class="level-select" fit-input-width :disabled="maxLevel === 0">
                             <el-option v-if="maxLevel === 0" label="第0层" :value="0" :disabled="true" />
                             <el-option v-for="n in maxLevel" :key="n" :label="`第${n}层`" :value="n" />
                         </el-select>
@@ -773,20 +773,17 @@ const defaultSettings = {
 // 加载设置
 const loadSettings = () => {
     if (typeof window === 'undefined') return defaultSettings;
-
-    try {
-        const parsed = JSON.parse(localStorage.getItem(SETTINGS_STORAGE_KEY) || 'null');
-        if (parsed) {
-            return {
-                ...defaultSettings,
-                ...parsed,
-                buttonVisibility: {
-                    ...defaultSettings.buttonVisibility,
-                    ...parsed.buttonVisibility,
-                },
-            };
-        }
-    } catch (error) {}
+    const parsed = JSON.parse(localStorage.getItem(SETTINGS_STORAGE_KEY) || 'null');
+    if (parsed) {
+        return {
+            ...defaultSettings,
+            ...parsed,
+            buttonVisibility: {
+                ...defaultSettings.buttonVisibility,
+                ...parsed.buttonVisibility,
+            },
+        };
+    }
 
     return defaultSettings;
 };
@@ -795,27 +792,25 @@ const loadSettings = () => {
 const saveSettings = () => {
     if (typeof window === 'undefined' || isInitializing) return;
 
-    try {
-        const settingsToSave = {
-            buttonVisibility: buttonVisibility.value,
-            recursiveUnescape: recursiveUnescape.value,
-            wordWrap: wordWrap.value,
-            fontSize: fontSize.value,
-            showIndentGuide: showIndentGuide.value,
-            isFullscreen: isFullscreen.value,
-            syncScrollEnabled: syncScrollEnabled.value,
-            showMinimap: showMinimap.value,
-            enableDiagnostics: enableDiagnostics.value,
-            indentSize: indentSize.value,
-            encodingMode: encodingMode.value,
-            arrayNewLine: arrayNewLine.value,
-            preserveNumberLiterals: preserveNumberLiterals.value,
-            sortMethod: sortMethod.value,
-            sortOrder: sortOrder.value,
-            customArchiveName: customArchiveName.value,
-        };
-        localStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify(settingsToSave));
-    } catch (error) {}
+    const settingsToSave = {
+        buttonVisibility: buttonVisibility.value,
+        recursiveUnescape: recursiveUnescape.value,
+        wordWrap: wordWrap.value,
+        fontSize: fontSize.value,
+        showIndentGuide: showIndentGuide.value,
+        isFullscreen: isFullscreen.value,
+        syncScrollEnabled: syncScrollEnabled.value,
+        showMinimap: showMinimap.value,
+        enableDiagnostics: enableDiagnostics.value,
+        indentSize: indentSize.value,
+        encodingMode: encodingMode.value,
+        arrayNewLine: arrayNewLine.value,
+        preserveNumberLiterals: preserveNumberLiterals.value,
+        sortMethod: sortMethod.value,
+        sortOrder: sortOrder.value,
+        customArchiveName: customArchiveName.value,
+    };
+    localStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify(settingsToSave));
 };
 
 const savedSettings = loadSettings(); // 从 localStorage 加载设置
@@ -1769,246 +1764,153 @@ const setupFoldingInfoDisplay = (editor: monaco.editor.IStandaloneCodeEditor) =>
             return;
         }
 
-        try {
-            // 获取可见行号范围（性能优化：只处理可见区域）
-            const visibleRange = getVisibleLineRange();
-            if (!visibleRange) {
-                return;
-            }
+        const visibleRange = getVisibleLineRange();
+        if (!visibleRange) return;
 
-            // 获取编辑器的DOM容器
-            const editorDom = editor.getDomNode();
-            if (!editorDom) {
-                return;
-            }
+        const editorDom = editor.getDomNode();
+        if (!editorDom) return;
 
-            // 查找所有包含 inline-folded 类的元素
-            const foldedElements = editorDom.querySelectorAll('.inline-folded');
+        const editorRect = editorDom.getBoundingClientRect();
+        const editorHeight = editorRect.height;
+        const viewLinesContainer = editorDom.querySelector('.view-lines') as HTMLElement | null;
+        const viewLinesRect = viewLinesContainer?.getBoundingClientRect();
+        const lineHeight = editor.getOption(monaco.editor.EditorOption.lineHeight);
 
-            // 收集当前存在的折叠元素对应的行号（仅可见区域）
-            const currentFoldedLines = new Set<number>();
+        const foldedElements = editorDom.querySelectorAll('.inline-folded');
+        const currentFoldedLines = new Set<number>();
 
-            // 遍历所有折叠元素，但只处理可见区域内的
-            foldedElements.forEach((foldedElement, index) => {
-                // 获取包含这个折叠元素的视图行
-                const viewLine = foldedElement.closest('.view-line') as HTMLElement;
-                if (!viewLine) return;
+        foldedElements.forEach((foldedElement) => {
+            const viewLine = foldedElement.closest('.view-line') as HTMLElement | null;
+            if (!viewLine) return;
 
-                // 使用Monaco Editor的getTargetAtClientPoint API，通过DOM元素的坐标来获取准确的行号
-                // 这是最可靠的方法，不依赖于可见范围的计算
-                let lineNumber: number | null = null;
-                let originalLineNumber: number | null = null;
+            let lineNumber: number | null = null;
+            let originalLineNumber: number | null = null;
 
-                try {
-                    // 获取视图行的位置信息（相对于浏览器窗口的坐标）
-                    const rect = viewLine.getBoundingClientRect();
+            try {
+                const rect = viewLine.getBoundingClientRect();
+                const elementTop = rect.top - editorRect.top;
+                const elementBottom = rect.bottom - editorRect.top;
 
-                    // 快速检查：如果元素不在可见区域附近，跳过（性能优化）
-                    // 注意：这里只是粗略检查，实际行号还需要通过API获取
-                    const editorRect = editorDom.getBoundingClientRect();
-                    const elementTop = rect.top - editorRect.top;
-                    const elementBottom = rect.bottom - editorRect.top;
-                    const editorHeight = editorRect.height;
+                if (elementBottom < -100 || elementTop > editorHeight + 100) return;
 
-                    // 如果元素完全在可见区域外（上下各留100px缓冲区），跳过
-                    if (elementBottom < -100 || elementTop > editorHeight + 100) {
-                        return;
-                    }
-
-                    // 方法1：使用行的中间位置
-                    const x = rect.left + rect.width / 2;
-                    const y = rect.top + rect.height / 2;
-
-                    // 使用Monaco的getTargetAtClientPoint API获取准确的行号
-                    let target = editor.getTargetAtClientPoint(x, y);
-                    if (target && target.position) {
-                        lineNumber = target.position.lineNumber;
-                        originalLineNumber = lineNumber;
-                    }
-
-                    // 方法2：如果方法1失败，尝试使用折叠元素本身的坐标（适用于单行数组的情况）
-                    if (!lineNumber) {
-                        const foldedRect = foldedElement.getBoundingClientRect();
-                        const foldedX = foldedRect.left + foldedRect.width / 2;
-                        const foldedY = foldedRect.top + foldedRect.height / 2;
-                        target = editor.getTargetAtClientPoint(foldedX, foldedY);
-                        if (target && target.position) {
-                            lineNumber = target.position.lineNumber;
-                            originalLineNumber = lineNumber;
-                        }
-                    }
-
-                    // 方法3：如果前两种方法都失败，尝试通过遍历可见行来查找
-                    // 这种情况通常发生在单行数组折叠时，折叠元素可能不在标准的view-line中
-                    if (!lineNumber && visibleRange) {
-                        // 获取编辑器内容区域的DOM元素（.view-lines）
-                        const viewLinesContainer = editorDom.querySelector('.view-lines') as HTMLElement;
-                        if (viewLinesContainer) {
-                            const viewLinesRect = viewLinesContainer.getBoundingClientRect();
-                            const foldedRect = foldedElement.getBoundingClientRect();
-
-                            // 计算折叠元素相对于内容区域的Y坐标
-                            const elementY = foldedRect.top + foldedRect.height / 2 - viewLinesRect.top;
-
-                            // 遍历可见范围内的所有行，通过Y坐标匹配来查找
-                            for (let line = visibleRange.start; line <= visibleRange.end; line++) {
-                                try {
-                                    // 使用Monaco API获取行的Y坐标范围（相对于内容区域）
-                                    const lineTop = editor.getTopForLineNumber(line);
-                                    const lineHeight = editor.getOption(monaco.editor.EditorOption.lineHeight);
-                                    const lineBottom = lineTop + lineHeight;
-
-                                    // 检查折叠元素的Y坐标是否在这一行的范围内
-                                    if (elementY >= lineTop && elementY < lineBottom) {
-                                        lineNumber = line;
-                                        originalLineNumber = line;
-                                        break;
-                                    }
-                                } catch (e) {
-                                    // 继续查找下一行
-                                    continue;
-                                }
-                            }
-                        }
-                    }
-                } catch (e) {
-                    return;
+                let target = editor.getTargetAtClientPoint(rect.left + rect.width / 2, rect.top + rect.height / 2);
+                if (target?.position) {
+                    lineNumber = target.position.lineNumber;
+                    originalLineNumber = lineNumber;
                 }
 
                 if (!lineNumber) {
-                    return;
-                }
-
-                // 性能优化：只处理可见区域内的行（带缓冲区）
-                if (lineNumber < visibleRange.start || lineNumber > visibleRange.end) {
-                    return;
-                }
-
-                // 检查这一行是否是折叠起始行（优先使用预计算的范围，因为范围已在第一阶段记录）
-                // 注意：折叠起始行可能是 "key": { 或 "key": [ 的形式，不一定以 { 或 [ 开头
-                // originalLineNumber 已在上面声明
-                if (precomputedFoldingRanges.has(lineNumber)) {
-                    // 当前行就是折叠起始行（范围信息已存在）
-                    currentFoldedLines.add(lineNumber);
-                } else {
-                    // 如果不是，向上查找最近的折叠起始行（最多向上查找20行），使用范围信息进行匹配
-                    let found = false;
-                    for (let i = lineNumber - 1; i >= Math.max(1, lineNumber - 20); i--) {
-                        if (precomputedFoldingRanges.has(i)) {
-                            // 找到了折叠起始行范围
-                            lineNumber = i;
-                            found = true;
-                            break;
-                        }
-                    }
-
-                    if (!found) {
-                        // 如果向上近邻查找不到，尝试在所有预计算范围中查找一个包裹 originalLineNumber 的范围（更稳健）
-                        let enclosingStart: number | null = null;
-                        for (const [start, range] of precomputedFoldingRanges.entries()) {
-                            if (range.endLine >= originalLineNumber! && start <= originalLineNumber!) {
-                                if (enclosingStart === null || start > enclosingStart) {
-                                    enclosingStart = start;
-                                }
-                            }
-                        }
-                        if (enclosingStart !== null) {
-                            lineNumber = enclosingStart;
-                            found = true;
-                        }
-                    }
-
-                    if (!found) {
-                        // 如果仍然找不到，跳过这个折叠元素
-                        return;
-                    }
-
-                    currentFoldedLines.add(lineNumber);
-                }
-
-                // 检查是否已经添加过信息，并且元素仍然存在
-                const existingInfo = infoElements.get(lineNumber);
-                if (existingInfo) {
-                    // 检查元素是否还在DOM中，并且对应的foldedElement是否还是同一个
-                    if (document.body.contains(existingInfo.element) && existingInfo.foldedElement === foldedElement) {
-                        // 元素已存在且有效，跳过
-                        return;
-                    } else {
-                        // 元素已失效，移除它
-                        existingInfo.element.remove();
-                        infoElements.delete(lineNumber);
+                    const foldedRect = foldedElement.getBoundingClientRect();
+                    target = editor.getTargetAtClientPoint(foldedRect.left + foldedRect.width / 2, foldedRect.top + foldedRect.height / 2);
+                    if (target?.position) {
+                        lineNumber = target.position.lineNumber;
+                        originalLineNumber = lineNumber;
                     }
                 }
 
-                // 获取折叠信息（直接从预先计算的数据中获取）
-                let info = getFoldingInfo(lineNumber);
-                // 如果没有预计算结果或计数为0，尝试使用已记录的范围进行同步计算（只在可见区域执行）
-                if (!info || info.count === 0) {
-                    const range = precomputedFoldingRanges.get(lineNumber) || null;
-                    if (range) {
+                if (!lineNumber && viewLinesRect) {
+                    const foldedRect = foldedElement.getBoundingClientRect();
+                    const elementY = foldedRect.top + foldedRect.height / 2 - viewLinesRect.top;
+                    for (let line = visibleRange.start; line <= visibleRange.end; line++) {
                         try {
-                            const model = editor.getModel();
-                            if (model && !model.isDisposed()) {
-                                const lines = model.getValue().split('\n');
-                                const count = calculateFoldingCount(lines, lineNumber - 1, range.endLine - 1, range.type);
-                                if (count > 0) {
-                                    precomputedFoldingInfo.set(lineNumber, { type: range.type, count });
-                                    info = getFoldingInfo(lineNumber);
-                                }
+                            const lineTop = editor.getTopForLineNumber(line);
+                            if (elementY >= lineTop && elementY < lineTop + lineHeight) {
+                                lineNumber = line;
+                                originalLineNumber = line;
+                                break;
                             }
-                        } catch (e) {
-                            // ignore and fallthrough to skip display
+                        } catch (_) {
+                            continue;
                         }
                     }
-                    if (!info || info.count === 0) {
-                        return;
+                }
+            } catch (_) {
+                return;
+            }
+
+            if (!lineNumber) return;
+            if (lineNumber < visibleRange.start || lineNumber > visibleRange.end) return;
+
+            if (!precomputedFoldingRanges.has(lineNumber)) {
+                let found = false;
+                for (let i = lineNumber - 1; i >= Math.max(1, lineNumber - 20); i--) {
+                    if (precomputedFoldingRanges.has(i)) {
+                        lineNumber = i;
+                        found = true;
+                        break;
                     }
                 }
 
-                // 构建显示文本
-                const displayText = info.type === 'object' ? `${info.count} keys` : `${info.count} items`;
-
-                // 创建信息元素
-                const infoElement = document.createElement('span');
-                infoElement.className = 'folding-info-text';
-                infoElement.textContent = ` ${displayText}`;
-
-                // 将信息元素直接插入到 inline-folded 元素之后
-                // 这样信息就会显示在 "..." 后面
-                if (foldedElement.parentNode) {
-                    // 在 foldedElement 后面插入信息元素
-                    foldedElement.parentNode.insertBefore(infoElement, foldedElement.nextSibling);
-                    infoElements.set(lineNumber, { element: infoElement, foldedElement });
-                } else {
-                    // 如果找不到父节点，尝试添加到视图行
-                    (viewLine as HTMLElement).appendChild(infoElement);
-                    infoElements.set(lineNumber, { element: infoElement, foldedElement });
-                }
-            });
-
-            // 清理不再存在的折叠元素对应的信息，以及不可见区域的信息元素
-            infoElements.forEach((info, lineNumber) => {
-                // 检查是否在可见区域外，或者折叠元素已不存在
-                const isOutsideVisibleRange = lineNumber < visibleRange.start || lineNumber > visibleRange.end;
-                const isFoldedElementRemoved = !currentFoldedLines.has(lineNumber);
-
-                if (isFoldedElementRemoved) {
-                    // 这个行号对应的折叠元素已经不存在了，移除信息元素
-                    if (info.element && info.element.parentNode) {
-                        info.element.remove();
+                if (!found) {
+                    let enclosingStart: number | null = null;
+                    for (const [start, range] of precomputedFoldingRanges.entries()) {
+                        if (range.endLine >= originalLineNumber! && start <= originalLineNumber!) {
+                            if (enclosingStart === null || start > enclosingStart) {
+                                enclosingStart = start;
+                            }
+                        }
                     }
-                    infoElements.delete(lineNumber);
-                } else if (isOutsideVisibleRange) {
-                    // 不在可见区域内，清理信息元素（滚动时会重新创建）
-                    if (info.element && info.element.parentNode) {
-                        info.element.remove();
+                    if (enclosingStart !== null) {
+                        lineNumber = enclosingStart;
+                        found = true;
                     }
-                    infoElements.delete(lineNumber);
                 }
-            });
-        } catch (error) {
-            // 忽略错误，避免影响编辑器正常使用
-        }
+
+                if (!found) return;
+            }
+
+            currentFoldedLines.add(lineNumber);
+
+            const existingInfo = infoElements.get(lineNumber);
+            if (existingInfo) {
+                if (document.body.contains(existingInfo.element) && existingInfo.foldedElement === foldedElement) {
+                    return;
+                }
+                existingInfo.element.remove();
+                infoElements.delete(lineNumber);
+            }
+
+            let info = getFoldingInfo(lineNumber);
+            if (!info || info.count === 0) {
+                const range = precomputedFoldingRanges.get(lineNumber);
+                if (range) {
+                    try {
+                        const m = editor.getModel();
+                        if (m && !m.isDisposed()) {
+                            const lines = m.getValue().split('\n');
+                            const count = calculateFoldingCount(lines, lineNumber - 1, range.endLine - 1, range.type);
+                            if (count > 0) {
+                                precomputedFoldingInfo.set(lineNumber, { type: range.type, count });
+                                info = getFoldingInfo(lineNumber);
+                            }
+                        }
+                    } catch (_) {}
+                }
+                if (!info || info.count === 0) return;
+            }
+
+            const infoElement = document.createElement('span');
+            infoElement.className = 'folding-info-text';
+            infoElement.textContent = ` ${info.type === 'object' ? `${info.count} keys` : `${info.count} items`}`;
+
+            const parent = foldedElement.parentNode;
+            if (parent) {
+                parent.insertBefore(infoElement, foldedElement.nextSibling);
+            } else {
+                viewLine.appendChild(infoElement);
+            }
+            infoElements.set(lineNumber, { element: infoElement, foldedElement });
+        });
+
+        infoElements.forEach((info, lineNumber) => {
+            const isOutsideVisibleRange = lineNumber < visibleRange.start || lineNumber > visibleRange.end;
+            const isFoldedElementRemoved = !currentFoldedLines.has(lineNumber);
+
+            if (isFoldedElementRemoved || isOutsideVisibleRange) {
+                if (info.element.parentNode) info.element.remove();
+                infoElements.delete(lineNumber);
+            }
+        });
     };
 
     // 监听内容变化
@@ -2023,10 +1925,9 @@ const setupFoldingInfoDisplay = (editor: monaco.editor.IStandaloneCodeEditor) =>
     // 监听编辑器焦点变化，当获得焦点时开始定时更新
     editor.onDidFocusEditorText(() => {
         if (intervalTimer) clearInterval(intervalTimer);
-        // 降低更新频率，避免闪烁
         intervalTimer = setInterval(() => {
             updateFoldingInfo();
-        }, 2000);
+        }, 1000);
         debouncedUpdate();
     });
 
@@ -2172,16 +2073,10 @@ const setupFoldingInfoDisplay = (editor: monaco.editor.IStandaloneCodeEditor) =>
     });
 
     // 初始更新
-    setTimeout(() => {
-        updateFoldingInfo();
-    }, 1000);
+    setTimeout(() => {updateFoldingInfo()}, 500);
 
     // 监听Monaco的折叠变化事件（当折叠状态改变时立即更新）
-    editor.onDidChangeModelDecorations(() => {
-        // 检查是否有折叠相关的装饰变化
-        // 使用防抖避免频繁更新
-        debouncedUpdate();
-    });
+    editor.onDidChangeModelDecorations(() => {debouncedUpdate()});
 
     // 导出函数，供外部调用（层级收缩时使用）
     (editor as any).__disableFoldingInfoUpdate = disableUpdate;
@@ -2331,7 +2226,7 @@ const formatFileSize = (bytes: number): string => {
     return mb % 1 === 0 ? `${mb} MB` : `${mb.toFixed(2)} MB`;
 };
 
-// 获取存档总大小信息（简洁版）
+// 获取存档总大小信息
 const getArchivesTotalSizeInfo = (): string => {
     const totalSize = archives.value.reduce((sum, archive) => sum + archive.size, 0);
     const formattedSize = formatFileSize(totalSize);
@@ -2665,8 +2560,6 @@ const initializeMonacoEnvironment = () => {
 const createInputEditor = () => {
     if (!inputEditorContainer.value) return;
 
-    // 对于输入编辑器，也启用大文件折叠优化（因为用户可能输入大量JSON）
-    // 使用用户设置的缩进大小
     const inputOptions = getEditorOptions(indentSize.value, false, 'json', true);
     inputEditor = monaco.editor.create(inputEditorContainer.value, inputOptions);
 
@@ -4476,6 +4369,9 @@ const CompatibleCustomStringify = (data: any, indentSize: number, ...args: any[]
 
 // 格式化 JSON
 const formatJSON = () => {
+    const startTime = performance.now();
+    const startLineCount = (inputEditor?.getValue() || '').split('\n').length;
+
     try {
         outputType.value = 'json';
         const value = inputEditor?.getValue() || '';
@@ -4496,9 +4392,7 @@ const formatJSON = () => {
 
         // 异步计算所有折叠区域的信息（不阻塞，立即返回）
         // 这样可以避免实时计算的高成本，特别是对于大数据量（7-10万行）
-        precomputeFoldingInfo(formatted).catch(error => {
-            // 静默处理错误，不影响主流程
-        });
+        precomputeFoldingInfo(formatted).catch(() => {});
 
         outputEditor?.setValue(formatted);
 
@@ -4506,7 +4400,12 @@ const formatJSON = () => {
         // 对于JSON输出，总是启用大文件折叠优化
         updateOutputEditorConfig('json', true);
 
-        showMessageSuccess('格式化成功');
+        const elapsed = performance.now() - startTime;
+        if (startLineCount > 300000) {
+            showMessageSuccess(`格式化成功，耗时 ${elapsed.toFixed(0)}ms`);
+        } else {
+            showMessageSuccess('格式化成功');
+        }
     } catch (error: any) {
         showMessageError('格式化失败: ' + error.message);
     }
@@ -9787,7 +9686,7 @@ const transferToInput = (e: MouseEvent) => {
 }
 
 .collapse-control .level-select {
-    width: 90px;
+    width: 102px;
 }
 
 :deep(.el-select-dropdown__item) {
@@ -10108,10 +10007,6 @@ const transferToInput = (e: MouseEvent) => {
     /* Chrome, Safari, Opera */
     width: 0;
     height: 0;
-}
-
-:deep(.level-select) {
-    width: 65px;
 }
 
 :deep(.level-select .el-input__wrapper) {
