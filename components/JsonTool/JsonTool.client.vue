@@ -1644,6 +1644,10 @@ const updateOutputEditorConfig = (language: string = 'json', enableLargeFileFold
     const model = outputEditor.getModel();
     if (model) {
         monaco.editor.setModelLanguage(model, language);
+        // TOML 使用自定义高亮主题
+        if (language === 'toml') {
+            monaco.editor.setTheme('toml-theme');
+        }
         // 更新模型选项，确保缩进指南线正确显示
         model.updateOptions({
             tabSize: size,
@@ -2585,6 +2589,58 @@ const initializeMonacoEnvironment = () => {
             return new editorWorker();
         },
     };
+
+    // 注册 TOML 语言高亮（Monarch tokenizer）
+    monaco.languages.register({ id: 'toml' });
+    monaco.languages.setMonarchTokensProvider('toml', {
+        tokenizer: {
+            root: [
+                // 注释
+                [/#.*$/, 'comment'],
+                // 表头 [...]
+                [/^\s*\[.+?\]\s*$/, 'type.identifier'],
+                // 数组表头 [[...]]
+                [/^\s*\[\[.+?\]\]\s*$/, 'type.identifier'],
+                // 布尔值
+                [/\b(true|false)\b/, 'keyword'],
+                // 日期时间
+                [/\b\d{4}-\d{2}-\d{2}(T\d{2}:\d{2}:\d{2}(\.\d+)?(Z|[+-]\d{2}:\d{2})?)?\b/, 'string.date'],
+                // 内联数组 [...] 中的内容（不匹配嵌套括号）
+                [/\[/, { token: 'delimiter.bracket', next: '@inline_array' }],
+                // 键名
+                [/^[a-zA-Z_][a-zA-Z0-9_\-]*/, 'variable'],
+                // 等号
+                [/=/, 'delimiter'],
+                // 字符串（双引号）
+                [/"[^"\\]*(?:\\.[^"\\]*)*"/, 'string'],
+                // 数字
+                [/-?\d+\.?\d*([eE][+-]?\d+)?/, 'number'],
+            ],
+            inline_array: [
+                [/\]/, { token: 'delimiter.bracket', next: '@pop' }],
+                [/,/, 'delimiter'],
+                [/"[^"\\]*(?:\\.[^"\\]*)*"/, 'string'],
+                [/-?\d+\.?\d*([eE][+-]?\d+)?/, 'number'],
+                [/\b(true|false)\b/, 'keyword'],
+                [/\s+/, 'white'],
+            ],
+        },
+    });
+    // TOML 主题样式（使用 vs theme 的基本样式）
+    monaco.editor.defineTheme('toml-theme', {
+        base: 'vs',
+        inherit: true,
+        rules: [
+            { token: 'comment', foreground: '6A9955' },
+            { token: 'variable', foreground: '0011FF' },
+            { token: 'type.identifier', foreground: 'AF00DB' },
+            { token: 'string', foreground: 'A31515' },
+            { token: 'string.date', foreground: '098658' },
+            { token: 'number', foreground: '098658' },
+            { token: 'keyword', foreground: '0000FF' },
+        ],
+        colors: {},
+    });
 };
 
 // 创建输入编辑器
@@ -3490,7 +3546,7 @@ const handleConvert = (command: string) => {
                 break;
             case 'toml':
                 outputType.value = 'toml';
-                editorLanguage = 'plaintext';
+                editorLanguage = 'toml';
                 result = convertToTOML(parsed);
                 break;
             case 'xml':
@@ -8210,25 +8266,6 @@ const convertToTOML = (obj: any, prefix: string = '', processedObjects = new Wea
 
     let result = '';
 
-    // 判断是否为简单数组（只包含基本类型）
-    const isSimpleArray = (arr: any[]): boolean => {
-        return arr.every(
-            item => typeof item === 'string' || typeof item === 'number' || typeof item === 'boolean' || item === null || (Array.isArray(item) && isSimpleArray(item))
-        );
-    };
-
-    // 格式化简单数组
-    const formatSimpleArray = (arr: any[]): string => {
-        return arr
-            .filter(item => item !== null) // 过滤掉 null 值
-            .map(item => {
-                if (typeof item === 'string') return `"${item}"`;
-                if (Array.isArray(item)) return `[${formatSimpleArray(item)}]`;
-                return String(item);
-            })
-            .join(', ');
-    };
-
     // 处理基本属性
     const handleBasicProps = (obj: any): string => {
         let props = '';
@@ -8250,6 +8287,31 @@ const convertToTOML = (obj: any, prefix: string = '', processedObjects = new Wea
 
         // 如果是数组
         if (Array.isArray(obj)) {
+            // 检查是否为简单数组（只包含基本类型）
+            const checkIsSimpleArray = (arr: any[]): boolean => {
+                return arr.every(
+                    item => typeof item === 'string' || typeof item === 'number' || typeof item === 'boolean' || item === null || (Array.isArray(item) && checkIsSimpleArray(item))
+                );
+            };
+
+            // 格式化简单数组为内联格式
+            const formatSimpleArray = (arr: any[]): string => {
+                return arr
+                    .filter(item => item !== null) // 过滤掉 null 值
+                    .map(item => {
+                        if (typeof item === 'string') return `"${item}"`;
+                        if (Array.isArray(item)) return `[${formatSimpleArray(item)}]`;
+                        return String(item);
+                    })
+                    .join(', ');
+            };
+
+            // 如果是简单数组，直接输出为内联格式
+            if (checkIsSimpleArray(obj)) {
+                return `${currentPrefix} = [${formatSimpleArray(obj)}]\n`;
+            }
+
+            // 复杂数组：每个元素是对象
             for (const item of obj) {
                 if (typeof item === 'object' && item !== null) {
                     // 生成数组表头
@@ -8342,36 +8404,38 @@ const convertToXML = (obj: any, rootName: string = 'root', processedObjects = ne
     };
 
     // 处理值（带缩进）
-    const processValue = (value: any, tagName: string, indent: number = 0): string => {
+    const processValue = (value: any, tagName: string, indent: number = 0, originalKey?: string): string => {
         const indentStr = getIndent(indent);
         const nextIndent = indent + 1;
 
+        // 处理数组中简单值的标签（避免重复嵌套）
+        const isSimpleArrayContext = tagName.endsWith('_array_item');
+
         if (value === null || value === undefined) {
-            return `${indentStr}<${tagName}></${tagName}>`;
+            return `${indentStr}<${tagName}>${originalKey ? ` key="${escapeXML(originalKey)}"` : ''}></${tagName}>`;
         }
 
         if (typeof value === 'boolean') {
-            return `${indentStr}<${tagName}>${value}</${tagName}>`;
+            return `${indentStr}<${tagName}>${originalKey ? ` key="${escapeXML(originalKey)}"` : ''}${value}</${tagName}>`;
         }
 
         if (typeof value === 'number') {
-            return `${indentStr}<${tagName}>${value}</${tagName}>`;
+            return `${indentStr}<${tagName}>${originalKey ? ` key="${escapeXML(originalKey)}"` : ''}${value}</${tagName}>`;
         }
 
         if (typeof value === 'string') {
-            return `${indentStr}<${tagName}>${escapeXML(value)}</${tagName}>`;
+            return `${indentStr}<${tagName}>${originalKey ? ` key="${escapeXML(originalKey)}"` : ''}${escapeXML(value)}</${tagName}>`;
         }
 
         if (Array.isArray(value)) {
             if (value.length === 0) {
-                return `${indentStr}<${tagName}></${tagName}>`;
+                return `${indentStr}<${tagName}>${originalKey ? ` key="${escapeXML(originalKey)}"` : ''}</${tagName}>`;
             }
 
-            let result = `${indentStr}<${tagName}>\n`;
-            value.forEach((item, index) => {
-                const itemTagName = sanitizeTagName(tagName === 'root' ? 'item' : tagName);
-                // 如果是对象数组，使用item标签；如果是简单数组，使用原标签名
-                const currentTag = typeof item === 'object' && item !== null ? (tagName === 'root' ? 'item' : itemTagName) : itemTagName;
+            let result = `${indentStr}<${tagName}${originalKey ? ` key="${escapeXML(originalKey)}"` : ''}>\n`;
+            value.forEach((item) => {
+                // 数组元素的标签名使用 sanitizeTagName，数组元素本身不再添加 key 属性
+                const currentTag = 'item';
                 result += processValue(item, currentTag, nextIndent) + '\n';
             });
             result += `${indentStr}</${tagName}>`;
@@ -8379,16 +8443,16 @@ const convertToXML = (obj: any, rootName: string = 'root', processedObjects = ne
         }
 
         if (typeof value === 'object') {
-            let result = `${indentStr}<${tagName}>\n`;
+            let result = `${indentStr}<${tagName}${originalKey ? ` key="${escapeXML(originalKey)}"` : ''}>\n`;
             for (const [key, val] of Object.entries(value)) {
                 const sanitizedKey = sanitizeTagName(key);
-                result += processValue(val, sanitizedKey, nextIndent) + '\n';
+                result += processValue(val, sanitizedKey, nextIndent, key) + '\n';
             }
             result += `${indentStr}</${tagName}>`;
             return result;
         }
 
-        return `${indentStr}<${tagName}>${escapeXML(String(value))}</${tagName}>`;
+        return `${indentStr}<${tagName}>${originalKey ? ` key="${escapeXML(originalKey)}"` : ''}${escapeXML(String(value))}</${tagName}>`;
     };
 
     // 处理根对象
@@ -8400,8 +8464,7 @@ const convertToXML = (obj: any, rootName: string = 'root', processedObjects = ne
 
         let result = `<?xml version="1.0" encoding="UTF-8"?>\n<${rootName}>\n`;
         obj.forEach(item => {
-            const itemTagName = sanitizeTagName('item');
-            result += processValue(item, itemTagName, 1) + '\n';
+            result += processValue(item, 'item', 1) + '\n';
         });
         result += `</${rootName}>`;
         return result;
@@ -8412,7 +8475,7 @@ const convertToXML = (obj: any, rootName: string = 'root', processedObjects = ne
         let result = `<?xml version="1.0" encoding="UTF-8"?>\n<${rootName}>\n`;
         for (const [key, value] of Object.entries(obj)) {
             const sanitizedKey = sanitizeTagName(key);
-            result += processValue(value, sanitizedKey, 1) + '\n';
+            result += processValue(value, sanitizedKey, 1, key) + '\n';
         }
         result += `</${rootName}>`;
         return result;
