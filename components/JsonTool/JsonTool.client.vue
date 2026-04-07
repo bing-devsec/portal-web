@@ -146,12 +146,13 @@
                 </template>
 
                 <div class="editor-panel" :style="{ width: `${leftPanelWidth}%` }">
-                    <div class="panel-header">
-                        <div class="panel-title">
+                    <div class="panel-header" @dblclick="toggleInputMaximize">
+                        <div class="panel-title" @dblclick.stop>
                             <span>输入区域</span>
                         </div>
                         <div
                             class="panel-actions"
+                            @dblclick.stop
                             :style="{ '--panel-actions-opacity': showInputActions ? 1 : 0, '--panel-actions-pointer-events': showInputActions ? 'auto' : 'none' }"
                         >
                             <el-button @click="clearInput" size="small" type="danger" plain>
@@ -198,12 +199,13 @@
                 </div>
 
                 <div class="editor-panel" :style="{ width: `${100 - leftPanelWidth}%` }">
-                    <div class="panel-header">
-                        <div class="panel-title">
+                    <div class="panel-header" @dblclick="toggleOutputMaximize">
+                        <div class="panel-title" @dblclick.stop>
                             <span>预览区域</span>
                         </div>
                         <div
                             class="panel-actions"
+                            @dblclick.stop
                             :style="{ '--panel-actions-opacity': showOutputActions ? 1 : 0, '--panel-actions-pointer-events': showOutputActions ? 'auto' : 'none' }"
                         >
                             <el-button @click="copyOutput" size="small" type="success" plain>
@@ -719,6 +721,48 @@ const archiveNameDialogExcludeId = ref<string>(''); // 编辑时排除的存档I
 const archiveNameDialogCallback = ref<((name: string) => void) | null>(null); // 确认时调用的回调函数
 const settingsDialogVisible = ref(false); // 对话框开启/关闭状态
 const settingsCollapseActiveNames = ref<string | number>('format'); // 手风琴展开项，默认展开"格式化设置"
+const isInputMaximized = ref(false); // 输入区域是否最大化
+const isOutputMaximized = ref(false); // 预览区域是否最大化
+
+// 切换输入区域最大化状态
+const toggleInputMaximize = () => {
+    if (isInputMaximized.value) {
+        // 从最大化恢复均分
+        isInputMaximized.value = false;
+        isOutputMaximized.value = false;
+        leftPanelWidth.value = 50;
+        stableLeftPanelWidth.value = 50;
+    } else {
+        // 最大化输入区域
+        isInputMaximized.value = true;
+        isOutputMaximized.value = false;
+        leftPanelWidth.value = 100;
+        stableLeftPanelWidth.value = 100;
+    }
+    nextTick(() => {
+        updateEditorLayout();
+    });
+};
+
+// 切换预览区域最大化状态
+const toggleOutputMaximize = () => {
+    if (isOutputMaximized.value) {
+        // 从最大化恢复均分
+        isInputMaximized.value = false;
+        isOutputMaximized.value = false;
+        leftPanelWidth.value = 50;
+        stableLeftPanelWidth.value = 50;
+    } else {
+        // 最大化预览区域
+        isInputMaximized.value = false;
+        isOutputMaximized.value = true;
+        leftPanelWidth.value = 0;
+        stableLeftPanelWidth.value = 0;
+    }
+    nextTick(() => {
+        updateEditorLayout();
+    });
+};
 
 // ==================== 设置管理 ====================
 const SETTINGS_STORAGE_KEY = 'json-tool-settings';
@@ -6278,6 +6322,15 @@ const onArchiveDragOver = (event: DragEvent, targetId: string, targetIndex: numb
         event.dataTransfer.dropEffect = 'move';
     }
 
+    // 检查鼠标下方是否有存档项元素
+    const elementBelow = document.elementFromPoint(event.clientX, event.clientY);
+    const listEl = archiveListRef.value;
+    // 只有当鼠标确实在某一行存档项上方时才显示指示线
+    if (!elementBelow || !listEl || !elementBelow.closest('.archive-item')) {
+        dropIndicatorIndex.value = null;
+        return;
+    }
+
     // 计算指示线位置（基于列表整体，避免命中偏差）
     dropIndicatorIndex.value = computeDropIndex(event.clientY);
     dragOverArchiveId.value = targetId;
@@ -6290,11 +6343,24 @@ const onArchiveListDragOver = (event: DragEvent) => {
     if (event.dataTransfer) {
         event.dataTransfer.dropEffect = 'move';
     }
+    // 检查鼠标下方是否有存档项元素
+    const elementBelow = document.elementFromPoint(event.clientX, event.clientY);
+    // 只有当鼠标确实在某一行存档项上方时才显示指示线
+    if (!elementBelow || !elementBelow.closest('.archive-item')) {
+        dropIndicatorIndex.value = null;
+        return;
+    }
     dropIndicatorIndex.value = computeDropIndex(event.clientY);
 };
 
 const onArchiveListDrop = (event: DragEvent) => {
     if (!draggingArchiveId.value) {
+        resetArchiveDragState();
+        return;
+    }
+    // 检查鼠标下方是否有存档项元素
+    const elementBelow = document.elementFromPoint(event.clientX, event.clientY);
+    if (!elementBelow || !elementBelow.closest('.archive-item')) {
         resetArchiveDragState();
         return;
     }
@@ -9723,7 +9789,6 @@ const transferToInput = (e: MouseEvent) => {
     flex-direction: column;
     min-height: 0;
     overflow: hidden;
-    transition: width 0.1s ease;
     box-shadow: 0 2px 12px 0 rgba(0, 0, 0, 0.05);
     margin: 0;
     min-width: 0; /* 允许面板宽度为0以实现折叠效果 */
