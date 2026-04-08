@@ -452,6 +452,16 @@
                                     <el-switch v-model="showIndentGuide" active-text="显示" inactive-text="隐藏" size="default" @change="updateIndentGuides" />
                                 </div>
                             </div>
+
+                            <el-divider class="settings-subsection-divider" />
+
+                            <!-- 粘性滚动设置 -->
+                            <div class="settings-subsection">
+                                <div class="settings-subsection-title">粘性滚动设置</div>
+                                <div class="settings-item">
+                                    <el-switch v-model="stickyScroll" active-text="启用" inactive-text="禁用" size="default" @change="updateStickyScroll" />
+                                </div>
+                            </div>
                         </div>
                     </el-collapse-item>
 
@@ -811,6 +821,8 @@ const defaultSettings = {
     sortOrder: 'asc' as 'asc' | 'desc',
     // 存档设置
     customArchiveName: false,
+    // 粘性滚动设置
+    stickyScroll: false,
 };
 
 // 加载设置
@@ -852,6 +864,7 @@ const saveSettings = () => {
         sortMethod: sortMethod.value,
         sortOrder: sortOrder.value,
         customArchiveName: customArchiveName.value,
+        stickyScroll: stickyScroll.value,
     };
     localStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify(settingsToSave));
 };
@@ -875,6 +888,7 @@ const encodingMode = ref(savedSettings.encodingMode); // 添加编码处理模�
 const sortMethod = ref<'dictionary' | 'length' | 'field'>(savedSettings.sortMethod); // 排序方法
 const sortOrder = ref<'asc' | 'desc'>(savedSettings.sortOrder); // 排序方向
 const customArchiveName = ref<boolean>(savedSettings.customArchiveName ?? false); // 是否自定义存档名称
+const stickyScroll = ref(savedSettings.stickyScroll ?? true); // 是否启用粘性滚动
 const buttonVisibility = ref(savedSettings.buttonVisibility); // 菜单栏按钮显示控制状态
 
 // ==================== 全屏管理 ====================
@@ -1541,7 +1555,7 @@ const getEditorOptions = (size: number, isReadOnly: boolean = false, language: s
     },
     smoothScrolling: true, // 启用平滑滚动
     fixedOverflowWidgets: true, // 使溢出窗口(如提示、自动完成)固定显示
-    stickyScroll: { enabled: false }, // 禁用粘性滚动
+    stickyScroll: { enabled: stickyScroll.value }, // 根据设置控制粘性滚动
 
     // 折叠配置
     folding: true, // 启用代码折叠功能（这是基础配置，必须开启）
@@ -1630,6 +1644,15 @@ const updateIndentGuides = () => {
 const updateMinimap = () => {
     const options = {
         minimap: { enabled: showMinimap.value },
+    };
+
+    inputEditor?.updateOptions(options);
+    outputEditor?.updateOptions(options);
+};
+
+const updateStickyScroll = () => {
+    const options = {
+        stickyScroll: { enabled: stickyScroll.value },
     };
 
     inputEditor?.updateOptions(options);
@@ -2488,6 +2511,11 @@ watch(isFullscreen, () => {
 // 监听缩略图设置的变化
 watch(showMinimap, () => {
     updateMinimap();
+});
+
+// 监听粘性滚动设置的变化
+watch(stickyScroll, () => {
+    updateStickyScroll();
 });
 
 // 监听是否启用语法检查
