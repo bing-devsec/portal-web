@@ -709,6 +709,9 @@ import ShareDialog from './ShareDialog.vue';
 import DataMaskingDialog from './DataMaskingDialog.vue';
 import ArchiveNameDialog from './ArchiveNameDialog.vue';
 import JSON5 from 'json5';
+import yaml from 'js-yaml';
+import * as toml from '@iarna/toml';
+import { create } from 'xmlbuilder2';
 
 // ==================== 常量与全局状态 ====================
 const MAX_FILE_SIZE = 5 * 1024 * 1024; // 文件大小限制：5MB
@@ -8166,341 +8169,108 @@ const applySort = () => {
     }
 };
 
-// JSON 转 YAML
-const convertToYAML = (obj: any, indent: number = 0): string => {
-    const spaces = ' '.repeat(indent);
-
-    // 检查字符串是否需要引号的函数
-    const needsQuotes = (str: string): boolean => {
-        // 1. 包含冒号+空格的情况
-        if (str.includes(': ')) return true;
-
-        // 2. 包含井号(#)的情况
-        if (str.includes('#')) return true;
-
-        // 3. 包含连字符+空格的情况
-        if (str.includes('- ')) return true;
-
-        // 4. 包含方括号或花括号
-        if (str.includes('[') || str.includes(']') || str.includes('{') || str.includes('}')) return true;
-
-        // 5. 包含YAML保留字符
-        if (/[~!&*|>@`%^]/.test(str)) return true;
-
-        // 6. 包含引号
-        if (str.includes("'") || str.includes('"')) return true;
-
-        // 7. 包含控制字符或特殊Unicode
-        if (/[\x00-\x1F\x7F-\x9F\u2028\u2029]/.test(str)) return true;
-
-        // 8. 布尔值、Null、纯数字的字符串表示
-        if (/^(true|false|null|\d+\.?\d*([eE][+-]?\d+)?)$/.test(str)) return true;
-
-        // 9. 空字符串或仅包含空白字符
-        if (!str.trim()) return true;
-
-        // 10. 以特殊字符开头或结尾
-        if (/^[- :?[{\]},#&*!|>'"%@`]|[- :?[{\]},#&*!|>'"%@`]$/.test(str)) return true;
-
-        // 11. 包含URL常见字符组合
-        if (/https?:\/\//.test(str)) return true;
-
-        return false;
-    };
-
-    const formatValue = (value: any): string => {
-        if (value === null) return 'null';
-        if (typeof value === 'string') {
-            // 处理多行字符串
-            if (value.includes('\n') || value.includes('\r')) {
-                const lines = value.split(/\r?\n/);
-                // 使用|保留换行符和末尾换行
-                const contentIndent = ' '.repeat(indent + 2);
-                return `|\n${lines.map(line => `${contentIndent}${line}`).join('\n')}`;
-            }
-
-            // 检查是否需要引号
-            if (needsQuotes(value)) {
-                // 如果字符串包含单引号，使用双引号
-                if (value.includes("'")) {
-                    return JSON.stringify(value);
-                }
-                // 默认使用单引号
-                return `'${value.replace(/'/g, "''")}'`;
-            }
-
-            return value;
-        }
-
-        if (typeof value === 'number') {
-            // 处理特殊数字
-            if (isNaN(value)) return '.nan';
-            if (!isFinite(value)) return value > 0 ? '.inf' : '-.inf';
-            return String(value);
-        }
-
-        if (typeof value === 'boolean') {
-            return String(value);
-        }
-
-        return String(value);
-    };
-
-    if (Array.isArray(obj)) {
-        if (obj.length === 0) return '[]';
-        return obj
-            .map(item => {
-                if (typeof item === 'object' && item !== null) {
-                    return `${spaces}- ${convertToYAML(item, indent + 2).trimStart()}`;
-                }
-                return `${spaces}- ${formatValue(item)}`;
-            })
-            .join('\n');
-    } else if (typeof obj === 'object' && obj !== null) {
-        return Object.entries(obj)
-            .map(([key, value]) => {
-                // 处理键名中的特殊字符
-                const formattedKey = needsQuotes(key) ? `'${key.replace(/'/g, "''")}'` : key;
-
-                if (typeof value === 'object' && value !== null) {
-                    return `${spaces}${formattedKey}:\n${convertToYAML(value, indent + 2)}`;
-                }
-                return `${spaces}${formattedKey}: ${formatValue(value)}`;
-            })
-            .join('\n');
+// JSON 转 YAML（使用 js-yaml 库）
+const convertToYAML = (obj: any): string => {
+    try {
+        return yaml.dump(obj, {
+            indent: 2,
+            lineWidth: -1, // 不换行
+            quotingType: '"', // 使用双引号
+            forceQuotes: false, // 非必要不添加引号
+            skipInvalid: true, // 跳过无效值
+            sortKeys: false, // 保持键的原始顺序
+        } as yaml.DumpOptions);
+    } catch (error) {
+        throw new Error(`YAML 转换失败: ${error instanceof Error ? error.message : '未知错误'}`);
     }
-    return formatValue(obj);
 };
 
-// JSON 转 TOML
-const convertToTOML = (obj: any, prefix: string = '', processedObjects = new WeakSet()): string => {
-    // 处理循环引用
-    if (typeof obj === 'object' && obj !== null) {
-        if (processedObjects.has(obj)) {
-            return ''; // 如果对象已经处理过,返回空字符串避免循环引用
-        }
-        processedObjects.add(obj);
-    }
-
-    let result = '';
-
-    // 处理基本属性
-    const handleBasicProps = (obj: any): string => {
-        let props = '';
-        for (const [key, value] of Object.entries(obj)) {
-            if (value === null || typeof value === 'object') continue;
-
-            if (typeof value === 'string') {
-                props += `${key} = "${value}"\n`;
-            } else {
-                props += `${key} = ${value}\n`;
-            }
-        }
-        return props;
-    };
-
-    // 处理对象或数组
-    const processObject = (obj: any, currentPrefix: string): string => {
-        let output = '';
-
-        // 如果是数组
+// JSON 转 TOML（使用 @iarna/toml 库）
+const convertToTOML = (obj: any): string => {
+    try {
+        // TOML 只支持对象作为根类型，不支持数组作为根
         if (Array.isArray(obj)) {
-            // 检查是否为简单数组（只包含基本类型）
-            const checkIsSimpleArray = (arr: any[]): boolean => {
-                return arr.every(
-                    item => typeof item === 'string' || typeof item === 'number' || typeof item === 'boolean' || item === null || (Array.isArray(item) && checkIsSimpleArray(item))
-                );
-            };
-
-            // 格式化简单数组为内联格式
-            const formatSimpleArray = (arr: any[]): string => {
-                return arr
-                    .filter(item => item !== null) // 过滤掉 null 值
-                    .map(item => {
-                        if (typeof item === 'string') return `"${item}"`;
-                        if (Array.isArray(item)) return `[${formatSimpleArray(item)}]`;
-                        return String(item);
-                    })
-                    .join(', ');
-            };
-
-            // 如果是简单数组，直接输出为内联格式
-            if (checkIsSimpleArray(obj)) {
-                return `${currentPrefix} = [${formatSimpleArray(obj)}]\n`;
-            }
-
-            // 复杂数组：每个元素是对象
-            for (const item of obj) {
-                if (typeof item === 'object' && item !== null) {
-                    // 生成数组表头
-                    output += `\n[[${currentPrefix}]]\n`;
-                    // 添加基本属性
-                    output += handleBasicProps(item);
-
-                    // 处理嵌套属性
-                    for (const [key, value] of Object.entries(item)) {
-                        if (value === null || typeof value !== 'object') continue;
-
-                        const newPrefix = `${currentPrefix}.${key}`;
-                        output += processObject(value, newPrefix);
-                    }
-                }
-            }
+            // 如果是数组，转换为 { items: array } 格式
+            obj = { items: obj };
         }
-        // 如果是对象但不是数组
-        else if (typeof obj === 'object' && obj !== null) {
-            // 生成对象表头
-            if (currentPrefix) {
-                output += `[${currentPrefix}]\n`;
-            }
-
-            // 添加基本属性
-            output += handleBasicProps(obj);
-
-            // 处理嵌套属性
-            for (const [key, value] of Object.entries(obj)) {
-                if (value === null || typeof value !== 'object') continue;
-
-                const newPrefix = currentPrefix ? `${currentPrefix}.${key}` : key;
-                output += processObject(value, newPrefix);
-            }
-        }
-
-        return output;
-    };
-
-    // 主处理逻辑
-    for (const [key, value] of Object.entries(obj)) {
-        if (value === null) continue;
-
-        const currentPrefix = prefix ? `${prefix}.${key}` : key;
-
-        if (Array.isArray(value)) {
-            result += processObject(value, currentPrefix);
-        } else if (typeof value === 'object') {
-            result += processObject(value, currentPrefix);
-        } else {
-            if (typeof value === 'string') {
-                result += `${key} = "${value}"\n`;
-            } else {
-                result += `${key} = ${value}\n`;
-            }
-        }
+        return toml.stringify(obj);
+    } catch (error) {
+        throw new Error(`TOML 转换失败: ${error instanceof Error ? error.message : '未知错误'}`);
     }
-
-    return result;
 };
 
-// JSON 转 XML
-const convertToXML = (obj: any, rootName: string = 'root', processedObjects = new WeakSet()): string => {
-    // 处理循环引用
-    if (typeof obj === 'object' && obj !== null) {
-        if (processedObjects.has(obj)) {
-            return ''; // 避免循环引用
-        }
-        processedObjects.add(obj);
-    }
-
-    // 转义XML特殊字符
-    const escapeXML = (str: string): string => {
-        return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&apos;');
-    };
-
-    // 验证XML标签名（只允许字母、数字、下划线、连字符）
-    const sanitizeTagName = (name: string): string => {
-        // 如果以数字开头，添加前缀
-        if (/^\d/.test(name)) {
-            name = 'item' + name;
-        }
-        // 替换非法字符为下划线
-        return name.replace(/[^a-zA-Z0-9_\-]/g, '_');
-    };
-
-    // 生成缩进字符串
-    const getIndent = (level: number): string => {
-        return '  '.repeat(level);
-    };
-
-    // 处理值（带缩进）
-    const processValue = (value: any, tagName: string, indent: number = 0, originalKey?: string): string => {
-        const indentStr = getIndent(indent);
-        const nextIndent = indent + 1;
-
-        // 处理数组中简单值的标签（避免重复嵌套）
-        const isSimpleArrayContext = tagName.endsWith('_array_item');
-
-        if (value === null || value === undefined) {
-            return `${indentStr}<${tagName}>${originalKey ? ` key="${escapeXML(originalKey)}"` : ''}></${tagName}>`;
-        }
-
-        if (typeof value === 'boolean') {
-            return `${indentStr}<${tagName}>${originalKey ? ` key="${escapeXML(originalKey)}"` : ''}${value}</${tagName}>`;
-        }
-
-        if (typeof value === 'number') {
-            return `${indentStr}<${tagName}>${originalKey ? ` key="${escapeXML(originalKey)}"` : ''}${value}</${tagName}>`;
-        }
-
-        if (typeof value === 'string') {
-            return `${indentStr}<${tagName}>${originalKey ? ` key="${escapeXML(originalKey)}"` : ''}${escapeXML(value)}</${tagName}>`;
-        }
-
-        if (Array.isArray(value)) {
-            if (value.length === 0) {
-                return `${indentStr}<${tagName}>${originalKey ? ` key="${escapeXML(originalKey)}"` : ''}</${tagName}>`;
+// JSON 转 XML（使用 xmlbuilder2 库）
+const convertToXML = (obj: any, rootName: string = 'root'): string => {
+    try {
+        // 验证XML标签名（只允许字母、数字、下划线、连字符）
+        const sanitizeTagName = (name: string): string => {
+            if (/^\d/.test(name)) {
+                name = 'item' + name;
             }
+            return name.replace(/[^a-zA-Z0-9_\-]/g, '_');
+        };
 
-            let result = `${indentStr}<${tagName}${originalKey ? ` key="${escapeXML(originalKey)}"` : ''}>\n`;
-            value.forEach((item) => {
-                // 数组元素的标签名使用 sanitizeTagName，数组元素本身不再添加 key 属性
-                const currentTag = 'item';
-                result += processValue(item, currentTag, nextIndent) + '\n';
-            });
-            result += `${indentStr}</${tagName}>`;
-            return result;
-        }
-
-        if (typeof value === 'object') {
-            let result = `${indentStr}<${tagName}${originalKey ? ` key="${escapeXML(originalKey)}"` : ''}>\n`;
-            for (const [key, val] of Object.entries(value)) {
-                const sanitizedKey = sanitizeTagName(key);
-                result += processValue(val, sanitizedKey, nextIndent, key) + '\n';
-            }
-            result += `${indentStr}</${tagName}>`;
-            return result;
-        }
-
-        return `${indentStr}<${tagName}>${originalKey ? ` key="${escapeXML(originalKey)}"` : ''}${escapeXML(String(value))}</${tagName}>`;
-    };
-
-    // 处理根对象
-    if (Array.isArray(obj)) {
-        // 数组根：使用root标签包裹所有item
-        if (obj.length === 0) {
-            return `<?xml version="1.0" encoding="UTF-8"?>\n<${rootName}></${rootName}>`;
-        }
-
-        let result = `<?xml version="1.0" encoding="UTF-8"?>\n<${rootName}>\n`;
-        obj.forEach(item => {
-            result += processValue(item, 'item', 1) + '\n';
-        });
-        result += `</${rootName}>`;
-        return result;
-    }
-
-    // 对象根
-    if (typeof obj === 'object' && obj !== null) {
-        let result = `<?xml version="1.0" encoding="UTF-8"?>\n<${rootName}>\n`;
-        for (const [key, value] of Object.entries(obj)) {
+        // 处理对象或数组转 XML 节点
+        const processValue = (value: any, node: any, key: string): void => {
             const sanitizedKey = sanitizeTagName(key);
-            result += processValue(value, sanitizedKey, 1, key) + '\n';
-        }
-        result += `</${rootName}>`;
-        return result;
-    }
 
-    // 基本类型
-    return `<?xml version="1.0" encoding="UTF-8"?>\n<${rootName}>${escapeXML(String(obj))}</${rootName}>`;
+            if (value === null || value === undefined) {
+                node.ele(sanitizedKey);
+                return;
+            }
+
+            if (typeof value === 'boolean' || typeof value === 'number') {
+                node.ele(sanitizedKey).txt(String(value));
+                return;
+            }
+
+            if (typeof value === 'string') {
+                node.ele(sanitizedKey).txt(value);
+                return;
+            }
+
+            if (Array.isArray(value)) {
+                if (value.length === 0) {
+                    node.ele(sanitizedKey);
+                    return;
+                }
+                const parentNode = node.ele(sanitizedKey);
+                value.forEach((item) => {
+                    processValue(item, parentNode, 'item');
+                });
+                return;
+            }
+
+            if (typeof value === 'object') {
+                const parentNode = node.ele(sanitizedKey);
+                for (const [childKey, childValue] of Object.entries(value)) {
+                    processValue(childValue, parentNode, childKey);
+                }
+                return;
+            }
+
+            node.ele(sanitizedKey).txt(String(value));
+        };
+
+        // 创建 XML 文档
+        const rootNode = create({ version: '1.0', encoding: 'UTF-8' }).ele(rootName);
+
+        if (Array.isArray(obj)) {
+            obj.forEach((item) => {
+                processValue(item, rootNode, 'item');
+            });
+        } else if (typeof obj === 'object' && obj !== null) {
+            for (const [key, value] of Object.entries(obj)) {
+                processValue(value, rootNode, key);
+            }
+        } else {
+            rootNode.txt(String(obj));
+        }
+
+        return rootNode.end({ prettyPrint: true, indent: '  ' });
+    } catch (error) {
+        throw new Error(`XML 转换失败: ${error instanceof Error ? error.message : '未知错误'}`);
+    }
 };
 
 // JSON 转 Go 结构体（智能识别 struct vs map）
@@ -9056,18 +8826,6 @@ const handleFileUpload = async (uploadFile: UploadFile) => {
 
         // 格式化JSON内容为2个空格缩进
         let formattedContent = content;
-        let isValidJson = false;
-
-        // 不对上传的内容进行自动格式化，保持原样
-        // try {
-        //     // 尝试解析并重新格式化为2个空格缩进
-        //     const parsed = JSON.parse(content);
-        //     formattedContent = JSON.stringify(parsed, null, 2);
-        //     isValidJson = true;
-        // } catch (error) {
-        //     // 如果不是有效的JSON，保持原始内容
-        //     formattedContent = content;
-        // }
 
         // 更新编辑器 - 将格式化后的内容展示到输入区域
         if (inputEditor) {
