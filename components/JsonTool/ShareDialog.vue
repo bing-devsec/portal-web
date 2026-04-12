@@ -164,15 +164,6 @@
                         </div>
                     </div>
                 </div>
-
-                <!-- 错误提示 -->
-                <div v-if="errorMessage" class="error-message">
-                    <el-alert type="error" :closable="false" show-icon>
-                        <template #title>
-                            <span>{{ errorMessage }}</span>
-                        </template>
-                    </el-alert>
-                </div>
             </div>
 
             <template #footer>
@@ -190,6 +181,7 @@
 import { ref, computed, watch, nextTick } from 'vue';
 import { ElMessageBox } from 'element-plus';
 import { FingerprintDetector } from '~/utils/fingerprint';
+import { showMessageError } from '~/utils/api';
 
 // Props
 interface Props {
@@ -262,7 +254,6 @@ const shareResult = ref<{
 // 状态
 const loading = ref(false);
 const copyLoading = ref(false);
-const errorMessage = ref('');
 const passwordInputRef = ref<any>(null); // 密码输入框引用
 
 // 我的分享（内嵌折叠）
@@ -336,7 +327,6 @@ const resetForm = () => {
     customUnit.value = 'hours';
     password.value = '';
     shareName.value = '';
-    errorMessage.value = '';
 };
 
 // 处理密码输入框聚焦事件，移除 readonly 属性以阻止密码自动填充
@@ -397,7 +387,7 @@ watch(
 const createShare = async () => {
     // 验证JSON数据
     if (!props.jsonData || !props.jsonData.trim()) {
-        errorMessage.value = 'JSON数据不能为空';
+        showMessageError('JSON数据不能为空');
         return;
     }
 
@@ -405,36 +395,36 @@ const createShare = async () => {
     try {
         JSON.parse(props.jsonData);
     } catch (error) {
-        errorMessage.value = 'JSON 数据格式不正确，请先格式化 JSON 数据';
+        showMessageError('JSON 数据格式不正确，请先格式化 JSON 数据');
         return;
     }
 
     // 验证分享名称（必填，最多10字符）
     const name = shareName.value?.trim() || '';
     if (!name || name.length === 0) {
-        errorMessage.value = '分享名称不能为空';
+        showMessageError('分享名称不能为空');
         return;
     }
     if (name.length > 10) {
-        errorMessage.value = '分享名称长度不能超过10个字符';
+        showMessageError('分享名称长度不能超过10个字符');
         return;
     }
     // 验证字符：只允许中英文、数字和常见连字符（-、_、.）
     const shareNamePattern = /^[\u4e00-\u9fa5A-Za-z0-9\-_.]+$/;
     if (!shareNamePattern.test(name)) {
-        errorMessage.value = '分享名称只能包含中英文、数字和常见连字符（-、_、.）';
+        showMessageError('分享名称只能包含中英文、数字和常见连字符（-、_、.）');
         return;
     }
 
     // 验证密码（最多30位 + 字符集限制）
     if (password.value) {
         if (password.value.length > 30) {
-            errorMessage.value = '密码长度不能超过30位';
+            showMessageError('密码长度不能超过30位');
             return;
         }
         const passwordAllowed = /^[A-Za-z0-9!@#\$%\^&\*\-_\.\+=:;,\?\(\)\[\]\{\}~]+$/;
         if (!passwordAllowed.test(password.value)) {
-            errorMessage.value = '密码包含不被允许的字符';
+            showMessageError('密码包含不被允许的字符');
             return;
         }
     }
@@ -443,16 +433,15 @@ const createShare = async () => {
     const MAX_EXPIRES_IN = MAX_EXPIRES_IN_MS; // 3天
     const MIN_EXPIRES_IN = MIN_EXPIRES_IN_MS; // 3分钟
     if (expiresIn.value && expiresIn.value > MAX_EXPIRES_IN) {
-        errorMessage.value = '过期时间不能超过3天';
+        showMessageError('过期时间不能超过3天');
         return;
     }
     if (expiresIn.value && expiresIn.value < MIN_EXPIRES_IN) {
-        errorMessage.value = '过期时间不能少于3分钟';
+        showMessageError('过期时间不能少于3分钟');
         return;
     }
 
     loading.value = true;
-    errorMessage.value = '';
 
     try {
         // 获取加密的浏览器指纹
@@ -462,7 +451,7 @@ const createShare = async () => {
             const fingerprintResult = await fingerprintDetector.getFingerprint();
             encryptedFingerprint = fingerprintResult.fingerprintId;
         } catch (error: any) {
-            errorMessage.value = '无法获取浏览器指纹，请刷新页面后重试';
+            showMessageError('无法获取浏览器指纹，请刷新页面后重试');
             loading.value = false;
             return;
         }
@@ -491,10 +480,10 @@ const createShare = async () => {
         if (response.success && response.data) {
             shareResult.value = response.data;
         } else {
-            errorMessage.value = response.error || '创建分享链接失败';
+            showMessageError(response.error || '创建分享链接失败');
         }
     } catch (error: any) {
-        errorMessage.value = '创建分享链接失败: ' + (error.message || '未知错误');
+        showMessageError('创建分享链接失败: ' + (error.message || '未知错误'));
     } finally {
         loading.value = false;
     }
@@ -859,10 +848,6 @@ const loadShareIntoEditor = async (row: any) => {
 
 .password-display {
     flex: 1;
-}
-
-.error-message {
-    margin-top: 20px;
 }
 
 .share-result {
