@@ -155,7 +155,7 @@
                             @dblclick.stop
                             :style="{ '--panel-actions-opacity': showInputActions ? 1 : 0, '--panel-actions-pointer-events': showInputActions ? 'auto' : 'none' }"
                         >
-                            <el-button @click="clearInput" size="small" type="danger" plain>
+                            <el-button @click="clearInput(true)" size="small" type="danger" plain>
                                 <el-icon>
                                     <Delete />
                                 </el-icon>
@@ -2688,22 +2688,34 @@ const createInputEditor = () => {
 
         // 监听粘贴事件，自动检测并调整缩进
         if (inputEditor) {
-            // 保存 editor 引用到局部变量，避免闭包中的类型检查问题
-            // 使用非空断言，因为外部已经检查了 inputEditor
             const editor = inputEditor!;
-            editor.onDidPaste((e) => {
+            inputEditor.onDidPaste((e) => {
                 const model = editor.getModel();
                 if (!model) return;
 
+                // 检测全选粘贴场景：用户全选内容后粘贴，Monaco 会替换选区，
+                // 但旧内容可能残留在 undo 栈中（Ctrl+Z 会恢复旧内容）。
+                // 如果粘贴覆盖了整个 model，则清空 undo 栈。
+                const fullRange = model.getFullModelRange();
+                if (fullRange.equalsRange(e.range)) {
+                    // 通过替换自身内容来清空 undo/redo 栈（不改变实际内容）
+                    const currentValue = model.getValue();
+                    // model.setValue('');
+                    editor.executeEdits('clear-input', [
+                        {
+                            range: model.getFullModelRange(),
+                            text: '',
+                        },
+                    ]);
+                    model.setValue(currentValue);
+                }
+
                 // 使用 Monaco Editor 内置的缩进检测 API
-                // 注意：由于 TypeScript 类型定义可能不完整，这里使用 as any 来绕过类型检查
-                // 某些情况下 detectIndentation 可能不存在或返回 undefined，需要进行空值检查
                 const detected = (model as any).detectIndentation ? (model as any).detectIndentation(true, 2) : null;
 
                 // 如果检测到使用了空格缩进，且缩进大小与当前设置不同
                 if (detected && detected.insertSpaces && detected.tabSize !== indentSize.value) {
                     // 只要检测到有效的正整数缩进（通常是2, 4, 8等），就自动调整编辑器的显示配置
-                    // 但不修改全局的缩进设置（indentSize），因为用户希望保留手动设置的值
                     model.updateOptions({ tabSize: detected.tabSize, indentSize: detected.tabSize, insertSpaces: true });
                     editor.updateOptions({ tabSize: detected.tabSize, indentSize: detected.tabSize } as any);
                 }
@@ -5842,31 +5854,6 @@ const handleSaveArchive = () => {
 };
 
 const handleArchiveCommand = async (command: string) => {
-    if (command === '__clear_all') {
-        try {
-            await ElMessageBox.confirm('确定要清空所有存档吗？此操作不可恢复', '清空存档', {
-                confirmButtonText: '清空',
-                cancelButtonText: '取消',
-                dangerouslyUseHTMLString: false,
-                customClass: 'clear-archive-dialog',
-            });
-        } catch {
-            // 用户取消
-            return;
-        }
-
-        const oldArchives = [...archives.value];
-        archives.value = [];
-        const saveSuccess = saveArchives();
-        if (saveSuccess) {
-            showMessageSuccess(`已清空所有存档 - ${getArchivesTotalSizeInfo()}`);
-        } else {
-            // 保存失败时，回滚清空操作
-            archives.value = oldArchives;
-        }
-        return;
-    }
-
     const archive = archives.value.find(item => item.id === command);
     if (!archive) {
         showMessageError('未找到对应的存档');
@@ -5877,6 +5864,9 @@ const handleArchiveCommand = async (command: string) => {
         showMessageError('编辑器未初始化，请稍候再试');
         return;
     }
+
+    // 先清空编辑区域
+    clearInput(false);
 
     // 直接加载存档内容，保持原有格式（不重新格式化以避免缩进不一致）
     const inputModel = inputEditor.getModel();
@@ -9122,20 +9112,14 @@ const handleFileUpload = async (uploadFile: UploadFile) => {
 };
 
 // 清空输入
-const clearInput = () => {
+const clearInput = (showToast: boolean = true) => {
     try {
-        // 移除重置缩进空格的代码，保留用户设置
         maxLevel.value = 0;
         selectedLevel.value = 0;
 
-        // 禁用编辑器的语言服务，防止worker错误
         if (inputEditor) {
             const model = inputEditor.getModel();
             if (model) {
-                // 先将模型的语言设置为纯文本，避免JSON验证
-                monaco.editor.setModelLanguage(model, 'plaintext');
-
-                // 使用 executeEdits 来清空内容，这样可以保留撤销历史
                 const fullRange = model.getFullModelRange();
                 if (!fullRange.isEmpty()) {
                     inputEditor.executeEdits('clear-input', [
@@ -9159,10 +9143,6 @@ const clearInput = () => {
             clearOutputFoldingInfo();
             const model = outputEditor.getModel();
             if (model) {
-                // 先将模型的语言设置为纯文本
-                monaco.editor.setModelLanguage(model, 'plaintext');
-
-                // 使用 executeEdits 来清空内容，这样可以保留撤销历史
                 const fullRange = model.getFullModelRange();
                 if (!fullRange.isEmpty()) {
                     outputEditor.executeEdits('clear-output', [
@@ -9172,22 +9152,14 @@ const clearInput = () => {
                         },
                     ]);
                 }
-
-                // 延迟后再设置回JSON语言
-                setTimeout(() => {
-                    if (model && !model.isDisposed()) {
-                        monaco.editor.setModelLanguage(model, 'json');
-                    }
-                }, 100);
             }
-
             updateEditorHeight(outputEditor);
         }
 
-        // 重置输出类型
         outputType.value = 'json';
-
-        showMessageSuccess('已清空内容');
+        if (showToast) {
+            showMessageSuccess('已清空内容');
+        }
     } catch (error: any) {
         showMessageError('清空内容失败');
     }
