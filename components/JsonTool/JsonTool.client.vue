@@ -1214,12 +1214,10 @@ const precomputeFoldingInfo = async (formattedText: string, priorityLines?: { st
 
             // 只存储非空的折叠区域
             if (count > 0) {
-                const infoToSet = { type: item.type, count };
-                // DEBUG: 确认存储的数据格式
-                if (typeof infoToSet.type === 'undefined' || typeof infoToSet.count === 'undefined') {
-                    console.warn('[DEBUG set] Invalid data:', { startLine: item.startLine, infoToSet });
-                }
-                precomputedFoldingInfo.set(item.startLine, infoToSet);
+                precomputedFoldingInfo.set(item.startLine, {
+                    type: item.type,
+                    count: count,
+                });
             }
 
             processed++;
@@ -1704,13 +1702,6 @@ const setupFoldingInfoDisplay = (editor: monaco.editor.IStandaloneCodeEditor) =>
     // 从预先计算的数据中获取折叠区域的信息
     const getFoldingInfo = (startLine: number): { type: 'object' | 'array'; count: number } | null => {
         const info = precomputedFoldingInfo.get(startLine) || null;
-        // DEBUG: 诊断 undefined 问题
-        if (info && (info.type !== 'object' && info.type !== 'array')) {
-            console.warn('[DEBUG getFoldingInfo] Invalid type:', { startLine, info });
-        }
-        if (info && typeof info.count === 'undefined') {
-            console.warn('[DEBUG getFoldingInfo] count is undefined:', { startLine, info });
-        }
         // 确保返回的数据有有效的 type 和 count
         if (info && (info.type === 'object' || info.type === 'array') && info.count > 0) {
             return info;
@@ -1982,17 +1973,9 @@ const setupFoldingInfoDisplay = (editor: monaco.editor.IStandaloneCodeEditor) =>
             // 确保 info 存在且有有效的 type 和 count，避免显示 undefined
             if (!info || !info.type || info.count === 0) return;
 
-            // 最终安全检查：确保 info.type 和 info.count 是有效值
-            const safeType = (info.type === 'object' || info.type === 'array') ? info.type : null;
-            const safeCount = typeof info.count === 'number' && info.count > 0 ? info.count : null;
-            if (!safeType || !safeCount) {
-                console.warn('[DEBUG textContent] Invalid info after checks:', { lineNumber, info, safeType, safeCount });
-                return;
-            }
-
             const infoElement = document.createElement('span');
             infoElement.className = 'folding-info-text';
-            infoElement.textContent = ` ${safeType === 'object' ? `${safeCount} keys` : `${safeCount} items`}`;
+            infoElement.textContent = ` ${info.type === 'object' ? `${info.count} keys` : `${info.count} items`}`;
 
             const parent = foldedElement.parentNode;
             if (parent) {
