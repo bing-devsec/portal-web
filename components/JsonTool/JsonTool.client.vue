@@ -425,6 +425,16 @@
 
                             <el-divider class="settings-subsection-divider" />
 
+                            <!-- 粘性滚动设置 -->
+                            <div class="settings-subsection">
+                                <div class="settings-subsection-title">粘性滚动设置</div>
+                                <div class="settings-item">
+                                    <el-switch v-model="stickyScroll" active-text="启用" inactive-text="禁用" size="default" @change="updateStickyScroll" />
+                                </div>
+                            </div>
+
+                            <el-divider class="settings-subsection-divider" />
+
                             <!-- 同步滚动设置 -->
                             <div class="settings-subsection">
                                 <div class="settings-subsection-title">同步滚动设置</div>
@@ -452,16 +462,6 @@
                                     <el-switch v-model="showIndentGuide" active-text="显示" inactive-text="隐藏" size="default" @change="updateIndentGuides" />
                                 </div>
                             </div>
-
-                            <el-divider class="settings-subsection-divider" />
-
-                            <!-- 粘性滚动设置 -->
-                            <div class="settings-subsection">
-                                <div class="settings-subsection-title">粘性滚动设置</div>
-                                <div class="settings-item">
-                                    <el-switch v-model="stickyScroll" active-text="启用" inactive-text="禁用" size="default" @change="updateStickyScroll" />
-                                </div>
-                            </div>
                         </div>
                     </el-collapse-item>
 
@@ -479,11 +479,9 @@
                             <div class="settings-item">
                                 <div class="settings-item-header">
                                     <span class="settings-label">编码设置</span>
+                                    <span v-if="encodingMode" class="settings-description">识别并解码Base64、Unicode和Hex编码</span>
                                 </div>
-                                <el-radio-group v-model="encodingMode" class="settings-radio-group">
-                                    <el-radio :value="0" border>不解码</el-radio>
-                                    <el-radio :value="1" border>解码</el-radio>
-                                </el-radio-group>
+                                <el-switch v-model="encodingMode" active-text="解码" inactive-text="不解码" size="default" />
                             </div>
 
                             <el-divider style="margin: 12px 0" />
@@ -495,8 +493,6 @@
                                 </div>
                                 <el-switch v-model="arrayNewLine" active-text="换行" inactive-text="紧凑" size="default" />
                             </div>
-
-                            <el-divider style="margin: 12px 0" />
                         </div>
                     </el-collapse-item>
 
@@ -813,7 +809,7 @@ const defaultSettings = {
     // 格式化设置
     indentSize: 2,
     // 编码模式设置
-    encodingMode: 0,
+    encodingMode: false,
     // 数组风格
     arrayNewLine: true,
     // 保留数字字面值设置
@@ -887,7 +883,7 @@ const defaultFullscreen = ref(savedSettings.defaultFullscreen ?? savedSettings.i
 watch(defaultFullscreen, (val) => { isFullscreen.value = val; }, { immediate: true });
 const showMinimap = ref(savedSettings.showMinimap ?? false); // 是否显示缩略图
 const enableDiagnostics = ref(savedSettings.enableDiagnostics ?? true); // 是否启用JSON语法检查
-const encodingMode = ref(savedSettings.encodingMode); // 添加编码处理模式：0-不解码（保持原样），1-解码（智能解码所有编码格式）
+const encodingMode = ref(savedSettings.encodingMode ?? false); // 添加编码处理模式：false-不解码，true-解码（智能解码所有编码格式）
 const sortMethod = ref<'dictionary' | 'length' | 'field'>(savedSettings.sortMethod); // 排序方法
 const sortOrder = ref<'asc' | 'desc'>(savedSettings.sortOrder); // 排序方向
 const customArchiveName = ref<boolean>(savedSettings.customArchiveName ?? false); // 是否自定义存档名称
@@ -3794,16 +3790,45 @@ const decodeHex = (str: string): string | null => {
     }
 };
 
-// 简化版 Base64 检测：检查字符分布均匀度
-// Base64 编码后字符分布比较均匀，普通英文/路径有明显偏斜
+// 基于字符分布的 Base64 检测
+// 普通英文文本有明显的字母频率特征（如 e 出现频率最高），Base64 分布更均匀
 const isLikelyBase64 = (str: string): boolean => {
-    // 计算字符分布的基尼系数（0=完全均匀，1=完全不均匀）
+    // 英文常见字母频率表（来自英语语料库统计）
+    const englishFreq: Record<string, number> = {
+        'e': 0.1202, 't': 0.0910, 'a': 0.0812, 'o': 0.0768, 'i': 0.0731,
+        'n': 0.0695, 's': 0.0628, 'h': 0.0605, 'r': 0.0592, 'd': 0.0432,
+        'l': 0.0398, 'c': 0.0271, 'u': 0.0268, 'm': 0.0241, 'w': 0.0236,
+        'f': 0.0223, 'g': 0.0203, 'y': 0.0197, 'p': 0.0193, 'b': 0.0149,
+        'v': 0.0098, 'k': 0.0066, 'j': 0.0015, 'x': 0.0015, 'q': 0.0010,
+        'z': 0.0007
+    };
+    // 计算字符频率
     const charCount: Record<string, number> = {};
-    for (const char of str) {
+    for (const char of str.toLowerCase()) {
         charCount[char] = (charCount[char] || 0) + 1;
     }
-
-    const values = Object.values(charCount).sort((a, b) => a - b);
+    // 计算与英文频率的相关系数
+    let correlation = 0;
+    let totalWeight = 0;
+    for (const char of str.toLowerCase()) {
+        if (englishFreq[char]) {
+            const expectedFreq = englishFreq[char];
+            const actualFreq = (charCount[char] || 0) / str.length;
+            correlation += Math.abs(actualFreq - expectedFreq);
+            totalWeight += 1;
+        }
+    }
+    // 计算 Base64 字符的分布均匀度
+    // Base64 应该分布比较均匀，而英文有明显的偏斜
+    const base64Chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
+    const base64Count: Record<string, number> = {};
+    for (const char of str) {
+        if (base64Chars.includes(char)) {
+            base64Count[char] = (base64Count[char] || 0) + 1;
+        }
+    }
+    // 计算基尼系数（衡量分布均匀度，0 表示完全均匀，1 表示完全不均匀）
+    const values = Object.values(base64Count).sort((a, b) => a - b);
     const n = values.length;
     if (n === 0) return false;
     let sum = 0;
@@ -3811,9 +3836,22 @@ const isLikelyBase64 = (str: string): boolean => {
         sum += (2 * (i + 1) - n - 1) * values[i];
     }
     const giniCoeff = Math.abs(sum) / (n * values.reduce((a, b) => a + b, 0));
-
-    // Base64 通常分布较均匀（基尼系数较低），普通文本/路径偏斜较大
-    return giniCoeff < 0.25;
+    // 决策逻辑：
+    // 1. 如果分布非常均匀（基尼系数 < 0.15），更可能是 Base64
+    // 2. 如果分布不均匀（基尼系数 > 0.3），更像是普通英文
+    // 3. 如果基尼系数在中间区间，使用英文频率相关性辅助判断
+    if (giniCoeff < 0.15) {
+        return true;
+    }
+    if (giniCoeff > 0.35) {
+        return false;
+    }
+    // 中间区间：结合英文频率相关性判断
+    // correlation 越小，说明越符合英文频率分布
+    const avgCorrelation = correlation / Math.max(totalWeight, 1);
+    // 阈值根据字符串长度调整
+    const threshold = 0.05 + 0.02 * (1 / Math.log(str.length + 10));
+    return avgCorrelation < threshold;
 };
 
 // 检查字符串是否可能是某种编码格式
@@ -3882,13 +3920,13 @@ const smartDecode = (str: string): string => {
 
 // JSON Plus Formatter 类
 class JsonPlusFormatter {
-    private encodingMode: number;
+    private encodingMode: boolean;
     private indentSize: number;
     private arrayNewLine: boolean;
     private preserveNumberLiterals: boolean;
     private escapePlaceholderCounter: number;
 
-    constructor(encodingMode: number, indentSize: number, arrayNewLine: boolean, preserveNumberLiterals: boolean = false) {
+    constructor(encodingMode: boolean, indentSize: number, arrayNewLine: boolean, preserveNumberLiterals: boolean = false) {
         this.encodingMode = encodingMode;
         this.indentSize = indentSize;
         this.arrayNewLine = arrayNewLine;
@@ -3975,7 +4013,7 @@ class JsonPlusFormatter {
         const i = startIndex;
         if (i + 5 < input.length && /^[0-9a-fA-F]{4}$/.test(input.substr(i + 2, 4))) {
             const unicodeSeq = input.substr(i, 6); // \uXXXX
-            if (this.encodingMode === 0) {
+            if (this.encodingMode) {
                 const placeholder = this.createEscapePlaceholder();
                 escapeMap.set(placeholder, unicodeSeq);
                 return { consumed: 6, append: placeholder };
@@ -4010,19 +4048,15 @@ class JsonPlusFormatter {
         if (i + 3 < input.length && /^[0-9a-fA-F]{2}$/.test(input.substr(i + 2, 2))) {
             const hexSeq = input.substr(i, 4); // \xHH
             const byte = parseInt(input.substr(i + 2, 2), 16);
-            if (this.encodingMode === 1) {
+            if (this.encodingMode) {
                 // 收集字节用于 UTF-8 解码，暂不 append
                 pendingBytes.push(byte);
                 return { consumed: 4, append: '' };
-            } else if (this.encodingMode === 0) {
-                // raw 模式：占位以保持原始 \xHH
+            } else {
+                // 不解码模式：占位以保持原始 \xHH
                 const placeholder = this.createEscapePlaceholder();
                 escapeMap.set(placeholder, hexSeq);
                 return { consumed: 4, append: placeholder };
-            } else {
-                // 其他模式：保留原样 \xHH（交给后续处理）
-                escapeMap.set(hexSeq, hexSeq);
-                return { consumed: 4, append: hexSeq };
             }
         } else {
             // 非法 \x 转义，收集连续十六进制字符（最多2个）
@@ -4513,7 +4547,7 @@ class JsonPlusFormatter {
         let processedStr = str;
 
         // 如果是解码模式，对字符串值进行智能解码
-        if (this.encodingMode === 1) {
+        if (this.encodingMode) {
             processedStr = smartDecode(str);
         }
 
@@ -4714,9 +4748,9 @@ class JsonPlusFormatter {
 }
 
 // 兼容性函数 - 用于其他地方的JSON解析
-const preprocessJSON = (input: string, options?: { preserveNumberLiterals?: boolean; encodingMode?: number }) => {
+const preprocessJSON = (input: string, options?: { preserveNumberLiterals?: boolean; encodingMode?: boolean }) => {
     const preserveNumbers = options?.preserveNumberLiterals ?? preserveNumberLiterals.value;
-    const mode = options?.encodingMode ?? 0;
+    const mode = options?.encodingMode ?? false;
     const formatter = new JsonPlusFormatter(mode, indentSize.value, arrayNewLine.value, preserveNumbers);
     const result = formatter.parseJson5(input);
     return {
@@ -4775,7 +4809,7 @@ const CompatibleCustomStringify = (data: any, indentSize: number, ...args: any[]
     const optionsArg = args.length > 0 ? args[args.length - 1] : undefined;
     const hasOptions = optionsArg && typeof optionsArg === 'object' && !Array.isArray(optionsArg) && ('preserveNumberLiterals' in optionsArg || 'encodingMode' in optionsArg);
     const preserveNumbers = hasOptions ? optionsArg.preserveNumberLiterals === true : preserveNumberLiterals.value;
-    const mode = hasOptions && typeof optionsArg.encodingMode === 'number' ? optionsArg.encodingMode : 0;
+    const mode = hasOptions && typeof optionsArg.encodingMode === 'boolean' ? optionsArg.encodingMode : false;
     const formatter = new JsonPlusFormatter(mode, indentSize, arrayNewLine.value, preserveNumbers);
     const escapeMap = new Map<string, string>();
     return formatter.format(data, escapeMap);
@@ -4845,7 +4879,7 @@ const compressJSON = () => {
         }
 
         // 使用 JsonPlusFormatter 进行压缩，确保转义序列正确恢复
-        const formatter = new JsonPlusFormatter(0, indentSize.value, arrayNewLine.value, preserveNumberLiterals.value);
+        const formatter = new JsonPlusFormatter(false, indentSize.value, arrayNewLine.value, preserveNumberLiterals.value);
         const compressed = formatter.compress(result.data, result.escapeMap);
         outputEditor?.setValue(compressed);
 
@@ -5045,7 +5079,7 @@ const unescapeJSON = (recursive: boolean = true) => {
         // 简化解析流程：优先直接解析 -> 宽松解析 -> 迭代去除外层转义后再尝试解析
         const tryParseJSON = (str: string) => {
             try {
-                const result = preprocessJSON(replaceUnicodeEscapes(str), { preserveNumberLiterals: true, encodingMode: 0 });
+                const result = preprocessJSON(replaceUnicodeEscapes(str), { preserveNumberLiterals: true, encodingMode: false });
                 return { ok: true, value: result.data } as const;
             } catch {
                 return { ok: false } as const;
@@ -5312,7 +5346,7 @@ const unescapeJSON = (recursive: boolean = true) => {
 
                                     try {
                                         // 先尝试直接解析，可能已经是有效的JSON
-                                        const parseResult = preprocessJSON(replaceUnicodeEscapes(obj), { preserveNumberLiterals: true, encodingMode: 0 });
+                                        const parseResult = preprocessJSON(replaceUnicodeEscapes(obj), { preserveNumberLiterals: true, encodingMode: false });
                                         parsedValue = parseResult.data;
                                         isValidJson = true;
                                     } catch (e: any) {
@@ -5352,7 +5386,7 @@ const unescapeJSON = (recursive: boolean = true) => {
 
                                         // 尝试解析去除转义后的字符串
                                         try {
-                                            const parseResult = preprocessJSON(replaceUnicodeEscapes(unescaped), { preserveNumberLiterals: true, encodingMode: 0 });
+                                            const parseResult = preprocessJSON(replaceUnicodeEscapes(unescaped), { preserveNumberLiterals: true, encodingMode: false });
                                             parsedValue = parseResult.data;
                                             isValidJson = true;
                                         } catch (parseError) {
@@ -5423,7 +5457,7 @@ const unescapeJSON = (recursive: boolean = true) => {
                                 const t = item.trim();
                                 if ((t.startsWith('{') && t.endsWith('}')) || (t.startsWith('[') && t.endsWith(']')) || t.includes('\\"') || t.includes('\\\\')) {
                                     try {
-                                        const result = preprocessJSON(replaceUnicodeEscapes(item), { preserveNumberLiterals: true, encodingMode: 0 });
+                                        const result = preprocessJSON(replaceUnicodeEscapes(item), { preserveNumberLiterals: true, encodingMode: false });
                                         if (result.data && typeof result.data === 'object' && result.data.__highPrecisionNumber && result.data.originalString) {
                                             return JSON.stringify(result.data);
                                         }
@@ -5431,7 +5465,7 @@ const unescapeJSON = (recursive: boolean = true) => {
                                     } catch {
                                         try {
                                             const unescaped = item.replace(/\\"/g, '"').replace(/\\\\/g, '\\');
-                                            const result = preprocessJSON(replaceUnicodeEscapes(unescaped), { preserveNumberLiterals: true, encodingMode: 0 });
+                                            const result = preprocessJSON(replaceUnicodeEscapes(unescaped), { preserveNumberLiterals: true, encodingMode: false });
                                             if (result.data && typeof result.data === 'object' && result.data.__highPrecisionNumber && result.data.originalString) {
                                                 return JSON.stringify(result.data);
                                             }
@@ -5458,7 +5492,7 @@ const unescapeJSON = (recursive: boolean = true) => {
                                 const t = val.trim();
                                 if ((t.startsWith('{') && t.endsWith('}')) || (t.startsWith('[') && t.endsWith(']')) || t.includes('\\"') || t.includes('\\\\')) {
                                     try {
-                                        const parseResult = preprocessJSON(replaceUnicodeEscapes(val), { preserveNumberLiterals: true, encodingMode: 0 });
+                                        const parseResult = preprocessJSON(replaceUnicodeEscapes(val), { preserveNumberLiterals: true, encodingMode: false });
                                         if (parseResult.data && typeof parseResult.data === 'object' && parseResult.data.__highPrecisionNumber && parseResult.data.originalString) {
                                             result[key] = JSON.stringify(parseResult.data);
                                             continue;
@@ -5468,7 +5502,7 @@ const unescapeJSON = (recursive: boolean = true) => {
                                     } catch {
                                         try {
                                             const unescaped = val.replace(/\\"/g, '"').replace(/\\\\/g, '\\');
-                                            const parseResult = preprocessJSON(replaceUnicodeEscapes(unescaped), { preserveNumberLiterals: true, encodingMode: 0 });
+                                            const parseResult = preprocessJSON(replaceUnicodeEscapes(unescaped), { preserveNumberLiterals: true, encodingMode: false });
                                             if (parseResult.data && typeof parseResult.data === 'object' && parseResult.data.__highPrecisionNumber && parseResult.data.originalString) {
                                                 result[key] = JSON.stringify(parseResult.data);
                                                 continue;
@@ -5517,14 +5551,14 @@ const unescapeJSON = (recursive: boolean = true) => {
         if (typeof value === 'string' && value.trim().startsWith('"') && value.trim().endsWith('"')) {
             try {
                 // 尝试解析为JSON字符串
-                const firstUnescapedResult = preprocessJSON(replaceUnicodeEscapes(value.trim()), { preserveNumberLiterals: true, encodingMode: 0 });
+                const firstUnescapedResult = preprocessJSON(replaceUnicodeEscapes(value.trim()), { preserveNumberLiterals: true, encodingMode: false });
                 const firstUnescaped = firstUnescapedResult.data;
 
                 if (typeof firstUnescaped === 'string') {
                     // 检查解析出的字符串是否是有效的JSON
                     let isValidJson = false;
                     try {
-                        preprocessJSON(replaceUnicodeEscapes(firstUnescaped), { preserveNumberLiterals: true, encodingMode: 0 });
+                        preprocessJSON(replaceUnicodeEscapes(firstUnescaped), { preserveNumberLiterals: true, encodingMode: false });
                         isValidJson = true;
                     } catch {
                         // 不是有效的JSON，应该保持原样
@@ -5534,7 +5568,7 @@ const unescapeJSON = (recursive: boolean = true) => {
                     if (isValidJson) {
                         try {
                             // 尝试解析第二层
-                            const secondUnescapedResult = preprocessJSON(replaceUnicodeEscapes(firstUnescaped), { preserveNumberLiterals: true, encodingMode: 0 });
+                            const secondUnescapedResult = preprocessJSON(replaceUnicodeEscapes(firstUnescaped), { preserveNumberLiterals: true, encodingMode: false });
                             const secondUnescaped = secondUnescapedResult.data;
                             if (typeof secondUnescaped === 'object' && secondUnescaped !== null) {
                                 const formatted = stringifyWithUnicodeForUnescape(secondUnescaped);
@@ -5705,7 +5739,7 @@ const compressAndEscapeJSON = () => {
         }
 
         // 使用 JsonPlusFormatter 进行压缩，确保转义序列正确恢复
-        const formatter = new JsonPlusFormatter(0, indentSize.value, arrayNewLine.value, true);
+        const formatter = new JsonPlusFormatter(false, indentSize.value, arrayNewLine.value, true);
         const compressed = formatter.compress(result.data, result.escapeMap);
 
         // 直接用 JSON.stringify 包裹成字符串
@@ -5772,7 +5806,7 @@ const handleLevelAction = () => {
         }
 
         // 使用JsonPlusFormatter格式化JSON，保持原始转义序列
-        const formatter = new JsonPlusFormatter(0, indentSize.value, arrayNewLine.value);
+        const formatter = new JsonPlusFormatter(false, indentSize.value, arrayNewLine.value);
         const formatted = formatter.format(parsedData, escapeMap);
 
         // 更新预览区域内容
@@ -6254,7 +6288,7 @@ const handleLoadSharedJson = (jsonData: string) => {
             let parsed;
             try {
                 // 使用 true 强制保留数字字面量，避免解析超长浮点数时丢失精度导致的问题
-                const formatter = new JsonPlusFormatter(0, 2, false, true);
+                const formatter = new JsonPlusFormatter(false, 2, false, true);
                 const result = formatter.parseJson5(jsonData);
                 parsed = result.data;
             } catch (e) {
@@ -6853,7 +6887,7 @@ const loadSharedDataFromUrl = async () => {
                     // 验证JSON格式并计算层级，但不重新格式化，保持分享者原样
                     let parsedData;
                     try {
-                        const formatter = new JsonPlusFormatter(0, 2, false, true);
+                        const formatter = new JsonPlusFormatter(false, 2, false, true);
                         const result = formatter.parseJson5(response.data.jsonData);
                         parsedData = result.data;
                     } catch (e) {
@@ -8288,7 +8322,7 @@ const executeFieldSort = () => {
             });
 
             // 格式化输出
-            const formatter = new JsonPlusFormatter(0, indentSize.value, arrayNewLine.value, preserveNumberLiterals.value);
+            const formatter = new JsonPlusFormatter(false, indentSize.value, arrayNewLine.value, preserveNumberLiterals.value);
             const formatted = formatter.format(parsed, escapeMap);
             const finalOutput = formatted.replace(/\\u([0-9a-fA-F]{4})/g, '\\u$1');
 
@@ -8325,7 +8359,7 @@ const executeFieldSort = () => {
         }
 
         // 格式化输出
-        const formatter = new JsonPlusFormatter(0, indentSize.value, arrayNewLine.value, preserveNumberLiterals.value);
+        const formatter = new JsonPlusFormatter(false, indentSize.value, arrayNewLine.value, preserveNumberLiterals.value);
         const formatted = formatter.format(finalResult, escapeMap);
         const finalOutput = formatted.replace(/\\u([0-9a-fA-F]{4})/g, '\\u$1');
 
@@ -8418,7 +8452,7 @@ const applySort = () => {
                 const sorted = sortJsonObject(parsed, sortMethod.value, sortOrder.value, '');
 
                 // 格式化输出
-                const formatter = new JsonPlusFormatter(0, indentSize.value, arrayNewLine.value, preserveNumberLiterals.value);
+                const formatter = new JsonPlusFormatter(false, indentSize.value, arrayNewLine.value, preserveNumberLiterals.value);
                 const formatted = formatter.format(sorted, escapeMap);
                 outputResult = formatted.replace(/\\u([0-9a-fA-F]{4})/g, '\\u$1');
             } catch (jsonError) {
@@ -8435,7 +8469,7 @@ const applySort = () => {
             const escapeMap = result.escapeMap;
 
             const sorted = sortJsonObject(parsed, sortMethod.value, sortOrder.value, '');
-            const formatter = new JsonPlusFormatter(0, indentSize.value, arrayNewLine.value, preserveNumberLiterals.value);
+            const formatter = new JsonPlusFormatter(false, indentSize.value, arrayNewLine.value, preserveNumberLiterals.value);
             const formatted = formatter.format(sorted, escapeMap);
             outputResult = formatted.replace(/\\u([0-9a-fA-F]{4})/g, '\\u$1');
         }
