@@ -1214,10 +1214,12 @@ const precomputeFoldingInfo = async (formattedText: string, priorityLines?: { st
 
             // 只存储非空的折叠区域
             if (count > 0) {
-                precomputedFoldingInfo.set(item.startLine, {
-                    type: item.type,
-                    count: count,
-                });
+                const infoToSet = { type: item.type, count };
+                // DEBUG: 确认存储的数据格式
+                if (typeof infoToSet.type === 'undefined' || typeof infoToSet.count === 'undefined') {
+                    console.warn('[DEBUG set] Invalid data:', { startLine: item.startLine, infoToSet });
+                }
+                precomputedFoldingInfo.set(item.startLine, infoToSet);
             }
 
             processed++;
@@ -1414,6 +1416,9 @@ const foldProgressVisible = ref(false);
 const foldTotalLines = ref(0);
 const foldPercent = computed(() => Math.round(foldProgress.value * 100));
 const foldCurrentLine = computed(() => Math.min(foldTotalLines.value, Math.round(foldProgress.value * foldTotalLines.value)));
+
+// 折叠操作锁定状态（防止并发折叠）
+let isFoldOperationLocked = false;
 
 // 拖动相关状态（提升到外层作用域，避免每次拖动创建新变量）
 let resizeState: {
@@ -1699,7 +1704,18 @@ const setupFoldingInfoDisplay = (editor: monaco.editor.IStandaloneCodeEditor) =>
     // 从预先计算的数据中获取折叠区域的信息
     const getFoldingInfo = (startLine: number): { type: 'object' | 'array'; count: number } | null => {
         const info = precomputedFoldingInfo.get(startLine) || null;
-        return info;
+        // DEBUG: 诊断 undefined 问题
+        if (info && (info.type !== 'object' && info.type !== 'array')) {
+            console.warn('[DEBUG getFoldingInfo] Invalid type:', { startLine, info });
+        }
+        if (info && typeof info.count === 'undefined') {
+            console.warn('[DEBUG getFoldingInfo] count is undefined:', { startLine, info });
+        }
+        // 确保返回的数据有有效的 type 和 count
+        if (info && (info.type === 'object' || info.type === 'array') && info.count > 0) {
+            return info;
+        }
+        return null;
     };
 
     // 存储已添加的信息元素，用于清理
@@ -1946,6 +1962,7 @@ const setupFoldingInfoDisplay = (editor: monaco.editor.IStandaloneCodeEditor) =>
             }
 
             let info = getFoldingInfo(lineNumber);
+            // 如果没有统计信息或统计数量为0，尝试重新计算
             if (!info || info.count === 0) {
                 const range = precomputedFoldingRanges.get(lineNumber);
                 if (range) {
@@ -1961,12 +1978,21 @@ const setupFoldingInfoDisplay = (editor: monaco.editor.IStandaloneCodeEditor) =>
                         }
                     } catch (_) {}
                 }
-                if (!info || info.count === 0) return;
+            }
+            // 确保 info 存在且有有效的 type 和 count，避免显示 undefined
+            if (!info || !info.type || info.count === 0) return;
+
+            // 最终安全检查：确保 info.type 和 info.count 是有效值
+            const safeType = (info.type === 'object' || info.type === 'array') ? info.type : null;
+            const safeCount = typeof info.count === 'number' && info.count > 0 ? info.count : null;
+            if (!safeType || !safeCount) {
+                console.warn('[DEBUG textContent] Invalid info after checks:', { lineNumber, info, safeType, safeCount });
+                return;
             }
 
             const infoElement = document.createElement('span');
             infoElement.className = 'folding-info-text';
-            infoElement.textContent = ` ${info.type === 'object' ? `${info.count} keys` : `${info.count} items`}`;
+            infoElement.textContent = ` ${safeType === 'object' ? `${safeCount} keys` : `${safeCount} items`}`;
 
             const parent = foldedElement.parentNode;
             if (parent) {
@@ -5451,6 +5477,12 @@ const compressAndEscapeJSON = () => {
 
 // 处理层级收缩
 const handleLevelAction = () => {
+    // 检查是否有正在进行的折叠操作，如果有则直接拒绝新请求
+    if (isFoldOperationLocked) {
+        showMessageWarning('请等待当前折叠操作完成');
+        return;
+    }
+
     try {
         if (!outputEditor) {
             showMessageError('编辑器未初始化');
@@ -5512,50 +5544,58 @@ const handleLevelAction = () => {
         const performFold = async () => {
             if (!outputEditor) return;
 
-            // 展开所有
-            outputEditor.trigger('unfold', 'editor.unfoldAll', null);
+            // 设置锁定状态
+            isFoldOperationLocked = true;
 
-            // 等待展开完成
-            const unfoldDelay = currentLineCount > 80000 ? 600 : currentLineCount > 50000 ? 400 : 100;
-            await new Promise(resolve => setTimeout(resolve, unfoldDelay));
+            try {
+                // 展开所有
+                outputEditor.trigger('unfold', 'editor.unfoldAll', null);
 
-            // 执行折叠
-            await foldByIndentation();
+                // 等待展开完成
+                const unfoldDelay = currentLineCount > 80000 ? 600 : currentLineCount > 50000 ? 400 : 100;
+                await new Promise(resolve => setTimeout(resolve, unfoldDelay));
 
-            // 折叠完成后，启用折叠信息更新并立即刷新，然后重新计算
-            setTimeout(() => {
-                if (!outputEditor) return;
-                try {
-                    // 启用折叠信息更新并立即刷新（使用现有数据）
-                    const refreshFunc = (outputEditor as any).__enableFoldingInfoUpdateAndRefresh;
-                    if (refreshFunc) {
-                        refreshFunc();
-                    }
+                // 执行折叠
+                await foldByIndentation();
 
-                    // 然后重新计算折叠信息
-                    const visibleRanges = outputEditor.getVisibleRanges();
-                    if (visibleRanges && visibleRanges.length > 0) {
-                        let minLine = Infinity;
-                        let maxLine = 0;
-                        visibleRanges.forEach(range => {
-                            if (range.startLineNumber < minLine) minLine = range.startLineNumber;
-                            if (range.endLineNumber > maxLine) maxLine = range.endLineNumber;
-                        });
-                        if (minLine !== Infinity && maxLine > 0) {
-                            // 扩展可见区域范围（上下各扩展200行，提高滚动体验）
-                            const model = outputEditor.getModel();
-                            if (model) {
-                                const totalLines = model.getLineCount();
-                                const priorityStart = Math.max(1, minLine - 200);
-                                const priorityEnd = Math.min(totalLines, maxLine + 200);
+                // 折叠完成后，启用折叠信息更新并立即刷新，然后重新计算
+                setTimeout(() => {
+                    if (!outputEditor) return;
+                    try {
+                        // 启用折叠信息更新并立即刷新（使用现有数据）
+                        const refreshFunc = (outputEditor as any).__enableFoldingInfoUpdateAndRefresh;
+                        if (refreshFunc) {
+                            refreshFunc();
+                        }
 
-                                // 重新触发计算，优先计算可见区域
-                                precomputeFoldingInfo(formatted, { start: priorityStart, end: priorityEnd }).catch(() => {});
+                        // 然后重新计算折叠信息
+                        const visibleRanges = outputEditor.getVisibleRanges();
+                        if (visibleRanges && visibleRanges.length > 0) {
+                            let minLine = Infinity;
+                            let maxLine = 0;
+                            visibleRanges.forEach(range => {
+                                if (range.startLineNumber < minLine) minLine = range.startLineNumber;
+                                if (range.endLineNumber > maxLine) maxLine = range.endLineNumber;
+                            });
+                            if (minLine !== Infinity && maxLine > 0) {
+                                // 扩展可见区域范围（上下各扩展200行，提高滚动体验）
+                                const model = outputEditor.getModel();
+                                if (model) {
+                                    const totalLines = model.getLineCount();
+                                    const priorityStart = Math.max(1, minLine - 200);
+                                    const priorityEnd = Math.min(totalLines, maxLine + 200);
+
+                                    // 重新触发计算，优先计算可见区域
+                                    precomputeFoldingInfo(formatted, { start: priorityStart, end: priorityEnd }).catch(() => {});
+                                }
                             }
                         }
-                    }
-                } catch (e) {}
-            }, 300); // 等待折叠动画完成
+                    } catch (e) {}
+                }, 300); // 等待折叠动画完成
+            } finally {
+                // 无论成功还是失败，都要释放锁定
+                isFoldOperationLocked = false;
+            }
         };
 
         // 启动异步处理
