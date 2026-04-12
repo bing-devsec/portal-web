@@ -443,6 +443,10 @@ const createShare = async () => {
 
     loading.value = true;
 
+    // 创建 AbortController 用于超时控制
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 60000); // 60秒超时
+
     try {
         // 获取加密的浏览器指纹
         let encryptedFingerprint = '';
@@ -475,6 +479,7 @@ const createShare = async () => {
                 expiresIn: expiresIn.value || undefined,
                 shareName: name,
             },
+            signal: controller.signal,
         });
 
         if (response.success && response.data) {
@@ -483,8 +488,16 @@ const createShare = async () => {
             showMessageError(response.error || '创建分享链接失败');
         }
     } catch (error: any) {
-        showMessageError('创建分享链接失败: ' + (error.message || '未知错误'));
+        // 判断是否为超时错误
+        if (error.name === 'AbortError' || error.message?.includes('aborted')) {
+            showMessageError('请求超时，请稍后重试或尝试更小的 JSON 数据');
+        } else if (error.message?.includes('fetch') || error.message?.includes('network')) {
+            showMessageError('网络错误，请检查网络连接后重试');
+        } else {
+            showMessageError('创建分享链接失败: ' + (error.message || '未知错误'));
+        }
     } finally {
+        clearTimeout(timeoutId);
         loading.value = false;
     }
 };

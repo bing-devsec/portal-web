@@ -478,12 +478,11 @@
                         <div class="settings-collapse-content">
                             <div class="settings-item">
                                 <div class="settings-item-header">
-                                    <span class="settings-label">编码模式</span>
+                                    <span class="settings-label">编码设置</span>
                                 </div>
                                 <el-radio-group v-model="encodingMode" class="settings-radio-group">
-                                    <el-radio :value="0" border>保持原样</el-radio>
-                                    <el-radio :value="1" border>转中文</el-radio>
-                                    <el-radio :value="2" border>转Unicode</el-radio>
+                                    <el-radio :value="0" border>不解码</el-radio>
+                                    <el-radio :value="1" border>解码</el-radio>
                                 </el-radio-group>
                             </div>
 
@@ -712,6 +711,7 @@ import JSON5 from 'json5';
 import yaml from 'js-yaml';
 import * as toml from '@iarna/toml';
 import { create } from 'xmlbuilder2';
+import { Base64 } from 'js-base64';
 
 // ==================== 常量与全局状态 ====================
 const MAX_FILE_SIZE = 5 * 1024 * 1024; // 文件大小限制：5MB
@@ -887,7 +887,7 @@ const defaultFullscreen = ref(savedSettings.defaultFullscreen ?? savedSettings.i
 watch(defaultFullscreen, (val) => { isFullscreen.value = val; }, { immediate: true });
 const showMinimap = ref(savedSettings.showMinimap ?? false); // 是否显示缩略图
 const enableDiagnostics = ref(savedSettings.enableDiagnostics ?? true); // 是否启用JSON语法检查
-const encodingMode = ref(savedSettings.encodingMode); // 添加编码处理模式：0-保持原样，1-转中文，2-转Unicode
+const encodingMode = ref(savedSettings.encodingMode); // 添加编码处理模式：0-不解码（保持原样），1-解码（智能解码所有编码格式）
 const sortMethod = ref<'dictionary' | 'length' | 'field'>(savedSettings.sortMethod); // 排序方法
 const sortOrder = ref<'asc' | 'desc'>(savedSettings.sortOrder); // 排序方向
 const customArchiveName = ref<boolean>(savedSettings.customArchiveName ?? false); // 是否自定义存档名称
@@ -3554,7 +3554,7 @@ const calculateMaxLevelFromEditor = (model: monaco.editor.ITextModel, lineCount:
 };
 
 const getDefaultFoldLevel = (level: number) => {
-    if (level > 2) return 2;
+    if (level >= 2) return 2;
     if (level > 0) return 1;
     return 0;
 };
@@ -3630,6 +3630,254 @@ const handleConvert = (command: string) => {
     } catch (error: any) {
         showMessageError('转换失败: ' + error.message);
     }
+};
+
+// ========================================
+// 智能解码函数：自动识别并解码各种编码格式
+// ========================================
+
+// Base64 解码（仅支持整体的 Base64 解码）
+const decodeBase64 = (str: string): string | null => {
+    try {
+        // Base64 应该有明显的编码特征：padding(=) 或特殊字符(+/)
+        const hasPadding = str.includes('=');
+        const hasSpecialChars = str.includes('+') || str.includes('/');
+        if (!hasPadding && !hasSpecialChars) {
+            return null;
+        }
+
+        // 进一步检查是否是真正的 Base64（而非普通英文/路径）
+        if (!isLikelyBase64(str)) {
+            return null;
+        }
+
+        // 使用 js-base64 库解码
+        const decoded = Base64.decode(str);
+
+        // 检查解码后是否包含有效的中文字符或可打印 ASCII
+        const bytes: number[] = [];
+        for (let i = 0; i < decoded.length; i++) {
+            bytes.push(decoded.charCodeAt(i));
+        }
+
+        const isAllAscii = bytes.every(b => b >= 32 && b <= 126);
+        if (isAllAscii) {
+            return decoded;
+        }
+
+        // 尝试检查是否有 UTF-8 中文字符
+        if (/[\u4e00-\u9fa5]/.test(decoded)) {
+            return decoded;
+        }
+
+        return null;
+    } catch {
+        return null;
+    }
+};
+
+// Unicode 解码（\uXXXX 格式）- 避免循环解码
+const decodeUnicode = (str: string): string | null => {
+    try {
+        // 手动检查每个 \uXXXX，只匹配单反斜杠的（不匹配 \\u）
+        let result = '';
+        let i = 0;
+        let hasMatch = false;
+
+        while (i < str.length) {
+            if (str[i] === '\\' && i + 5 < str.length && str[i + 1] === 'u' && /^[0-9a-fA-F]{4}$/.test(str.substring(i + 2, i + 6))) {
+                // 检查前面是否有反斜杠（避免匹配 \\u）
+                const prevBackslash = (result.match(/\\+$/) || [''])[0].length;
+                if (prevBackslash % 2 === 0) {
+                    // 单反斜杠，可以解码
+                    const hex = str.substring(i + 2, i + 6);
+                    result += String.fromCharCode(parseInt(hex, 16));
+                    i += 6;
+                    hasMatch = true;
+                    continue;
+                }
+            }
+            result += str[i];
+            i++;
+        }
+
+        return hasMatch ? result : null;
+    } catch {
+        return null;
+    }
+};
+
+// Hex 解码（\xHH 格式）- 支持 UTF-8 组合解码
+const decodeHex = (str: string): string | null => {
+    try {
+        // 收集所有 \xHH 序列
+        const regex = /\\x([0-9a-fA-F]{2})/gi;
+        const bytes: number[] = [];
+        let lastIndex = 0;
+        let hasMatch = false;
+
+        let match;
+        while ((match = regex.exec(str)) !== null) {
+            // 检查是否是连续的（中间只有反斜杠）
+            const matchStart = match.index;
+            const matchEnd = matchStart + match[0].length;
+
+            // 收集匹配前的反斜杠（除了已经处理过的）
+            const beforeText = str.slice(lastIndex, matchStart);
+            const backslashCount = (beforeText.match(/\\+$/) || [''])[0].length;
+
+            // 如果前面有奇数个反斜杠，这个 \x 不是真正的转义
+            if (backslashCount % 2 === 1) {
+                lastIndex = matchEnd;
+                continue;
+            }
+
+            bytes.push(parseInt(match[1], 16));
+            lastIndex = matchEnd;
+            hasMatch = true;
+        }
+
+        if (!hasMatch || bytes.length === 0) {
+            return null;
+        }
+
+        // 将字节解码为 UTF-8
+        const decodeUTF8Bytes = (bytes: number[]): string => {
+            let result = '';
+            let i = 0;
+            while (i < bytes.length) {
+                const byte = bytes[i];
+                if (byte < 128) {
+                    result += String.fromCharCode(byte);
+                    i++;
+                } else if (byte >= 192 && byte < 224 && i + 1 < bytes.length) {
+                    const code = ((byte & 31) << 6) | (bytes[i + 1] & 63);
+                    result += String.fromCharCode(code);
+                    i += 2;
+                } else if (byte >= 224 && byte < 240 && i + 2 < bytes.length) {
+                    const code = ((byte & 15) << 12) | ((bytes[i + 1] & 63) << 6) | (bytes[i + 2] & 63);
+                    result += String.fromCharCode(code);
+                    i += 3;
+                } else if (byte >= 240 && byte < 248 && i + 3 < bytes.length) {
+                    const code = ((byte & 7) << 18) | ((bytes[i + 1] & 63) << 12) | ((bytes[i + 2] & 63) << 6) | (bytes[i + 3] & 63);
+                    if (code >= 0x10000) {
+                        const high = Math.floor((code - 0x10000) / 0x400) + 0xd800;
+                        const low = ((code - 0x10000) % 0x400) + 0xdc00;
+                        result += String.fromCharCode(high, low);
+                    } else {
+                        result += String.fromCharCode(code);
+                    }
+                    i += 4;
+                } else {
+                    result += String.fromCharCode(byte);
+                    i++;
+                }
+            }
+            return result;
+        };
+
+        const decoded = decodeUTF8Bytes(bytes);
+
+        // 检查是否包含有效的中文字符（避免解码出乱码）
+        if (/[\u4e00-\u9fa5]/.test(decoded)) {
+            return decoded;
+        }
+
+        // 如果解码后是 ASCII 可打印字符，也返回
+        if (/^[\x20-\x7E]*$/.test(decoded)) {
+            return decoded;
+        }
+
+        return null;
+    } catch {
+        return null;
+    }
+};
+
+// 简化版 Base64 检测：检查字符分布均匀度
+// Base64 编码后字符分布比较均匀，普通英文/路径有明显偏斜
+const isLikelyBase64 = (str: string): boolean => {
+    // 计算字符分布的基尼系数（0=完全均匀，1=完全不均匀）
+    const charCount: Record<string, number> = {};
+    for (const char of str) {
+        charCount[char] = (charCount[char] || 0) + 1;
+    }
+
+    const values = Object.values(charCount).sort((a, b) => a - b);
+    const n = values.length;
+    if (n === 0) return false;
+    let sum = 0;
+    for (let i = 0; i < n; i++) {
+        sum += (2 * (i + 1) - n - 1) * values[i];
+    }
+    const giniCoeff = Math.abs(sum) / (n * values.reduce((a, b) => a + b, 0));
+
+    // Base64 通常分布较均匀（基尼系数较低），普通文本/路径偏斜较大
+    return giniCoeff < 0.25;
+};
+
+// 检查字符串是否可能是某种编码格式
+const isLikelyEncoded = (str: string): boolean => {
+    if (str.length === 0) return false;
+    // Base64 检测：必须包含 padding(=) 或特殊字符(+/)
+    const hasPadding = str.includes('=');
+    const hasSpecialChars = str.includes('+') || str.includes('/');
+    if (hasPadding || hasSpecialChars) {
+        if (Base64.isValid(str)) {
+            // 进一步检查是否是真正的 Base64（而非普通英文/路径）
+            return isLikelyBase64(str);
+        }
+    }
+    // Unicode 检测：包含 \uXXXX
+    if (/\\u[0-9a-fA-F]{4}/.test(str)) {
+        return true;
+    }
+    // Hex 检测：包含 \xHH
+    if (/\\x[0-9a-fA-F]{2}/i.test(str)) {
+        return true;
+    }
+    return false;
+};
+
+// 智能解码：尝试所有解码方式（只循环一次，避免循环解码）
+const smartDecode = (str: string): string => {
+    // 首先检查是否包含编码格式
+    if (!isLikelyEncoded(str)) {
+        return str;
+    }
+
+    let result = str;
+    let changed = true;
+    const maxIterations = 1; // 只循环一次，避免循环解码
+    let iterations = 0;
+
+    while (changed && iterations < maxIterations) {
+        changed = false;
+        iterations++;
+
+        // Unicode 解码（只解码单反斜杠的 \uXXXX，避免双重解码）
+        const unicodeDecoded = decodeUnicode(result);
+        if (unicodeDecoded && unicodeDecoded !== result) {
+            result = unicodeDecoded;
+            changed = true;
+        }
+
+        // Hex 解码
+        const hexDecoded = decodeHex(result);
+        if (hexDecoded && hexDecoded !== result) {
+            result = hexDecoded;
+            changed = true;
+        }
+
+        // Base64 解码（仅支持整体解码）
+        const base64Decoded = decodeBase64(result);
+        if (base64Decoded && base64Decoded !== result) {
+            result = base64Decoded;
+            changed = true;
+        }
+    }
+
+    return result;
 };
 
 // JSON Plus Formatter 类
@@ -4262,7 +4510,12 @@ class JsonPlusFormatter {
 
     // 格式化字符串
     private formatString(str: string, escapeMap: Map<string, string>): string {
-        const processedStr = str;
+        let processedStr = str;
+
+        // 如果是解码模式，对字符串值进行智能解码
+        if (this.encodingMode === 1) {
+            processedStr = smartDecode(str);
+        }
 
         // 检查是否是高精度数字对象的JSON字符串，如果是则直接返回数字字符串
         try {
@@ -4321,21 +4574,8 @@ class JsonPlusFormatter {
                 // 其他控制字符
                 result += '\\u' + code.toString(16).padStart(4, '0');
             } else {
-                // 根据编码模式处理字符
-                switch (this.encodingMode) {
-                    case 0: // 保持原样
-                        result += this.formatRaw(char, code, escapeMap);
-                        break;
-                    case 1: // 转中文
-                        result += this.formatChinese(char, code, escapeMap);
-                        break;
-                    case 2: // 转Unicode
-                        result += this.formatUnicode(char, code, escapeMap);
-                        break;
-                    default:
-                        result += char;
-                        break;
-                }
+                // 解码模式下，解码后的字符可能包含特殊字符，需要处理
+                result += char;
             }
         }
 
@@ -4355,28 +4595,6 @@ class JsonPlusFormatter {
             }
         }
         // 普通字符保持原样
-        return char;
-    }
-
-    // 转中文模式编码
-    private formatChinese(char: string, code: number, escapeMap: Map<string, string>): string {
-        // 对于\xHH序列，JSON5解析器已经将其转换为实际字符
-        // 我们保持这些字符的原样显示
-        return char;
-    }
-
-    // 转Unicode模式编码
-    private formatUnicode(char: string, code: number, escapeMap: Map<string, string>): string {
-        if (code > 127 || code < 32 || code === 127) {
-            if (code <= 0xffff) {
-                return '\\u' + code.toString(16).padStart(4, '0');
-            } else {
-                // 代理对处理
-                const high = Math.floor((code - 0x10000) / 0x400) + 0xd800;
-                const low = ((code - 0x10000) % 0x400) + 0xdc00;
-                return '\\u' + high.toString(16).padStart(4, '0') + '\\u' + low.toString(16).padStart(4, '0');
-            }
-        }
         return char;
     }
 
@@ -4418,7 +4636,7 @@ class JsonPlusFormatter {
         if (compressed) {
             // 压缩模式：生成紧凑格式
             const items = keys.map(key => {
-                const keyStr = this.formatString(key, escapeMap); // 处理对象键，确保占位符被正确恢复
+                const keyStr = this.formatKey(key, escapeMap); // 处理对象键，key 不进行 smartDecode
                 const valueStr = this.customStringify(obj[key], escapeMap, 0, true);
                 return keyStr + ':' + valueStr;
             });
@@ -4429,12 +4647,69 @@ class JsonPlusFormatter {
         const nextIndentStr = ' '.repeat(indent * this.indentSize);
 
         const items = keys.map(key => {
-            const keyStr = this.formatString(key, escapeMap); // 处理对象键，确保占位符被正确恢复
+            const keyStr = this.formatKey(key, escapeMap); // 处理对象键，key 不进行 smartDecode
             const valueStr = this.customStringify(obj[key], escapeMap, indent + 1, compressed);
             return indentStr + keyStr + ': ' + valueStr;
         });
 
         return '{\n' + items.join(',\n') + '\n' + nextIndentStr + '}';
+    }
+
+    // 格式化对象 key（不进行 smartDecode，保持原始格式）
+    private formatKey(key: string, escapeMap: Map<string, string>): string {
+        let result = '"';
+
+        const isValidJsonEscape = (escape: string): boolean => {
+            if (escape.length === 2) {
+                return ['\\"', '\\\\', '\\/', '\\b', '\\f', '\\n', '\\r', '\\t'].includes(escape);
+            }
+            return /^\\u[0-9a-fA-F]{4}$/.test(escape);
+        };
+        const formatEscapePlaceholder = (escape: string): string => {
+            if (isValidJsonEscape(escape)) {
+                return escape;
+            }
+            return '\\\\' + escape.slice(1);
+        };
+
+        for (let i = 0; i < key.length; i++) {
+            const char = key[i];
+            if (char === '\uE000' && i + 1 < key.length) {
+                const placeholder = key.slice(i, i + 2);
+                const originalEscape = escapeMap.get(placeholder);
+                if (originalEscape) {
+                    result += formatEscapePlaceholder(originalEscape);
+                    i += 1;
+                    continue;
+                }
+            }
+            const code = key.charCodeAt(i);
+
+            // 控制字符必须保持转义
+            if (char === '\n') {
+                result += '\\n';
+            } else if (char === '\t') {
+                result += '\\t';
+            } else if (char === '\r') {
+                result += '\\r';
+            } else if (char === '\b') {
+                result += '\\b';
+            } else if (char === '\f') {
+                result += '\\f';
+            } else if (char === '"') {
+                result += '\\"';
+            } else if (char === '\\') {
+                result += '\\\\';
+            } else if (code < 32 || code === 127) {
+                // 其他控制字符
+                result += '\\u' + code.toString(16).padStart(4, '0');
+            } else {
+                result += char;
+            }
+        }
+
+        result += '"';
+        return result;
     }
 }
 
@@ -8884,6 +9159,33 @@ const handleFileUpload = async (uploadFile: UploadFile) => {
         }
         updateLineNumberWidth(outputEditor);
         updateEditorHeight(outputEditor);
+
+        // 计算新数据的最大层级，并检查是否需要调整 selectedLevel
+        try {
+            const parsed = JSON.parse(formattedContent);
+            const newMaxLevel = calculateMaxLevel(parsed);
+            const oldMaxLevel = maxLevel.value;
+
+            // 更新 maxLevel
+            maxLevel.value = newMaxLevel;
+
+            // 如果新层级小于当前选择的层级，自动调整 selectedLevel
+            if (selectedLevel.value > newMaxLevel) {
+                selectedLevel.value = newMaxLevel > 0 ? getDefaultFoldLevel(newMaxLevel) : 0;
+            } else if (newMaxLevel === 0) {
+                // 新数据是空的或无效
+                selectedLevel.value = 0;
+            }
+
+            // 如果层级发生变化，给出提示
+            if (oldMaxLevel !== newMaxLevel && newMaxLevel > 0) {
+                showMessageSuccess(`文件加载成功，已检测到 ${newMaxLevel} 层数据`);
+            }
+        } catch (e) {
+            // JSON 解析失败，重置层级
+            maxLevel.value = 0;
+            selectedLevel.value = 0;
+        }
 
         // 显示成功提示
         showMessageSuccess('文件上传成功，已加载到输入区域');
