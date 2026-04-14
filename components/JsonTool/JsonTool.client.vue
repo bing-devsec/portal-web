@@ -95,7 +95,7 @@
                         }"
                         :style="{ width: archiveSidebarWidth + 'px' }"
                     >
-                        <div class="archive-sidebar-header">
+                        <div class="archive-sidebar-header" @dblclick="toggleArchiveSidebar">
                             <span class="archive-sidebar-title">存档</span>
                         </div>
                         <div class="archive-list" v-if="archives.length" ref="archiveListRef" @dragover="onArchiveListDragOver" @drop="onArchiveListDrop">
@@ -147,7 +147,7 @@
 
                 <div class="editor-panel" :style="{ width: `${leftPanelWidth}%` }">
                     <div class="panel-header" @dblclick="toggleInputMaximize">
-                        <div class="panel-title" @dblclick.stop>
+                        <div class="panel-title">
                             <span>输入区域</span>
                         </div>
                         <div
@@ -200,7 +200,7 @@
 
                 <div class="editor-panel" :style="{ width: `${100 - leftPanelWidth}%` }">
                     <div class="panel-header" @dblclick="toggleOutputMaximize">
-                        <div class="panel-title" @dblclick.stop>
+                        <div class="panel-title">
                             <span>预览区域</span>
                         </div>
                         <div
@@ -2366,15 +2366,12 @@ const updateEditorStatus = (editor: monaco.editor.IStandaloneCodeEditor | null, 
         // 对于非全选的选中内容，搜索匹配项（两个区域都支持）
         if (selectedText.trim()) {
             try {
-                // 转义特殊字符用于正则表达式搜索（完全匹配）
-                const escapedText = selectedText.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-
                 // 在整个文档中查找所有完全匹配的位置
-                // findMatches(searchString, searchOnlyEditableRange, isRegex, matchCase, wordSeparators, captureMatches, limitResultCount?)
+                // findMatches 的 isRegex 为 false 时，searchString 为纯字面量，无需转义
                 const matches = model.findMatches(
-                    escapedText,
+                    selectedText,
                     false, // 搜索整个文档（不只是可编辑范围）
-                    false, // 不是正则表达式（已转义为字面量）
+                    false, // 不是正则表达式，直接字面量匹配
                     true, // 区分大小写（完全匹配）
                     null, // 不使用单词分隔符
                     false, // 不捕获组
@@ -2438,7 +2435,7 @@ const setupSelectionListener = (editor: monaco.editor.IStandaloneCodeEditor | nu
 };
 
 // 设置双击选中整个字符串并复制功能
-const setupDoubleClickSelectString = (editor: monaco.editor.IStandaloneCodeEditor) => {
+const setupDoubleClickSelectString = (editor: monaco.editor.IStandaloneCodeEditor, enableCopy: boolean = true) => {
     editor.onMouseDown((e: monaco.editor.IEditorMouseEvent) => {
         const currentPosition = e.target.position;
 
@@ -2463,12 +2460,13 @@ const setupDoubleClickSelectString = (editor: monaco.editor.IStandaloneCodeEdito
                         stringRange.endColumn - 1 // 跳过结束引号
                     );
 
-                    const stringValueText = model.getValueInRange(stringValueRange);
-
                     editor.setSelection(stringValueRange);
 
-                    copyToClipboard(stringValueText);
-                    showMessageSuccess('字符串已复制到剪贴板');
+                    if (enableCopy) {
+                        const stringValueText = model.getValueInRange(stringValueRange);
+                        copyToClipboard(stringValueText);
+                        showMessageSuccess('字符串已复制到剪贴板');
+                    }
                 }
             }, 10);
         }
@@ -2797,6 +2795,8 @@ const configureInputEditor: () => void = () => {
     maxLevel.value = 0;
     selectedLevel.value = 0;
 
+    // 设置双击选中整个字符串（不复制到剪贴板）
+    setupDoubleClickSelectString(inputEditor, false);
     // 设置选择变化监听（输入编辑器启用匹配计数功能）
     setupSelectionListener(inputEditor, inputEditorStatus, true);
 
@@ -6416,6 +6416,15 @@ const calculateArchiveMinWidth = (): number => {
     return 48;
 };
 
+const toggleArchiveSidebar = () => {
+    const minWidth = calculateArchiveMinWidth();
+    const isCollapsed = archiveSidebarWidth.value <= minWidth;
+    archiveSidebarWidth.value = isCollapsed ? calculateArchiveMaxWidth() : minWidth;
+    nextTick(() => {
+        updateEditorLayout();
+    });
+};
+
 // 初始化存档侧边栏宽度（根据存档名称计算）
 const initArchiveSidebarWidth = () => {
     if (archives.value.length === 0) {
@@ -10017,6 +10026,7 @@ const transferToInput = (e: MouseEvent) => {
     background: linear-gradient(to bottom, #fafbfc, #f6f8fa);
     border-bottom: 1px solid #e4e7ed;
     box-sizing: border-box;
+    cursor: pointer;
     transition: none !important;
 }
 
@@ -10029,6 +10039,7 @@ const transferToInput = (e: MouseEvent) => {
     /* 防止标题换行，当宽度不足时按钮会立即隐藏 */
     white-space: nowrap;
     flex-shrink: 0;
+    user-select: none;
 }
 
 .panel-title i {
@@ -10711,14 +10722,13 @@ const transferToInput = (e: MouseEvent) => {
     display: flex;
     flex-direction: column;
     background-color: #f8fafc;
-    padding: 10px 5px;
     box-sizing: border-box;
     transition: width 0.1s ease;
     flex-shrink: 0;
 }
 
 .archive-sidebar.collapsed {
-    padding: 10px 5px;
+    padding: 6.5px;
 }
 
 .archive-sidebar.collapsed .archive-item {
@@ -10739,7 +10749,11 @@ const transferToInput = (e: MouseEvent) => {
     display: flex;
     align-items: center;
     justify-content: center;
-    margin-bottom: 8px;
+    padding-bottom: 6.5px;
+    margin-bottom: 4px;
+    border-bottom: 1px solid #e4e7ed;
+    cursor: pointer;
+    user-select: none;
 }
 
 .archive-sidebar-title {
@@ -10789,7 +10803,7 @@ const transferToInput = (e: MouseEvent) => {
 }
 
 .archive-name {
-    flex: 1;
+    flex: 1 0 auto;
     white-space: nowrap;
     text-overflow: ellipsis;
     overflow: hidden;
@@ -10799,6 +10813,9 @@ const transferToInput = (e: MouseEvent) => {
 .archive-actions {
     display: flex;
     align-items: center;
+    overflow: hidden;
+    flex-shrink: 1000;
+    min-width: 0;
 }
 
 .archive-item.dragging {
@@ -10822,6 +10839,7 @@ const transferToInput = (e: MouseEvent) => {
     font-size: 14px;
     color: #909399;
     cursor: pointer;
+    flex-shrink: 0;
 }
 
 .archive-action-icon:not(:first-child) {
