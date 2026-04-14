@@ -148,7 +148,7 @@
                 <div class="editor-panel" :style="{ width: `${leftPanelWidth}%` }">
                     <div class="panel-header" @dblclick="toggleInputMaximize">
                         <div class="panel-title">
-                            <span>输入区域</span>
+                            <span>编辑区域</span>
                         </div>
                         <div
                             class="panel-actions"
@@ -181,7 +181,7 @@
                             </div>
                             <div ref="inputEditorContainer" class="monaco-editor-instance"></div>
                         </div>
-                        <!-- 输入区域状态栏 -->
+                        <!-- 编辑区域状态栏 -->
                         <div class="editor-status-bar" v-if="inputEditorStatus">
                             <span class="status-text">{{ inputEditorStatus }}</span>
                         </div>
@@ -416,7 +416,7 @@
                             <div class="settings-subsection">
                                 <div class="settings-subsection-title">
                                     <span class="settings-subsection-title-label">语法检查</span>
-                                    <span class="settings-subsection-title-desc">关闭后输入区域将不再显示红色波浪线报错提示，但语法高亮仍生效</span>
+                                    <span class="settings-subsection-title-desc">关闭后编辑区域将不再显示红色波浪线报错提示，但语法高亮仍生效</span>
                                 </div>
                                 <div class="settings-item">
                                     <el-switch v-model="enableDiagnostics" active-text="开启" inactive-text="关闭" size="default" />
@@ -730,10 +730,10 @@ const archiveNameDialogExcludeId = ref<string>(''); // 编辑时排除的存档I
 const archiveNameDialogCallback = ref<((name: string) => void) | null>(null); // 确认时调用的回调函数
 const settingsDialogVisible = ref(false); // 对话框开启/关闭状态
 const settingsCollapseActiveNames = ref<string | number>('format'); // 手风琴展开项，默认展开"格式化设置"
-const isInputMaximized = ref(false); // 输入区域是否最大化
+const isInputMaximized = ref(false); // 编辑区域是否最大化
 const isOutputMaximized = ref(false); // 预览区域是否最大化
 
-// 切换输入区域最大化状态
+// 切换编辑区域最大化状态
 const toggleInputMaximize = () => {
     if (isInputMaximized.value) {
         // 从最大化恢复均分
@@ -742,7 +742,7 @@ const toggleInputMaximize = () => {
         leftPanelWidth.value = 50;
         stableLeftPanelWidth.value = 50;
     } else {
-        // 最大化输入区域
+        // 最大化编辑区域
         isInputMaximized.value = true;
         isOutputMaximized.value = false;
         leftPanelWidth.value = 100;
@@ -1444,11 +1444,11 @@ const updateStableWidth = () => {
 };
 
 // 按钮显示临界宽度（像素）：标题 + 两个按钮 + gap + padding 的总宽度
-// 计算："输入区域"(约60px) + "清空"按钮(约70px) + "上传"按钮(约70px) + gap(12px) + padding(30px) ≈ 242px
+// 计算："编辑区域"(约60px) + "清空"按钮(约70px) + "上传"按钮(约70px) + gap(12px) + padding(30px) ≈ 242px
 // 设置为 260px 以确保有足够余量，避免换行
 const BUTTON_MIN_WIDTH = 260;
 
-// 计算属性：判断输入区域是否显示按钮
+// 计算属性：判断编辑区域是否显示按钮
 // 非拖动时使用稳定宽度值，避免频繁计算
 const showInputActions = computed(() => {
     if (editorContainerWidth.value === 0) return true; // 初始化时显示
@@ -2531,7 +2531,7 @@ watch(enableDiagnostics, () => {
 
 // 监听格式化设置的变化
 watch([indentSize, arrayNewLine, showIndentGuide, preserveNumberLiterals], () => {
-    // 如果输入区域为空，不进行任何操作
+    // 如果编辑区域为空，不进行任何操作
     if (!inputEditor?.getValue()?.trim()) {
         selectedLevel.value = 0;
         return;
@@ -2815,7 +2815,7 @@ const configureInputEditor: () => void = () => {
                 showMessageError(checkResult.error || '内容不符合要求');
                 maxLevel.value = 0;
                 selectedLevel.value = 0;
-                // 如果层级超过99层，自动清空输入区域内容
+                // 如果层级超过99层，自动清空编辑区域内容
                 if (checkResult.error && checkResult.error.includes('层级超过99层')) {
                     // 延迟清空，避免在内容变化监听中直接修改编辑器内容导致的问题
                     setTimeout(() => {
@@ -5938,7 +5938,7 @@ const openDataMaskingDialog = () => {
 // 处理数据脱敏应用
 const handleDataMaskingApply = (maskedJson: string) => {
     try {
-        // 将脱敏后的JSON应用到输入区域
+        // 将脱敏后的JSON应用到编辑区域
         if (inputEditor) {
             const model = inputEditor.getModel();
             if (model) {
@@ -6270,7 +6270,7 @@ const handleArchiveCommand = async (command: string) => {
     showMessageSuccess(`已加载存档：${archive.name}`);
 };
 
-// 处理加载分享的JSON数据到输入区域
+// 处理加载分享的JSON数据到编辑区域
 const handleLoadSharedJson = (jsonData: string) => {
     try {
         if (!inputEditor) {
@@ -6555,7 +6555,7 @@ const stopArchiveResize = () => {
     document.removeEventListener('touchend', stopArchiveResize);
 };
 
-// 更新存档内容（将当前输入区域的内容保存到指定存档）
+// 更新存档内容（将当前编辑区域的内容保存到指定存档）
 const handleRefreshArchive = (item: JsonArchive) => {
     if (!inputEditor) {
         showMessageError('编辑器未初始化，请稍候再试');
@@ -6564,7 +6564,7 @@ const handleRefreshArchive = (item: JsonArchive) => {
 
     const newContent = inputEditor.getValue() || '';
     if (!newContent.trim()) {
-        showMessageError('当前输入区域内容为空，无法更新存档');
+        showMessageError('当前编辑区域内容为空，无法更新存档');
         return;
     }
 
@@ -9168,7 +9168,7 @@ const handleFileUpload = async (uploadFile: UploadFile) => {
         // 格式化JSON内容为2个空格缩进
         let formattedContent = content;
 
-        // 更新编辑器 - 将格式化后的内容展示到输入区域
+        // 更新编辑器 - 将格式化后的内容展示到编辑区域
         if (inputEditor) {
             inputEditor.setValue(formattedContent);
 
@@ -9231,7 +9231,7 @@ const handleFileUpload = async (uploadFile: UploadFile) => {
         }
 
         // 显示成功提示
-        showMessageSuccess('文件上传成功，已加载到输入区域');
+        showMessageSuccess('文件上传成功，已加载到编辑区域');
     } catch (error: any) {
         showMessageError('文件处理失败: ' + error.message);
     }
@@ -9621,12 +9621,12 @@ const startResize = (e: MouseEvent | TouchEvent | PointerEvent) => {
     }
 };
 
-// 添加将预览区域内容转移到输入区域的方法
+// 添加将预览区域内容转移到编辑区域的方法
 const transferToInput = (e: MouseEvent) => {
     // 阻止事件冒泡，防止触发分割线的拖动
     e.stopPropagation();
     if (outputType.value !== 'json') {
-        showMessageWarning('当前内容类型不支持转移到输入区域');
+        showMessageWarning('当前内容类型不支持转移到编辑区域');
         return;
     }
 
@@ -9651,7 +9651,7 @@ const transferToInput = (e: MouseEvent) => {
             formattedContent = outputContent;
         }
 
-        // 转移内容到输入区域
+        // 转移内容到编辑区域
         if (inputEditor) {
             const inputModel = inputEditor.getModel();
             if (inputModel) {
@@ -9704,7 +9704,7 @@ const transferToInput = (e: MouseEvent) => {
             updateEditorHeight(outputEditor);
         }
 
-        showMessageSuccess('内容已成功转移到输入区域');
+        showMessageSuccess('内容已成功转移到编辑区域');
     } catch (error: any) {
         showMessageError('转移内容失败: ' + error.message);
     }
@@ -10722,13 +10722,10 @@ const transferToInput = (e: MouseEvent) => {
     display: flex;
     flex-direction: column;
     background-color: #f8fafc;
+    padding: 6.5px;
     box-sizing: border-box;
     transition: width 0.1s ease;
     flex-shrink: 0;
-}
-
-.archive-sidebar.collapsed {
-    padding: 6.5px;
 }
 
 .archive-sidebar.collapsed .archive-item {
