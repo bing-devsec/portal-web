@@ -707,6 +707,7 @@ import JSON5 from 'json5';
 import yaml from 'js-yaml';
 import * as toml from '@iarna/toml';
 import { create } from 'xmlbuilder2';
+import { Base64 } from 'js-base64';
 
 
 // ==================== 常量与全局状态 ====================
@@ -2797,6 +2798,115 @@ const configureInputEditor: () => void = () => {
 
     // 设置双击选中整个字符串（不复制到剪贴板）
     setupDoubleClickSelectString(inputEditor, false);
+
+    // 右键菜单：Base64 编码
+    inputEditor.addAction({
+        id: 'base64-encode',
+        label: 'Base64 编码',
+        contextMenuGroupId: '9_base64',
+        contextMenuOrder: 1,
+        precondition: 'editorHasSelection',
+        run: (editor) => {
+            const selection = editor.getSelection();
+            if (!selection) return;
+            const model = editor.getModel();
+            if (!model) return;
+            const selectedText = model.getValueInRange(selection);
+            if (!selectedText) return;
+            try {
+                const encoded = Base64.encode(selectedText);
+                editor.executeEdits('base64-encode', [{
+                    range: selection,
+                    text: encoded,
+                }]);
+                showMessageSuccess('已完成 Base64 编码');
+            } catch {
+                showMessageError('Base64 编码失败');
+            }
+        },
+    });
+
+    // 右键菜单：Base64 解码
+    inputEditor.addAction({
+        id: 'base64-decode',
+        label: 'Base64 解码',
+        contextMenuGroupId: '9_base64',
+        contextMenuOrder: 2,
+        precondition: 'editorHasSelection',
+        run: (editor) => {
+            const selection = editor.getSelection();
+            if (!selection) return;
+            const model = editor.getModel();
+            if (!model) return;
+            const selectedText = model.getValueInRange(selection);
+            if (!selectedText) return;
+            try {
+                const decoded = Base64.decode(selectedText);
+                editor.executeEdits('base64-decode', [{
+                    range: selection,
+                    text: decoded,
+                }]);
+                showMessageSuccess('已完成 Base64 解码');
+            } catch {
+                showMessageError('Base64 解码失败，请检查选中的内容是否为有效的 Base64 字符串');
+            }
+        },
+    });
+
+    // 右键菜单：URL 编码
+    inputEditor.addAction({
+        id: 'url-encode',
+        label: 'URL 编码',
+        contextMenuGroupId: '9_base64',
+        contextMenuOrder: 3,
+        precondition: 'editorHasSelection',
+        run: (editor) => {
+            const selection = editor.getSelection();
+            if (!selection) return;
+            const model = editor.getModel();
+            if (!model) return;
+            const selectedText = model.getValueInRange(selection);
+            if (!selectedText) return;
+            try {
+                const encoded = encodeURIComponent(selectedText);
+                editor.executeEdits('url-encode', [{
+                    range: selection,
+                    text: encoded,
+                }]);
+                showMessageSuccess('已完成 URL 编码');
+            } catch {
+                showMessageError('URL 编码失败');
+            }
+        },
+    });
+
+    // 右键菜单：URL 解码
+    inputEditor.addAction({
+        id: 'url-decode',
+        label: 'URL 解码',
+        contextMenuGroupId: '9_base64',
+        contextMenuOrder: 4,
+        precondition: 'editorHasSelection',
+        run: (editor) => {
+            const selection = editor.getSelection();
+            if (!selection) return;
+            const model = editor.getModel();
+            if (!model) return;
+            const selectedText = model.getValueInRange(selection);
+            if (!selectedText) return;
+            try {
+                const decoded = decodeURIComponent(selectedText);
+                editor.executeEdits('url-decode', [{
+                    range: selection,
+                    text: decoded,
+                }]);
+                showMessageSuccess('已完成 URL 解码');
+            } catch {
+                showMessageError('URL 解码失败，请检查选中的内容是否为有效的 URL 编码字符串');
+            }
+        },
+    });
+
     // 设置选择变化监听（输入编辑器启用匹配计数功能）
     setupSelectionListener(inputEditor, inputEditorStatus, true);
 
