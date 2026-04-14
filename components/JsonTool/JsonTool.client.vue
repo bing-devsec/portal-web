@@ -176,6 +176,16 @@
                                 <span>加载编辑器中...</span>
                             </div>
                             <div ref="inputEditorContainer" class="monaco-editor-instance"></div>
+                            <div v-if="inputEditorErrors.length > 0" class="error-nav-bar">
+                                <el-icon class="error-nav-icon error-warning-icon"><WarningFilled /></el-icon>
+                                <span class="error-nav-count">{{ inputEditorErrors.length }}</span>
+                                <button type="button" class="error-nav-btn" @click="goToPrevError" aria-label="上一个错误">
+                                    <el-icon class="error-nav-icon error-nav-arrow"><ArrowUp /></el-icon>
+                                </button>
+                                <button type="button" class="error-nav-btn" @click="goToNextError" aria-label="下一个错误">
+                                    <el-icon class="error-nav-icon error-nav-arrow"><ArrowDown /></el-icon>
+                                </button>
+                            </div>
                         </div>
                         <!-- 编辑区域状态栏 -->
                         <div class="editor-status-bar" v-if="inputEditorStatus">
@@ -686,7 +696,7 @@ import type { UploadFile } from 'element-plus';
 import * as monaco from 'monaco-editor';
 import editorWorker from 'monaco-editor/esm/vs/editor/editor.worker?worker';
 import jsonWorker from 'monaco-editor/esm/vs/language/json/json.worker?worker';
-import { Loading, ArrowLeft, ArrowRight, ArrowDown, CopyDocument, Download, Upload, Delete, Setting, WarningFilled, Document, Sort, Edit, Refresh } from '@element-plus/icons-vue';
+import { Loading, ArrowLeft, ArrowRight, ArrowDown, ArrowUp, CopyDocument, Download, Upload, Delete, Setting, WarningFilled, Document, Sort, Edit, Refresh } from '@element-plus/icons-vue';
 import FetchJsonDialog from './FetchJsonDialog.vue';
 import ShareDialog from './ShareDialog.vue';
 import DataMaskingDialog from './DataMaskingDialog.vue';
@@ -872,6 +882,8 @@ const defaultFullscreen = ref(savedSettings.defaultFullscreen ?? savedSettings.i
 watch(defaultFullscreen, (val) => { isFullscreen.value = val; }, { immediate: true });
 const showMinimap = ref(savedSettings.showMinimap ?? false); // 是否显示缩略图
 const enableDiagnostics = ref(savedSettings.enableDiagnostics ?? true); // 是否启用JSON语法检查
+const inputEditorErrors = ref<monaco.editor.IMarker[]>([]);
+const currentErrorIndex = ref(-1);
 const encodingMode = ref(savedSettings.encodingMode ?? false); // 添加编码处理模式：false-不解码，true-解码（智能解码所有编码格式）
 const sortMethod = ref<'dictionary' | 'length' | 'field'>(savedSettings.sortMethod); // 排序方法
 const sortOrder = ref<'asc' | 'desc'>(savedSettings.sortOrder); // 排序方向
@@ -2350,12 +2362,12 @@ const updateEditorStatus = (editor: monaco.editor.IStandaloneCodeEditor | null, 
                 // findMatches 的 isRegex 为 false 时，searchString 为纯字面量，无需转义
                 const matches = model.findMatches(
                     selectedText,
-                    false, // 搜索整个文档（不只是可编辑范围）
-                    false, // 不是正则表达式，直接字面量匹配
-                    true, // 区分大小写（完全匹配）
-                    null, // 不使用单词分隔符
-                    false, // 不捕获组
-                    undefined // 不限制结果数量
+                    false,
+                    false,
+                    true,
+                    null,
+                    false,
+                    1073741824
                 );
 
                 const matchCount = matches.length;
@@ -2508,6 +2520,53 @@ watch(stickyScroll, () => {
 watch(enableDiagnostics, () => {
     configureJsonSchemaSupport();
 });
+
+let inputMarkersListener: monaco.IDisposable | null = null;
+
+const refreshInputEditorErrors = () => {
+    const model = inputEditor?.getModel();
+    if (!model || !enableDiagnostics.value) {
+        inputEditorErrors.value = [];
+        currentErrorIndex.value = -1;
+        return;
+    }
+
+    const markers = monaco.editor.getModelMarkers({ resource: model.uri });
+    const errors = markers
+        .filter(m => m.severity === monaco.MarkerSeverity.Error)
+        .sort((a, b) => a.startLineNumber - b.startLineNumber || a.startColumn - b.startColumn);
+
+    inputEditorErrors.value = errors;
+    if (errors.length === 0) {
+        currentErrorIndex.value = -1;
+        return;
+    }
+    if (currentErrorIndex.value < 0 || currentErrorIndex.value >= errors.length) {
+        currentErrorIndex.value = 0;
+    }
+};
+
+const goToPrevError = () => {
+    const errors = inputEditorErrors.value;
+    if (!errors.length || !inputEditor) return;
+    currentErrorIndex.value = currentErrorIndex.value <= 0 ? errors.length - 1 : currentErrorIndex.value - 1;
+    jumpToError(errors[currentErrorIndex.value]);
+};
+
+const goToNextError = () => {
+    const errors = inputEditorErrors.value;
+    if (!errors.length || !inputEditor) return;
+    currentErrorIndex.value = currentErrorIndex.value >= errors.length - 1 ? 0 : currentErrorIndex.value + 1;
+    jumpToError(errors[currentErrorIndex.value]);
+};
+
+const jumpToError = (error: monaco.editor.IMarker) => {
+    if (!inputEditor) return;
+    const range = new monaco.Range(error.startLineNumber, error.startColumn, error.endLineNumber, error.endColumn);
+    inputEditor.setSelection(range);
+    inputEditor.revealRangeInCenter(range);
+    inputEditor.focus();
+};
 
 // 监听格式化设置的变化
 watch([indentSize, arrayNewLine, showIndentGuide, preserveNumberLiterals], () => {
@@ -2709,6 +2768,18 @@ const createInputEditor = () => {
             });
         }
     });
+
+    const inputModel = inputEditor?.getModel();
+    if (inputModel) {
+        inputMarkersListener?.dispose();
+        inputMarkersListener = monaco.editor.onDidChangeMarkers((uris) => {
+            const hit = uris.some(u => u.toString() === inputModel.uri.toString());
+            if (!hit) return;
+            refreshInputEditorErrors();
+        });
+        // 首次创建后主动同步一次，避免必须等到 markers 变化才显示按钮
+        refreshInputEditorErrors();
+    }
 };
 
 // 创建输出编辑器
@@ -3244,6 +3315,11 @@ onBeforeUnmount(() => {
     if (outputEditor) {
         outputEditor.dispose();
         outputEditor = null;
+    }
+
+    if (inputMarkersListener) {
+        inputMarkersListener.dispose();
+        inputMarkersListener = null;
     }
 });
 
@@ -9763,12 +9839,98 @@ const transferToInput = (e: MouseEvent) => {
     overflow: hidden;
     display: flex;
     flex-direction: column;
+    position: relative;
 }
 
 .monaco-editor-instance {
     flex: 1;
     min-height: 0;
     position: relative;
+}
+
+.error-nav-bar {
+    position: absolute;
+    top: 8px;
+    right: 16px;
+    z-index: 5;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 4px 8px;
+    background: rgba(255, 255, 255, 0.96);
+    border: 1px solid #ebeef5;
+    border-radius: 4px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+    user-select: none;
+}
+
+.error-nav-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    line-height: 1;
+}
+
+.error-warning-icon {
+    color: #f56c6c;
+}
+
+.error-nav-count {
+    font-size: 13px;
+    font-weight: 600;
+    color: #f56c6c;
+    min-width: 18px;
+    text-align: left;
+}
+
+.error-nav-btn {
+    width: 24px;
+    height: 24px;
+    padding: 0;
+    border: 1px solid transparent;
+    border-radius: 6px;
+    background: transparent;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: background-color 120ms ease, border-color 120ms ease, transform 60ms ease;
+}
+
+.error-nav-btn:hover {
+    background: rgba(0, 0, 0, 0.04);
+    border-color: rgba(0, 0, 0, 0.06);
+}
+
+.error-nav-btn:active {
+    background: rgba(0, 0, 0, 0.08);
+    border-color: rgba(0, 0, 0, 0.1);
+    transform: translateY(0.5px);
+}
+
+.error-nav-btn:focus-visible {
+    outline: 2px solid rgba(245, 108, 108, 0.35);
+    outline-offset: 2px;
+}
+
+.error-nav-arrow {
+    color: #606266;
+    font-size: 16px;
+}
+
+.error-nav-btn:hover .error-nav-arrow {
+    color: #303133;
+}
+
+/* 让箭头视觉上更“粗/重”一点（主要对 stroke 图标生效） */
+.error-nav-arrow :deep(svg) {
+    width: 18px;
+    height: 18px;
+}
+.error-nav-arrow :deep(svg path),
+.error-nav-arrow :deep(svg polyline),
+.error-nav-arrow :deep(svg line) {
+    stroke-width: 2.6;
 }
 
 /* 编辑器状态栏样式 */
