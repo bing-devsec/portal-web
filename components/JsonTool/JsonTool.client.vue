@@ -354,21 +354,6 @@
                                 </div>
                             </div>
 
-                            <el-divider class="settings-subsection-divider" />
-
-                            <div class="settings-subsection">
-                                <div class="settings-subsection-title">
-                                    <span class="settings-subsection-title-label">浮点数处理</span>
-                                    <span class="settings-subsection-title-desc">
-                                        {{ preserveNumberLiterals ? '数字字面量保持不变' : '标准 JSON 格式化处理' }}
-                                    </span>
-                                </div>
-                                <div class="settings-item">
-                                    <el-switch v-model="preserveNumberLiterals" active-text="控制" inactive-text="不控制" size="default" />
-                                </div>
-                            </div>
-
-                            <el-divider class="settings-subsection-divider" />
 
                             <!-- 字符串换行设置 -->
                             <div class="settings-subsection">
@@ -490,6 +475,20 @@
                                     <span class="settings-description">紧凑仅对基础类型数组生效，复杂类型仍换行</span>
                                 </div>
                                 <el-switch v-model="arrayNewLine" active-text="换行" inactive-text="紧凑" size="default" />
+                            </div>
+
+                            <el-divider style="margin: 12px 0" />
+
+                            <div class="settings-subsection">
+                                <div class="settings-subsection-title">
+                                    <span class="settings-subsection-title-label">浮点数处理</span>
+                                    <span class="settings-subsection-title-desc">
+                                        {{ preserveNumberLiterals ? '数字字面量保持不变' : '标准 JSON 格式化处理' }}
+                                    </span>
+                                </div>
+                                <div class="settings-item">
+                                    <el-switch v-model="preserveNumberLiterals" active-text="控制" inactive-text="不控制" size="default" />
+                                </div>
                             </div>
                         </div>
                     </el-collapse-item>
@@ -3497,10 +3496,10 @@ const handleConvert = (command: string) => {
             return;
         }
 
-        // 处理其他格式转换
+        // 处理其他格式转换（不启用高精度浮点数，即使用户开启了设置）
         let parsed;
         try {
-            const result = preprocessJSON(value);
+            const result = preprocessJSON(value, { preserveNumberLiterals: false });
             parsed = result.data;
         } catch (error) {
             showMessageError('请输入有效的 JSON 数据');
@@ -9850,8 +9849,7 @@ const transferToInput = (e: MouseEvent) => {
 
 .error-nav-bar {
     position: absolute;
-    top: 8px;
-    right: 16px;
+    right: 18px;
     z-index: 5;
     display: flex;
     align-items: center;
@@ -9859,7 +9857,9 @@ const transferToInput = (e: MouseEvent) => {
     padding: 4px 8px;
     background: rgba(255, 255, 255, 0.96);
     border: 1px solid #ebeef5;
-    border-radius: 4px;
+    border-top: none;
+    border-bottom-left-radius: 4px;
+    border-bottom-right-radius: 4px;
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
     user-select: none;
 }
