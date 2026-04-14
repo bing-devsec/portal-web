@@ -380,7 +380,10 @@
 
                             <!-- 默认全屏设置 -->
                             <div class="settings-subsection">
-                                <div class="settings-subsection-title">是否默认全屏</div>
+                                <div class="settings-subsection-title">
+                                    <span class="settings-subsection-title-label">是否默认全屏</span>
+                                    <span class="settings-subsection-title-desc">开启后页面将在加载时自动进入全屏编辑模式</span>
+                                </div>
                                 <div class="settings-item">
                                     <el-switch
                                         v-model="defaultFullscreen"
@@ -402,7 +405,7 @@
                                     <span class="settings-subsection-title-desc">关闭后编辑区域将不再显示红色波浪线报错提示，但语法高亮仍生效</span>
                                 </div>
                                 <div class="settings-item">
-                                    <el-switch v-model="enableDiagnostics" active-text="开启" inactive-text="关闭" size="default" />
+                                    <el-switch v-model="enableDiagnostics" active-text="启用" inactive-text="禁用" size="default" />
                                 </div>
                             </div>
 
@@ -410,7 +413,10 @@
 
                             <!-- 粘性滚动设置 -->
                             <div class="settings-subsection">
-                                <div class="settings-subsection-title">粘性滚动设置</div>
+                                <div class="settings-subsection-title">
+                                    <span class="settings-subsection-title-label">粘性滚动设置</span>
+                                    <span class="settings-subsection-title-desc">开启后编辑器顶部将显示当前光标位置的层级路径，方便查看大JSON时快速了解上级结构</span>
+                                </div>
                                 <div class="settings-item">
                                     <el-switch v-model="stickyScroll" active-text="启用" inactive-text="禁用" size="default" @change="updateStickyScroll" />
                                 </div>
@@ -420,7 +426,10 @@
 
                             <!-- 同步滚动设置 -->
                             <div class="settings-subsection">
-                                <div class="settings-subsection-title">同步滚动设置</div>
+                                <div class="settings-subsection-title">
+                                    <span class="settings-subsection-title-label">同步滚动设置</span>
+                                    <span class="settings-subsection-title-desc">开启后编辑区域和预览区域将同步滚动，便于对照查看原始数据和输出结果</span>
+                                </div>
                                 <div class="settings-item">
                                     <el-switch v-model="syncScrollEnabled" active-text="启用" inactive-text="禁用" size="default" />
                                 </div>
@@ -430,7 +439,10 @@
 
                             <!-- 缩略图设置 -->
                             <div class="settings-subsection">
-                                <div class="settings-subsection-title">缩略图设置</div>
+                                <div class="settings-subsection-title">
+                                    <span class="settings-subsection-title-label">缩略图设置</span>
+                                    <span class="settings-subsection-title-desc">开启后在编辑器右侧显示代码缩略图，可快速定位和浏览大文件内容</span>
+                                </div>
                                 <div class="settings-item">
                                     <el-switch v-model="showMinimap" active-text="显示" inactive-text="隐藏" size="default" @change="updateMinimap" />
                                 </div>
@@ -440,7 +452,10 @@
 
                             <!-- 缩进指南设置 -->
                             <div class="settings-subsection">
-                                <div class="settings-subsection-title">缩进指南设置</div>
+                                <div class="settings-subsection-title">
+                                    <span class="settings-subsection-title-label">缩进指南线设置</span>
+                                    <span class="settings-subsection-title-desc">开启后将显示垂直参考线，帮助直观识别代码的嵌套层级结构</span>
+                                </div>
                                 <div class="settings-item">
                                     <el-switch v-model="showIndentGuide" active-text="显示" inactive-text="隐藏" size="default" @change="updateIndentGuides" />
                                 </div>
@@ -462,19 +477,9 @@
                             <div class="settings-item">
                                 <div class="settings-item-header">
                                     <span class="settings-label">编码设置</span>
-                                    <span v-if="encodingMode" class="settings-description">识别并解码Unicode和Hex编码</span>
+                                    <span v-if="encodingMode" class="settings-description">识别并解码Unicode和Hex编码（Base64和URL编解码先双击字符串，再菜单右键选择）</span>
                                 </div>
                                 <el-switch v-model="encodingMode" active-text="解码" inactive-text="不解码" size="default" />
-                            </div>
-
-                            <el-divider style="margin: 12px 0" />
-
-                            <div class="settings-item">
-                                <div class="settings-item-header">
-                                    <span class="settings-label">数组样式</span>
-                                    <span class="settings-description">紧凑仅对基础类型数组生效，复杂类型仍换行</span>
-                                </div>
-                                <el-switch v-model="arrayNewLine" active-text="换行" inactive-text="紧凑" size="default" />
                             </div>
 
                             <el-divider style="margin: 12px 0" />
@@ -489,6 +494,16 @@
                                 <div class="settings-item">
                                     <el-switch v-model="preserveNumberLiterals" active-text="控制" inactive-text="不控制" size="default" />
                                 </div>
+                            </div>
+
+                            <el-divider style="margin: 12px 0" />
+
+                            <div class="settings-item">
+                                <div class="settings-item-header">
+                                    <span class="settings-label">数组样式</span>
+                                    <span class="settings-description">紧凑仅对<strong>简单类型数组</strong>（数组内部元素均为：字符串、数字、布尔值和null）生效，<strong>复杂类型数组</strong>仍换行</span>
+                                </div>
+                                <el-switch v-model="arrayNewLine" active-text="换行" inactive-text="紧凑" size="default" />
                             </div>
                         </div>
                     </el-collapse-item>
