@@ -479,7 +479,7 @@
                             <div class="settings-item">
                                 <div class="settings-item-header">
                                     <span class="settings-label">编码设置</span>
-                                    <span v-if="encodingMode" class="settings-description">识别并解码Base64、Unicode和Hex编码</span>
+                                    <span v-if="encodingMode" class="settings-description">识别并解码Unicode和Hex编码</span>
                                 </div>
                                 <el-switch v-model="encodingMode" active-text="解码" inactive-text="不解码" size="default" />
                             </div>
@@ -707,7 +707,7 @@ import JSON5 from 'json5';
 import yaml from 'js-yaml';
 import * as toml from '@iarna/toml';
 import { create } from 'xmlbuilder2';
-import { Base64 } from 'js-base64';
+
 
 // ==================== 常量与全局状态 ====================
 const MAX_FILE_SIZE = 5 * 1024 * 1024; // 文件大小限制：5MB
@@ -3632,46 +3632,6 @@ const handleConvert = (command: string) => {
 // 智能解码函数：自动识别并解码各种编码格式
 // ========================================
 
-// Base64 解码（仅支持整体的 Base64 解码）
-const decodeBase64 = (str: string): string | null => {
-    try {
-        // Base64 应该有明显的编码特征：padding(=) 或特殊字符(+/)
-        const hasPadding = str.includes('=');
-        const hasSpecialChars = str.includes('+') || str.includes('/');
-        if (!hasPadding && !hasSpecialChars) {
-            return null;
-        }
-
-        // 进一步检查是否是真正的 Base64（而非普通英文/路径）
-        if (!isLikelyBase64(str)) {
-            return null;
-        }
-
-        // 使用 js-base64 库解码
-        const decoded = Base64.decode(str);
-
-        // 检查解码后是否包含有效的中文字符或可打印 ASCII
-        const bytes: number[] = [];
-        for (let i = 0; i < decoded.length; i++) {
-            bytes.push(decoded.charCodeAt(i));
-        }
-
-        const isAllAscii = bytes.every(b => b >= 32 && b <= 126);
-        if (isAllAscii) {
-            return decoded;
-        }
-
-        // 尝试检查是否有 UTF-8 中文字符
-        if (/[\u4e00-\u9fa5]/.test(decoded)) {
-            return decoded;
-        }
-
-        return null;
-    } catch {
-        return null;
-    }
-};
-
 // Unicode 解码（\uXXXX 格式）- 避免循环解码
 const decodeUnicode = (str: string): string | null => {
     try {
@@ -3790,82 +3750,9 @@ const decodeHex = (str: string): string | null => {
     }
 };
 
-// 基于字符分布的 Base64 检测
-// 普通英文文本有明显的字母频率特征（如 e 出现频率最高），Base64 分布更均匀
-const isLikelyBase64 = (str: string): boolean => {
-    // 英文常见字母频率表（来自英语语料库统计）
-    const englishFreq: Record<string, number> = {
-        'e': 0.1202, 't': 0.0910, 'a': 0.0812, 'o': 0.0768, 'i': 0.0731,
-        'n': 0.0695, 's': 0.0628, 'h': 0.0605, 'r': 0.0592, 'd': 0.0432,
-        'l': 0.0398, 'c': 0.0271, 'u': 0.0268, 'm': 0.0241, 'w': 0.0236,
-        'f': 0.0223, 'g': 0.0203, 'y': 0.0197, 'p': 0.0193, 'b': 0.0149,
-        'v': 0.0098, 'k': 0.0066, 'j': 0.0015, 'x': 0.0015, 'q': 0.0010,
-        'z': 0.0007
-    };
-    // 计算字符频率
-    const charCount: Record<string, number> = {};
-    for (const char of str.toLowerCase()) {
-        charCount[char] = (charCount[char] || 0) + 1;
-    }
-    // 计算与英文频率的相关系数
-    let correlation = 0;
-    let totalWeight = 0;
-    for (const char of str.toLowerCase()) {
-        if (englishFreq[char]) {
-            const expectedFreq = englishFreq[char];
-            const actualFreq = (charCount[char] || 0) / str.length;
-            correlation += Math.abs(actualFreq - expectedFreq);
-            totalWeight += 1;
-        }
-    }
-    // 计算 Base64 字符的分布均匀度
-    // Base64 应该分布比较均匀，而英文有明显的偏斜
-    const base64Chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
-    const base64Count: Record<string, number> = {};
-    for (const char of str) {
-        if (base64Chars.includes(char)) {
-            base64Count[char] = (base64Count[char] || 0) + 1;
-        }
-    }
-    // 计算基尼系数（衡量分布均匀度，0 表示完全均匀，1 表示完全不均匀）
-    const values = Object.values(base64Count).sort((a, b) => a - b);
-    const n = values.length;
-    if (n === 0) return false;
-    let sum = 0;
-    for (let i = 0; i < n; i++) {
-        sum += (2 * (i + 1) - n - 1) * values[i];
-    }
-    const giniCoeff = Math.abs(sum) / (n * values.reduce((a, b) => a + b, 0));
-    // 决策逻辑：
-    // 1. 如果分布非常均匀（基尼系数 < 0.15），更可能是 Base64
-    // 2. 如果分布不均匀（基尼系数 > 0.3），更像是普通英文
-    // 3. 如果基尼系数在中间区间，使用英文频率相关性辅助判断
-    if (giniCoeff < 0.15) {
-        return true;
-    }
-    if (giniCoeff > 0.35) {
-        return false;
-    }
-    // 中间区间：结合英文频率相关性判断
-    // correlation 越小，说明越符合英文频率分布
-    const avgCorrelation = correlation / Math.max(totalWeight, 1);
-    // 阈值根据字符串长度调整
-    const threshold = 0.05 + 0.02 * (1 / Math.log(str.length + 10));
-    return avgCorrelation < threshold;
-};
-
 // 检查字符串是否可能是某种编码格式
 const isLikelyEncoded = (str: string): boolean => {
     if (str.length === 0) return false;
-    // Base64 检测：必须包含 padding(=) 或特殊字符(+/)
-    const hasPadding = str.includes('=');
-    const hasSpecialChars = str.includes('+') || str.includes('/');
-    if (hasPadding || hasSpecialChars) {
-        if (Base64.isValid(str)) {
-            // 进一步检查是否是真正的 Base64（而非普通英文/路径）
-            return isLikelyBase64(str);
-        }
-    }
     // Unicode 检测：包含 \uXXXX
     if (/\\u[0-9a-fA-F]{4}/.test(str)) {
         return true;
@@ -3904,13 +3791,6 @@ const smartDecode = (str: string): string => {
         const hexDecoded = decodeHex(result);
         if (hexDecoded && hexDecoded !== result) {
             result = hexDecoded;
-            changed = true;
-        }
-
-        // Base64 解码（仅支持整体解码）
-        const base64Decoded = decodeBase64(result);
-        if (base64Decoded && base64Decoded !== result) {
-            result = base64Decoded;
             changed = true;
         }
     }
@@ -4014,13 +3894,13 @@ class JsonPlusFormatter {
         if (i + 5 < input.length && /^[0-9a-fA-F]{4}$/.test(input.substr(i + 2, 4))) {
             const unicodeSeq = input.substr(i, 6); // \uXXXX
             if (this.encodingMode) {
+                // 解码模式：保留 \uXXXX 交给 JSON 解析器自然解码为对应字符
+                return { consumed: 6, append: unicodeSeq };
+            } else {
+                // 不解码模式：用占位符保护 \uXXXX，防止被 JSON 解析器解码
                 const placeholder = this.createEscapePlaceholder();
                 escapeMap.set(placeholder, unicodeSeq);
                 return { consumed: 6, append: placeholder };
-            } else {
-                // 其他模式：保留 \uXXXX 交给 JSON5/后续处理
-                escapeMap.set(unicodeSeq, unicodeSeq);
-                return { consumed: 6, append: unicodeSeq };
             }
         } else {
             // 非法 \u 转义，收集最多4个十六进制字符作为非法序列
@@ -4617,21 +4497,6 @@ class JsonPlusFormatter {
         return result;
     }
 
-    // 保持原样模式编码
-    private formatRaw(char: string, code: number, escapeMap: Map<string, string>): string {
-        // 检查是否有原始转义需要保持为双反斜杠形式
-        for (const [processed, original] of escapeMap.entries()) {
-            if (processed.includes(char)) {
-                // 非标准转义转为双反斜杠
-                if (original.startsWith('\\x') || !['"', '\\', '/', 'b', 'f', 'n', 'r', 't', 'u'].includes(original[1])) {
-                    return '\\' + original;
-                }
-            }
-        }
-        // 普通字符保持原样
-        return char;
-    }
-
     // 格式化数组
     private formatArray(arr: any[], escapeMap: Map<string, string>, indent: number, compressed: boolean = false): string {
         if (arr.length === 0) {
@@ -4941,7 +4806,6 @@ const unescapeJSON = (recursive: boolean = true) => {
         // 获取原始输入
         const originalInput = value;
         let parsedInput = null;
-        let shouldPreserveEscapes = false;
         let hasEscapeToPreserve = false;
         for (let i = 0; i < value.length - 1; i++) {
             if (value[i] === '\\' && value[i + 1] && ['n', 't', 'r', 'b', 'f'].includes(value[i + 1])) {
@@ -4951,9 +4815,6 @@ const unescapeJSON = (recursive: boolean = true) => {
                     break;
                 }
             }
-        }
-        if (hasEscapeToPreserve) {
-            shouldPreserveEscapes = true;
         }
 
         // 检测非法转义序列
@@ -5110,12 +4971,10 @@ const unescapeJSON = (recursive: boolean = true) => {
         };
 
         // 1. 先尝试直接解析
-        let parseAttempted = false;
         let isDirectParse = false;
         const direct = tryParseJSON(value);
         if (direct.ok) {
             parsedInput = direct.value;
-            parseAttempted = true;
             isDirectParse = true;
         } else {
             // 如果检测到非法编码，使用保守的字符串处理方式
@@ -5164,7 +5023,6 @@ const unescapeJSON = (recursive: boolean = true) => {
                 const res = tryParseJSON(value);
                 if (res.ok) {
                     parsedInput = res.value;
-                    parseAttempted = true;
                 } else {
                     // 3. 迭代去除外层转义再尝试解析
                     parsedInput = iterativeParse(value);
