@@ -1084,8 +1084,7 @@ const clearOutputFoldingInfo = () => {
 };
 
 // @param formattedText 格式化后的JSON文本
-// @param priorityLines 优先计算的行号范围（可选，用于优先计算可见区域）
-const precomputeFoldingInfo = async (formattedText: string, priorityLines?: { start: number; end: number }): Promise<void> => {
+const precomputeFoldingInfo = async (formattedText: string): Promise<void> => {
     resetPrecomputedFoldingInfo();
 
     if (!formattedText || !formattedText.trim()) {
@@ -1166,23 +1165,6 @@ const precomputeFoldingInfo = async (formattedText: string, priorityLines?: { st
         }
     }
 
-    // 第二阶段：异步分批计算统计信息
-    // 如果有优先区域，先计算优先区域内的项
-    const priorityItems: PendingFoldingItem[] = [];
-    const normalItems: PendingFoldingItem[] = [];
-
-    if (priorityLines) {
-        pendingItems.forEach(item => {
-            if (item.startLine >= priorityLines.start && item.startLine <= priorityLines.end) {
-                priorityItems.push(item);
-            } else {
-                normalItems.push(item);
-            }
-        });
-    } else {
-        normalItems.push(...pendingItems);
-    }
-
     // 将所有待处理区域的范围先记录下来，便于展示时进行同步补偿（可见区域即时计算）
     pendingItems.forEach(item => {
         precomputedFoldingRanges.set(item.startLine, { endLine: item.endLine, type: item.type });
@@ -1190,7 +1172,7 @@ const precomputeFoldingInfo = async (formattedText: string, priorityLines?: { st
 
     // 创建异步计算任务
     const task = {
-        pendingItems: [...priorityItems, ...normalItems], // 优先项在前
+        pendingItems: pendingItems,
         lines,
         isRunning: true,
         cancelToken: false,
@@ -1711,9 +1693,9 @@ const setupFoldingInfoDisplay = (editor: monaco.editor.IStandaloneCodeEditor) =>
         return null;
     };
 
-    // 存储已添加的信息元素，用于清理
-    // key: lineNumber, value: { element: HTMLElement, foldedElement: Element }
-    const infoElements = new Map<number, { element: HTMLElement; foldedElement: Element }>();
+    // 存储已添加的信息元素，用于清理和复用
+    // key: lineNumber, value: { element: HTMLElement, foldedElement: Element, lastSeenAt: number }
+    const infoElements = new Map<number, { element: HTMLElement; foldedElement: Element; lastSeenAt: number }>();
 
     // 控制是否禁用更新（层级收缩时）
     let isUpdateDisabled = false;
@@ -1768,6 +1750,7 @@ const setupFoldingInfoDisplay = (editor: monaco.editor.IStandaloneCodeEditor) =>
 
     // 防抖函数（小数据量时使用更短的延迟）
     let updateTimer: ReturnType<typeof setTimeout> | null = null;
+    let immediateUpdateRafId: number | null = null;
     const debouncedUpdate = () => {
         // 检查 model 是否已被销毁
         if (!model || model.isDisposed()) {
@@ -1783,6 +1766,30 @@ const setupFoldingInfoDisplay = (editor: monaco.editor.IStandaloneCodeEditor) =>
                 updateFoldingInfo();
             }
         }, delay);
+    };
+
+    // 折叠/展开会先触发 Monaco 的 DOM 重排，再稳定到最终状态。
+    // 使用双 requestAnimationFrame 等待视图稳定后立即复用/更新统计节点，避免先消失再出现。
+    const scheduleImmediateUpdate = () => {
+        if (!model || model.isDisposed()) {
+            return;
+        }
+        if (isUpdateDisabled) return;
+        if (updateTimer) {
+            clearTimeout(updateTimer);
+            updateTimer = null;
+        }
+        if (immediateUpdateRafId) {
+            cancelAnimationFrame(immediateUpdateRafId);
+        }
+        immediateUpdateRafId = requestAnimationFrame(() => {
+            immediateUpdateRafId = requestAnimationFrame(() => {
+                if (!isUpdateDisabled && model && !model.isDisposed()) {
+                    updateFoldingInfo();
+                }
+                immediateUpdateRafId = null;
+            });
+        });
     };
 
     const clearInfoElements = () => {
@@ -1860,6 +1867,7 @@ const setupFoldingInfoDisplay = (editor: monaco.editor.IStandaloneCodeEditor) =>
         const viewLinesRect = viewLinesContainer?.getBoundingClientRect();
         const lineHeight = editor.getOption(monaco.editor.EditorOption.lineHeight);
 
+        const now = Date.now();
         const foldedElements = editorDom.querySelectorAll('.inline-folded');
         const currentFoldedLines = new Set<number>();
 
@@ -1945,15 +1953,6 @@ const setupFoldingInfoDisplay = (editor: monaco.editor.IStandaloneCodeEditor) =>
 
             currentFoldedLines.add(lineNumber);
 
-            const existingInfo = infoElements.get(lineNumber);
-            if (existingInfo) {
-                if (document.body.contains(existingInfo.element) && existingInfo.foldedElement === foldedElement) {
-                    return;
-                }
-                existingInfo.element.remove();
-                infoElements.delete(lineNumber);
-            }
-
             let info = getFoldingInfo(lineNumber);
             // 如果没有统计信息或统计数量为0，尝试重新计算
             if (!info || info.count === 0) {
@@ -1975,6 +1974,24 @@ const setupFoldingInfoDisplay = (editor: monaco.editor.IStandaloneCodeEditor) =>
             // 确保 info 存在且有有效的 type 和 count，避免显示 undefined
             if (!info || !info.type || info.count === 0) return;
 
+            const existingInfo = infoElements.get(lineNumber);
+            const infoText = ` ${info.type === 'object' ? `${info.count} keys` : `${info.count} items`}`;
+            if (existingInfo) {
+                existingInfo.lastSeenAt = now;
+                existingInfo.element.textContent = infoText;
+
+                if (existingInfo.foldedElement === foldedElement && existingInfo.element.isConnected) {
+                    return;
+                }
+
+                const nextParent = foldedElement.parentNode;
+                if (nextParent) {
+                    nextParent.insertBefore(existingInfo.element, foldedElement.nextSibling);
+                    existingInfo.foldedElement = foldedElement;
+                }
+                return;
+            }
+
             const infoElement = document.createElement('span');
             infoElement.className = 'folding-info-text';
             infoElement.textContent = ` ${info.type === 'object' ? `${info.count} keys` : `${info.count} items`}`;
@@ -1985,14 +2002,16 @@ const setupFoldingInfoDisplay = (editor: monaco.editor.IStandaloneCodeEditor) =>
             } else {
                 viewLine.appendChild(infoElement);
             }
-            infoElements.set(lineNumber, { element: infoElement, foldedElement });
+            infoElements.set(lineNumber, { element: infoElement, foldedElement, lastSeenAt: now });
         });
 
         infoElements.forEach((info, lineNumber) => {
             const isOutsideVisibleRange = lineNumber < visibleRange.start || lineNumber > visibleRange.end;
             const isFoldedElementRemoved = !currentFoldedLines.has(lineNumber);
 
-            if (isFoldedElementRemoved || isOutsideVisibleRange) {
+            // 折叠区域重排时，Monaco 会短暂移除旧 DOM。
+            // 给一个很短的宽限期，避免统计文本因为瞬时丢失而闪烁。
+            if (isOutsideVisibleRange || (isFoldedElementRemoved && now - info.lastSeenAt > 250)) {
                 if (info.element.parentNode) info.element.remove();
                 infoElements.delete(lineNumber);
             }
@@ -2047,7 +2066,7 @@ const setupFoldingInfoDisplay = (editor: monaco.editor.IStandaloneCodeEditor) =>
         });
 
         if (hasFoldingChange) {
-            debouncedUpdate();
+            scheduleImmediateUpdate();
         }
     });
 
@@ -2074,20 +2093,7 @@ const setupFoldingInfoDisplay = (editor: monaco.editor.IStandaloneCodeEditor) =>
             const isFoldingClick = target.closest('.folding') || target.closest('.inline-folded');
             // 只在点击折叠相关元素时触发
             if (isFoldingClick) {
-                // 对于小数据量，使用更短的延迟确保快速响应
-                const lineCount = model.getLineCount();
-                if (lineCount < 1000) {
-                    // 小数据量：清除防抖，使用短延迟立即更新
-                    if (updateTimer) clearTimeout(updateTimer);
-                    updateTimer = setTimeout(() => {
-                        if (!isUpdateDisabled && model && !model.isDisposed()) {
-                            updateFoldingInfo();
-                        }
-                    }, 30); // 小数据量使用30ms延迟
-                } else {
-                    // 大数据量：使用防抖
-                    debouncedUpdate();
-                }
+                scheduleImmediateUpdate();
             }
         },
         true
@@ -2162,7 +2168,7 @@ const setupFoldingInfoDisplay = (editor: monaco.editor.IStandaloneCodeEditor) =>
     setTimeout(() => {updateFoldingInfo()}, 500);
 
     // 监听Monaco的折叠变化事件（当折叠状态改变时立即更新）
-    editor.onDidChangeModelDecorations(() => {debouncedUpdate()});
+    editor.onDidChangeModelDecorations(() => {scheduleImmediateUpdate()});
 
     // 导出函数，供外部调用（层级收缩时使用）
     (editor as any).__disableFoldingInfoUpdate = disableUpdate;
@@ -5576,12 +5582,9 @@ const handleLevelAction = () => {
             return;
         }
 
-        // 优先使用输出编辑器的数据（如果有内容，说明已经进行过处理如排序）
-        let value = outputEditor?.getValue() || '';
-        if (!value.trim()) {
-            // 如果输出编辑器没有内容，则使用输入编辑器的数据
-            value = inputEditor?.getValue() || '';
-        }
+        // 层级收缩始终以输入区域为准，并强制使用数组换行格式，
+        // 这样即使用户平时选择“简单数组同一行显示”，收缩时也能为内层数组生成稳定的折叠区域。
+        let value = inputEditor?.getValue() || '';
         if (!value.trim()) {
             showMessageError('请先输入 JSON 数据');
             selectedLevel.value = 1;
@@ -5592,7 +5595,7 @@ const handleLevelAction = () => {
         let parsedData;
         let escapeMap;
         try {
-            const result = preprocessJSON(value);
+        const result = preprocessJSON(value, { preserveNumberLiterals: preserveNumberLiterals.value });
             parsedData = result.data; // 提取实际的JSON数据
             escapeMap = result.escapeMap; // 获取转义映射
         } catch (error) {
@@ -5600,8 +5603,8 @@ const handleLevelAction = () => {
             return;
         }
 
-        // 使用JsonPlusFormatter格式化JSON，保持原始转义序列
-        const formatter = new JsonPlusFormatter(false, indentSize.value, arrayNewLine.value);
+        // 收缩前统一强制数组换行，确保每个数组节点都有独立折叠区域。
+        const formatter = new JsonPlusFormatter(false, indentSize.value, true, preserveNumberLiterals.value);
         const formatted = formatter.format(parsedData, escapeMap);
 
         // 更新预览区域内容
@@ -5628,7 +5631,6 @@ const handleLevelAction = () => {
             if (!outputEditor) return;
 
             isFoldOperationLocked = true;
-
             try {
                 await foldByIndentation();
 
@@ -5642,28 +5644,8 @@ const handleLevelAction = () => {
                             refreshFunc();
                         }
 
-                        // 然后重新计算折叠信息
-                        const visibleRanges = outputEditor.getVisibleRanges();
-                        if (visibleRanges && visibleRanges.length > 0) {
-                            let minLine = Infinity;
-                            let maxLine = 0;
-                            visibleRanges.forEach(range => {
-                                if (range.startLineNumber < minLine) minLine = range.startLineNumber;
-                                if (range.endLineNumber > maxLine) maxLine = range.endLineNumber;
-                            });
-                            if (minLine !== Infinity && maxLine > 0) {
-                                // 扩展可见区域范围（上下各扩展200行，提高滚动体验）
-                                const model = outputEditor.getModel();
-                                if (model) {
-                                    const totalLines = model.getLineCount();
-                                    const priorityStart = Math.max(1, minLine - 200);
-                                    const priorityEnd = Math.min(totalLines, maxLine + 200);
-
-                                    // 重新触发计算，优先计算可见区域
-                                    precomputeFoldingInfo(formatted, { start: priorityStart, end: priorityEnd }).catch(() => {});
-                                }
-                            }
-                        }
+                        // 重新全量计算所有折叠区域的 n keys / n items
+                        precomputeFoldingInfo(formatted).catch(() => {});
                     } catch (e) {}
                 }, 300); // 等待折叠动画完成
             } finally {
