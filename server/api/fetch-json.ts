@@ -44,7 +44,10 @@ function parseCurlCommand(curlCommand: string): {
   // 匹配模式：'url' 或 "url" 或 url（不带引号，但不在参数中）
   const urlMatch = command.match(/['"](https?:\/\/[^'"]+)['"]|(https?:\/\/[^\s'"]+)/i);
   if (urlMatch) {
-    result.url = urlMatch[1] || urlMatch[2];
+    const extractedUrl = urlMatch[1] || urlMatch[2];
+    if (extractedUrl) {
+      result.url = extractedUrl;
+    }
     // 移除匹配到的URL部分
     if (urlMatch[0]) {
       command = command.replace(urlMatch[0], '').trim();
@@ -54,13 +57,17 @@ function parseCurlCommand(curlCommand: string): {
   // 提取请求方法
   const methodMatch = command.match(/-X\s+(\w+)/i);
   if (methodMatch) {
-    result.method = methodMatch[1].toUpperCase();
+    const extractedMethod = methodMatch[1];
+    if (extractedMethod) {
+      result.method = extractedMethod.toUpperCase();
+    }
   }
 
   // 提取请求头
   const headerMatches = command.matchAll(/-H\s+['"]([^'"]+)['"]/gi);
   for (const match of headerMatches) {
     const headerStr = match[1];
+    if (typeof headerStr !== 'string') continue;
     const colonIndex = headerStr.indexOf(':');
     if (colonIndex > 0) {
       const key = headerStr.substring(0, colonIndex).trim();
@@ -189,7 +196,10 @@ async function isUrlSafe(urlString: string): Promise<{ safe: boolean; reason?: s
     
     // 允许的端口：80, 443, 8080-8090（常见HTTP服务端口）
     const allowedPorts = [80, 443];
-    const allowedPortRanges = [[8080, 8090], [8443, 8443]];
+    const allowedPortRanges: Array<[number, number]> = [
+      [8080, 8090],
+      [8443, 8443],
+    ];
     let isAllowedPort = allowedPorts.includes(port);
     
     if (!isAllowedPort) {
@@ -531,4 +541,3 @@ export default defineEventHandler(async (event) => {
     };
   }
 });
-

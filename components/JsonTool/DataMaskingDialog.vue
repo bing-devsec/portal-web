@@ -2684,7 +2684,7 @@ const confirmApply = () => {
         const maskedJsonRaw = stringifyPreservingMarkedNumbers(result, indentSize);
         const maskedJson = restoreUnicodeEscapes(maskedJsonRaw, unicodePreserve.placeholderToEscape);
 
-        // 直接应用到输入区域
+        // 直接应用到编辑区域
         emit('apply', maskedJson);
         handleDialogClose();
 

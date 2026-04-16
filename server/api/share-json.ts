@@ -113,6 +113,10 @@ interface IndexFile {
   lastCleanup: number;
 }
 
+function getUtf8ByteLength(text: string): number {
+  return Buffer.byteLength(text, 'utf8');
+}
+
 // 确保存储目录存在
 if (!existsSync(CONFIG.STORAGE_DIR)) {
   mkdirSync(CONFIG.STORAGE_DIR, { recursive: true });
@@ -527,8 +531,10 @@ export default defineEventHandler(async (event: H3Event) => {
         await deleteShareData(id);
         // 更新索引
         const index = await readIndex();
+        const shareSize = index.shares.find(s => s.id === id)?.size ?? getUtf8ByteLength(shareData.jsonData);
         index.shares = index.shares.filter(s => s.id !== id);
-        index.totalSize -= shareData.jsonData.length;
+        index.totalSize -= shareSize;
+        if (index.totalSize < 0) index.totalSize = 0;
         await writeIndex(index);
         return {
           success: false,
@@ -651,6 +657,7 @@ export default defineEventHandler(async (event: H3Event) => {
           error: 'JSON数据不能为空',
         };
       }
+      const jsonDataSize = getUtf8ByteLength(jsonData);
 
       // 4. 验证JSON格式
       try {
@@ -663,10 +670,10 @@ export default defineEventHandler(async (event: H3Event) => {
       }
 
       // 5. 限制JSON数据大小
-      if (jsonData.length > CONFIG.MAX_SHARE_SIZE) {
+      if (jsonDataSize > CONFIG.MAX_SHARE_SIZE) {
         return {
           success: false,
-          error: `JSON数据过大（${(jsonData.length / 1024 / 1024).toFixed(2)} MB，最大 ${(CONFIG.MAX_SHARE_SIZE / 1024 / 1024).toFixed(0)} MB）`,
+          error: `JSON数据过大（${(jsonDataSize / 1024 / 1024).toFixed(2)} MB，最大 ${(CONFIG.MAX_SHARE_SIZE / 1024 / 1024).toFixed(0)} MB）`,
         };
       }
 
@@ -693,9 +700,9 @@ export default defineEventHandler(async (event: H3Event) => {
       }
 
       // 8. 检查单个用户的存储大小限制
-      await autoCleanupStorage(clientFingerprint, jsonData.length);
+      await autoCleanupStorage(clientFingerprint, jsonDataSize);
       const currentUserSize = await getSizeByFingerprint(clientFingerprint);
-      if (currentUserSize + jsonData.length > CONFIG.MAX_SIZE_PER_FINGERPRINT) {
+      if (currentUserSize + jsonDataSize > CONFIG.MAX_SIZE_PER_FINGERPRINT) {
         return {
           success: false,
           error: `您的存储空间不足（已使用 ${(currentUserSize / 1024 / 1024).toFixed(2)} MB，最大 ${(CONFIG.MAX_SIZE_PER_FINGERPRINT / 1024 / 1024).toFixed(0)} MB），请先删除一些分享或等待过期`,
@@ -744,12 +751,12 @@ export default defineEventHandler(async (event: H3Event) => {
       const indexEntry: IndexEntry = {
         id,
         createdAt: shareData.createdAt,
-        size: jsonData.length,
+        size: jsonDataSize,
         expiresAt,
         creatorFingerprint: clientFingerprint,
       };
       index.shares.push(indexEntry);
-      index.totalSize += jsonData.length;
+      index.totalSize += jsonDataSize;
       await writeIndex(index);
 
       // 安排到期自动删除
@@ -841,4 +848,3 @@ export default defineEventHandler(async (event: H3Event) => {
     };
   }
 });
-

@@ -19,7 +19,7 @@
                     <el-alert type="info" :closable="false" style="margin-bottom: 20px">
                         <template #title>
                             <span style="font-size: 12px">
-                                <strong>免费服务限制：</strong>分享输入区域的JSON数据，单次分享最大2MB数据，每个用户最多5次分享，每分钟最多分享3次。
+                                <strong>免费服务限制：</strong>分享编辑区域的JSON数据，单次分享最大2MB数据，每个用户最多5次分享，每分钟最多分享3次。
                             </span>
                         </template>
                     </el-alert>
@@ -190,6 +190,21 @@ interface Props {
 }
 
 const props = defineProps<Props>();
+const MAX_SHARE_SIZE_BYTES = 2 * 1024 * 1024;
+
+const getUtf8ByteLength = (text: string): number => {
+    try {
+        return new TextEncoder().encode(text).length;
+    } catch {
+        return text.length;
+    }
+};
+
+const formatBytes = (bytes: number): string => {
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(2)} KB`;
+    return `${(bytes / 1024 / 1024).toFixed(2)} MB`;
+};
 
 // Emits
 const emit = defineEmits<{
@@ -202,6 +217,9 @@ const dialogVisible = computed({
     get: () => props.modelValue,
     set: value => emit('update:modelValue', value),
 });
+const jsonSizeBytes = computed(() => getUtf8ByteLength(props.jsonData || ''));
+const isJsonTooLarge = computed(() => jsonSizeBytes.value > MAX_SHARE_SIZE_BYTES);
+const formattedJsonSize = computed(() => formatBytes(jsonSizeBytes.value));
 
 // 分享设置（仅自定义：数值 + 单位）
 const MIN_EXPIRES_IN_MS = 3 * 60 * 1000; // 3分钟
@@ -388,6 +406,11 @@ const createShare = async () => {
     // 验证JSON数据
     if (!props.jsonData || !props.jsonData.trim()) {
         showMessageError('JSON数据不能为空');
+        return;
+    }
+
+    if (isJsonTooLarge.value) {
+        showMessageError(`当前输入区 JSON 数据过大（${formattedJsonSize.value}，最大 ${formatBytes(MAX_SHARE_SIZE_BYTES)}）`);
         return;
     }
 
@@ -679,7 +702,7 @@ const fetchMyShares = async () => {
     }
 };
 
-// 加载分享到输入区域
+// 加载分享到编辑区域
 const loadShareIntoEditor = async (row: any) => {
     try {
         let passwordInput: string | undefined = undefined;
@@ -702,9 +725,9 @@ const loadShareIntoEditor = async (row: any) => {
             method: 'GET',
         });
         if (res.success && res.data?.jsonData) {
-            // 将内容发射给父组件处理注入到输入区域
+            // 将内容发射给父组件处理注入到编辑区域
             emit('loadSharedJson', res.data.jsonData);
-            showMessageSuccess('已加载到输入区域');
+            showMessageSuccess('已加载到编辑区域');
         } else {
             showMessageError(res.error || '加载失败');
         }

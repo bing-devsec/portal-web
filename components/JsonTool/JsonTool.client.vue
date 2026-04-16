@@ -2011,7 +2011,7 @@ const setupFoldingInfoDisplay = (editor: monaco.editor.IStandaloneCodeEditor) =>
 
             // 折叠区域重排时，Monaco 会短暂移除旧 DOM。
             // 给一个很短的宽限期，避免统计文本因为瞬时丢失而闪烁。
-            if (isOutsideVisibleRange || (isFoldedElementRemoved && now - info.lastSeenAt > 250)) {
+            if (isOutsideVisibleRange || (isFoldedElementRemoved && now - info.lastSeenAt > 100)) {
                 if (info.element.parentNode) info.element.remove();
                 infoElements.delete(lineNumber);
             }
@@ -3440,22 +3440,23 @@ const getFoldingModelAsync = async (editor: monaco.editor.IStandaloneCodeEditor)
 };
 
 // 层级收缩
-const foldByIndentation = async () => {
-    if (!outputEditor) return;
+const foldByIndentation = async (): Promise<{ firstCollapsedLine: number | null; collapsedCount: number }> => {
+    if (!outputEditor) return { firstCollapsedLine: null, collapsedCount: 0 };
 
     const model = outputEditor.getModel();
-    if (!model) return;
+    if (!model) return { firstCollapsedLine: null, collapsedCount: 0 };
 
     const targetLevel = selectedLevel.value;
 
     const foldingModel = await getFoldingModelAsync(outputEditor);
-    if (!foldingModel) return;
+    if (!foldingModel) return { firstCollapsedLine: null, collapsedCount: 0 };
 
     const regions = foldingModel.regions;
-    if (!regions || regions.length === 0) return;
+    if (!regions || regions.length === 0) return { firstCollapsedLine: null, collapsedCount: 0 };
 
     const toExpand: any[] = [];
     const toCollapse: any[] = [];
+    const toCollapseStartLines: number[] = [];
 
     const allRegions: any[] = [];
     const parentStack: number[] = [];
@@ -3476,7 +3477,10 @@ const foldByIndentation = async () => {
         const region = regions.toRegion(index);
         const isCollapsed = regions.isCollapsed(index);
         if (level >= targetLevel) {
-            if (!isCollapsed) toCollapse.push(region);
+            if (!isCollapsed) {
+                toCollapse.push(region);
+                toCollapseStartLines.push(regions.getStartLineNumber(index));
+            }
         } else {
             if (isCollapsed) toExpand.push(region);
         }
@@ -3490,6 +3494,8 @@ const foldByIndentation = async () => {
     }
 
     showMessageSuccess(`收缩到第 ${targetLevel} 层成功`);
+    const firstCollapsedLine = toCollapseStartLines.length > 0 ? Math.min(...toCollapseStartLines) : null;
+    return { firstCollapsedLine, collapsedCount: toCollapseStartLines.length };
 };
 
 const getDefaultFoldLevel = (level: number) => {
@@ -4973,6 +4979,32 @@ const unescapeJSON = (recursive: boolean = true) => {
             }
         }
 
+        // 递归模式下，如果顶层解析结果是 string（例如输入本身是 JSON string），
+        // 尝试将该字符串继续按 JSON 解析，直到变成 object/array 或无法继续解析。
+        // 这能覆盖形如 "\"{...}\"" 的场景，确保“递归去除转义”真正向下展开。
+        if (recursive && typeof parsedInput === 'string') {
+            let current: any = parsedInput;
+            for (let i = 0; i < 5; i++) {
+                if (typeof current !== 'string') break;
+                const cand = current.trim();
+                if (!cand) break;
+                const res = tryParseJSON(cand);
+                if (res.ok) {
+                    // 防止极端情况下出现无意义的自循环
+                    if (res.value === current) break;
+                    current = res.value;
+                    continue;
+                }
+                const relaxed = iterativeParse(cand, 5);
+                if (relaxed !== null) {
+                    current = relaxed;
+                    continue;
+                }
+                break;
+            }
+            parsedInput = current;
+        }
+
         // 如果成功解析为对象或数组，进行递归处理
         if (parsedInput !== null && typeof parsedInput === 'object' && recursive) {
             try {
@@ -5582,7 +5614,7 @@ const handleLevelAction = () => {
             return;
         }
 
-        // 层级收缩始终以输入区域为准，并强制使用数组换行格式，
+        // 层级收缩始终以编辑区域为准，并强制使用数组换行格式，
         // 这样即使用户平时选择“简单数组同一行显示”，收缩时也能为内层数组生成稳定的折叠区域。
         let value = inputEditor?.getValue() || '';
         if (!value.trim()) {
@@ -5632,12 +5664,47 @@ const handleLevelAction = () => {
 
             isFoldOperationLocked = true;
             try {
-                await foldByIndentation();
+                // 仅当“本次实际发生折叠的位置”不在当前可视区时，自动滚动过去，
+                // 避免出现“折叠发生在很靠后位置但视图仍停留在顶部”的体验问题。
+                const getVisibleLineRange = (): { start: number; end: number } | null => {
+                    try {
+                        if (!outputEditor) return null;
+                        const visibleRanges = outputEditor.getVisibleRanges();
+                        if (!visibleRanges || visibleRanges.length === 0) return null;
+                        let minLine = Infinity;
+                        let maxLine = 0;
+                        visibleRanges.forEach(r => {
+                            minLine = Math.min(minLine, r.startLineNumber);
+                            maxLine = Math.max(maxLine, r.endLineNumber);
+                        });
+                        if (minLine === Infinity || maxLine === 0) return null;
+                        return { start: minLine, end: maxLine };
+                    } catch {
+                        return null;
+                    }
+                };
+
+                const beforeFoldVisible = getVisibleLineRange();
+                const foldResult = await foldByIndentation();
 
                 // 折叠完成后，启用折叠信息更新并立即刷新，然后重新计算
                 setTimeout(() => {
                     if (!outputEditor) return;
                     try {
+                        if (foldResult.firstCollapsedLine && beforeFoldVisible) {
+                            const line = foldResult.firstCollapsedLine;
+                            const isOutside = line < beforeFoldVisible.start || line > beforeFoldVisible.end;
+                            if (isOutside) {
+                                // Monaco 新版本支持 revealLineInCenterIfOutsideViewport，这里做兼容兜底
+                                const editorAny = outputEditor as any;
+                                if (typeof editorAny.revealLineInCenterIfOutsideViewport === 'function') {
+                                    editorAny.revealLineInCenterIfOutsideViewport(line);
+                                } else {
+                                    outputEditor.revealLineInCenter(line);
+                                }
+                            }
+                        }
+
                         // 启用折叠信息更新并立即刷新（使用现有数据）
                         const refreshFunc = (outputEditor as any).__enableFoldingInfoUpdateAndRefresh;
                         if (refreshFunc) {
