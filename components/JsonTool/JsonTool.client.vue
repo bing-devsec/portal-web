@@ -32,19 +32,19 @@
 
                     <el-button-group>
                         <el-button v-if="buttonVisibility.fetchJson" type="primary" @click="openFetchJsonDialog">获取JSON</el-button>
-                        <el-button v-if="buttonVisibility.format" type="primary" @click="formatJSON">格式化</el-button>
-                        <el-button v-if="buttonVisibility.compress" type="primary" @click="compressJSON">压缩</el-button>
-                        <el-button v-if="buttonVisibility.escape" type="primary" @click="compressAndEscapeJSON">转义</el-button>
-                        <el-button v-if="buttonVisibility.unescape" type="primary" @click="handleEscapeCommand('unescape')">去除转义</el-button>
-                        <el-button v-if="buttonVisibility.masking" type="primary" @click="openDataMaskingDialog">脱敏</el-button>
-                        <el-button v-if="buttonVisibility.sort" type="primary" @click="handleAdvancedCommand('sort')">排序</el-button>
-                        <el-button v-if="buttonVisibility.archive" type="primary" @click="handleSaveArchive">存档</el-button>
-                        <el-button v-if="buttonVisibility.share" type="primary" @click="openShareDialog">分享</el-button>
+                        <el-button v-if="buttonVisibility.format" type="primary" :disabled="!canUseProcessingFeatures" @click="formatJSON">格式化</el-button>
+                        <el-button v-if="buttonVisibility.compress" type="primary" :disabled="!canUseProcessingFeatures" @click="compressJSON">压缩</el-button>
+                        <el-button v-if="buttonVisibility.escape" type="primary" :disabled="!canUseProcessingFeatures" @click="compressAndEscapeJSON">转义</el-button>
+                        <el-button v-if="buttonVisibility.unescape" type="primary" :disabled="!canUseProcessingFeatures" @click="handleEscapeCommand('unescape')">去除转义</el-button>
+                        <el-button v-if="buttonVisibility.masking" type="primary" :disabled="!canUseProcessingFeatures" @click="openDataMaskingDialog">脱敏</el-button>
+                        <el-button v-if="buttonVisibility.sort" type="primary" :disabled="!canUseProcessingFeatures" @click="handleAdvancedCommand('sort')">排序</el-button>
+                        <el-button v-if="buttonVisibility.archive" type="primary" :disabled="!canUseProcessingFeatures" @click="handleSaveArchive">存档</el-button>
+                        <el-button v-if="buttonVisibility.share" type="primary" :disabled="!canUseProcessingFeatures" @click="openShareDialog">分享</el-button>
                     </el-button-group>
 
                     <!-- 数据转换下拉按钮（紧挨着功能按钮组） -->
                     <el-dropdown v-if="buttonVisibility.dataConvert" trigger="click" @command="handleConvert">
-                        <el-button type="primary">
+                        <el-button type="primary" :disabled="!canUseProcessingFeatures">
                             数据转换
                             <el-icon class="el-icon--right">
                                 <ArrowDown />
@@ -63,11 +63,11 @@
 
                     <!-- 层级控制 -->
                     <div v-if="buttonVisibility.collapse" class="collapse-control">
-                        <el-select v-model="selectedLevel" placeholder="层级" class="level-select" fit-input-width :disabled="maxLevel === 0">
+                        <el-select v-model="selectedLevel" placeholder="层级" class="level-select" fit-input-width :disabled="maxLevel === 0 || !canUseCollapseFeature">
                             <el-option v-if="maxLevel === 0" label="第0层" :value="0" :disabled="true" />
                             <el-option v-for="n in maxLevel" :key="n" :label="`第${n}层`" :value="n" />
                         </el-select>
-                        <el-button type="success" @click="handleLevelAction" :disabled="maxLevel === 0">收缩</el-button>
+                        <el-button type="success" @click="handleLevelAction" :disabled="maxLevel === 0 || !canUseCollapseFeature">收缩</el-button>
                     </div>
 
                     <!-- 界面控制：全屏 -->
@@ -405,7 +405,7 @@
                                     <span class="settings-subsection-title-desc">关闭后编辑区域将不再显示红色波浪线报错提示，但语法高亮仍生效</span>
                                 </div>
                                 <div class="settings-item">
-                                    <el-switch v-model="enableDiagnostics" active-text="启用" inactive-text="禁用" size="default" />
+                                    <el-switch v-model="enableDiagnostics" :disabled="isDisplayOnlyMode" active-text="启用" inactive-text="禁用" size="default" />
                                 </div>
                             </div>
 
@@ -418,7 +418,7 @@
                                     <span class="settings-subsection-title-desc">开启后编辑器顶部将显示当前光标位置的层级路径，方便查看大JSON时快速了解上级结构</span>
                                 </div>
                                 <div class="settings-item">
-                                    <el-switch v-model="stickyScroll" active-text="启用" inactive-text="禁用" size="default" @change="updateStickyScroll" />
+                                    <el-switch v-model="stickyScroll" :disabled="isDisplayOnlyMode" active-text="启用" inactive-text="禁用" size="default" @change="updateStickyScroll" />
                                 </div>
                             </div>
 
@@ -724,7 +724,9 @@ import { Base64 } from 'js-base64';
 
 // ==================== 常量与全局状态 ====================
 const MAX_FILE_SIZE = 5 * 1024 * 1024; // 文件大小限制：5MB
-const MAX_LINES = 500000; // 最大行数限制
+const FULL_FEATURE_MAX_LINES = 1_000_000; // 100 万行以内，所有功能可用
+const COLLAPSE_DISABLED_MAX_LINES = 3_000_000; // 100 万到 300 万行，仅禁用层级收缩
+const MAX_LINES = 5_000_000; // 300 万到 500 万行为仅展示模式，超过 500 万行直接拒绝
 let isInitializing = true; // 标记是否正在初始化，避免初始化时触发保存
 const outputType = ref<'json' | 'yaml' | 'toml' | 'xml' | 'go' | 'text'>('json'); // 当前输出类型的状态
 const maxLevel = ref(0); // 最大层级
@@ -868,7 +870,7 @@ const saveSettings = () => {
         defaultFullscreen: defaultFullscreen.value,
         syncScrollEnabled: syncScrollEnabled.value,
         showMinimap: showMinimap.value,
-        enableDiagnostics: enableDiagnostics.value,
+        enableDiagnostics: preferredEnableDiagnostics.value,
         indentSize: indentSize.value,
         encodingMode: encodingMode.value,
         arrayNewLine: arrayNewLine.value,
@@ -876,7 +878,7 @@ const saveSettings = () => {
         sortMethod: sortMethod.value,
         sortOrder: sortOrder.value,
         customArchiveName: customArchiveName.value,
-        stickyScroll: stickyScroll.value,
+        stickyScroll: preferredStickyScroll.value,
     };
     localStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify(settingsToSave));
 };
@@ -896,6 +898,7 @@ const defaultFullscreen = ref(savedSettings.defaultFullscreen ?? savedSettings.i
 watch(defaultFullscreen, (val) => { isFullscreen.value = val; }, { immediate: true });
 const showMinimap = ref(savedSettings.showMinimap ?? false); // 是否显示缩略图
 const enableDiagnostics = ref(savedSettings.enableDiagnostics ?? true); // 是否启用JSON语法检查
+const preferredEnableDiagnostics = ref(enableDiagnostics.value); // 记录用户原始语法检查偏好
 const inputEditorErrors = ref<monaco.editor.IMarker[]>([]);
 const currentErrorIndex = ref(-1);
 const encodingMode = ref(savedSettings.encodingMode ?? false); // 添加编码处理模式：false-不解码，true-解码（智能解码所有编码格式）
@@ -903,7 +906,18 @@ const sortMethod = ref<'dictionary' | 'length' | 'field'>(savedSettings.sortMeth
 const sortOrder = ref<'asc' | 'desc'>(savedSettings.sortOrder); // 排序方向
 const customArchiveName = ref<boolean>(savedSettings.customArchiveName ?? false); // 是否自定义存档名称
 const stickyScroll = ref(savedSettings.stickyScroll ?? true); // 是否启用粘性滚动
+const preferredStickyScroll = ref(stickyScroll.value); // 记录用户原始粘性滚动偏好
+const currentInputLineCount = ref(1);
 const buttonVisibility = ref(savedSettings.buttonVisibility); // 菜单栏按钮显示控制状态
+
+const isCollapseRestrictedMode = computed(
+    () => currentInputLineCount.value > FULL_FEATURE_MAX_LINES && currentInputLineCount.value <= COLLAPSE_DISABLED_MAX_LINES
+);
+const isDisplayOnlyMode = computed(
+    () => currentInputLineCount.value > COLLAPSE_DISABLED_MAX_LINES && currentInputLineCount.value <= MAX_LINES
+);
+const canUseCollapseFeature = computed(() => !isCollapseRestrictedMode.value && !isDisplayOnlyMode.value);
+const canUseProcessingFeatures = computed(() => !isDisplayOnlyMode.value);
 
 // ==================== 全屏管理 ====================
 
@@ -1511,8 +1525,56 @@ const updateEditorLayout = () => {
     updateEditorHeight(outputEditor);
 };
 
+const LARGE_FILE_OPTIMIZATION_LINE_THRESHOLD = COLLAPSE_DISABLED_MAX_LINES;
+
+const getEditorLineCount = (editor: monaco.editor.IStandaloneCodeEditor | null) => editor?.getModel()?.getLineCount() || 1;
+
+const getLargeFileOptions = (enableLargeFileFolding: boolean, lineCount: number) =>
+    enableLargeFileFolding
+        ? {
+              foldingMaximumRegions: 2500000, // 增加折叠区域上限（默认约5000），支持超大JSON文件
+              largeFileOptimizations: lineCount > LARGE_FILE_OPTIMIZATION_LINE_THRESHOLD, // 超过 200 万行时启用大文件优化，优先保证可用性
+          }
+        : {};
+
+const showProcessingRestrictedMessage = () => {
+    showMessageWarning('当前 JSON 超过 300 万行，已进入仅展示模式，只支持查看和滚动');
+};
+
+const showCollapseRestrictedMessage = () => {
+    showMessageWarning('当前 JSON 超过 100 万行，层级收缩功能不可用');
+};
+
+const ensureProcessingFeatureAvailable = () => {
+    if (!canUseProcessingFeatures.value) {
+        showProcessingRestrictedMessage();
+        return false;
+    }
+    return true;
+};
+
+const ensureCollapseFeatureAvailable = () => {
+    if (!canUseCollapseFeature.value) {
+        if (isDisplayOnlyMode.value) {
+            showProcessingRestrictedMessage();
+        } else {
+            showCollapseRestrictedMessage();
+        }
+        return false;
+    }
+    return true;
+};
+
+const shouldPrecomputeFoldingInfo = () => canUseCollapseFeature.value;
+
 // 获取编辑器配置
-const getEditorOptions = (size: number, isReadOnly: boolean = false, language: string = 'json', enableLargeFileFolding: boolean = false) => ({
+const getEditorOptions = (
+    size: number,
+    isReadOnly: boolean = false,
+    language: string = 'json',
+    enableLargeFileFolding: boolean = false,
+    lineCount: number = 1
+) => ({
     // 基础配置
     value: '',
     language,
@@ -1550,12 +1612,7 @@ const getEditorOptions = (size: number, isReadOnly: boolean = false, language: s
 
     // 折叠配置
     folding: true, // 启用代码折叠功能（这是基础配置，必须开启）
-    ...(enableLargeFileFolding
-        ? {
-              foldingMaximumRegions: 300000, // 增加折叠区域上限（默认约5000），支持超大JSON文件
-              largeFileOptimizations: false, // 禁用大文件优化，强制启用完整语法分析和折叠计算
-          }
-        : {}),
+    ...getLargeFileOptions(enableLargeFileFolding, lineCount),
 
     // 编辑器配置
     links: true, // 启用链接检测功能，支持URL点击跳转
@@ -1649,6 +1706,11 @@ const updateStickyScroll = () => {
     outputEditor?.updateOptions(options);
 };
 
+const syncEditorLargeFileOptions = (editor: monaco.editor.IStandaloneCodeEditor | null, enableLargeFileFolding: boolean = false) => {
+    if (!editor) return;
+    editor.updateOptions(getLargeFileOptions(enableLargeFileFolding, getEditorLineCount(editor)));
+};
+
 // 更新输出编辑器配置（包括模型选项，确保缩进指南线正确显示）
 const updateOutputEditorConfig = (language: string = 'json', enableLargeFileFolding: boolean = false, customIndentSize?: number) => {
     if (!outputEditor) return;
@@ -1670,7 +1732,7 @@ const updateOutputEditorConfig = (language: string = 'json', enableLargeFileFold
     }
 
     // 更新编辑器配置
-    outputEditor.updateOptions(getEditorOptions(size, true, language, enableLargeFileFolding));
+    outputEditor.updateOptions(getEditorOptions(size, true, language, enableLargeFileFolding, getEditorLineCount(outputEditor)));
 
     updateLineNumberWidth(outputEditor);
     updateEditorHeight(outputEditor);
@@ -2321,10 +2383,11 @@ const formatFileSize = (bytes: number): string => {
 // 获取存档总大小信息
 const getArchivesTotalSizeInfo = (): string => {
     const totalSize = archives.value.reduce((sum, archive) => sum + archive.size, 0);
-    const formattedSize = formatFileSize(totalSize);
-    const count = archives.value.length;
+    const remainingSize = Math.max(0, MAX_ARCHIVE_TOTAL_SIZE - totalSize);
+    const formattedUsedSize = formatFileSize(totalSize);
+    const formattedRemainingSize = formatFileSize(remainingSize);
 
-    return `${count}个存档，${formattedSize}`;
+    return `已使用 ${formattedUsedSize}，剩余 ${formattedRemainingSize}`;
 };
 
 // 更新编辑器状态栏信息
@@ -2536,10 +2599,36 @@ watch(stickyScroll, () => {
     updateStickyScroll();
 });
 
+watch(stickyScroll, value => {
+    if (!isDisplayOnlyMode.value) {
+        preferredStickyScroll.value = value;
+    }
+});
+
 // 监听是否启用语法检查
 watch(enableDiagnostics, () => {
     configureJsonSchemaSupport();
 });
+
+watch(enableDiagnostics, value => {
+    if (!isDisplayOnlyMode.value) {
+        preferredEnableDiagnostics.value = value;
+    }
+});
+
+watch(
+    isDisplayOnlyMode,
+    displayOnly => {
+        if (displayOnly) {
+            enableDiagnostics.value = false;
+            stickyScroll.value = false;
+        } else {
+            enableDiagnostics.value = preferredEnableDiagnostics.value;
+            stickyScroll.value = preferredStickyScroll.value;
+        }
+    },
+    { immediate: true }
+);
 
 let inputMarkersListener: monaco.IDisposable | null = null;
 
@@ -2741,8 +2830,9 @@ const initializeMonacoEnvironment = () => {
 const createInputEditor = () => {
     if (!inputEditorContainer.value) return;
 
-    const inputOptions = getEditorOptions(indentSize.value, false, 'json', true);
+    const inputOptions = getEditorOptions(indentSize.value, false, 'json', true, 1);
     inputEditor = monaco.editor.create(inputEditorContainer.value, inputOptions);
+    currentInputLineCount.value = getEditorLineCount(inputEditor);
 
     const container = inputEditorContainer.value;
     nextTick(() => {
@@ -2755,26 +2845,9 @@ const createInputEditor = () => {
         // 监听粘贴事件，自动检测并调整缩进
         if (inputEditor) {
             const editor = inputEditor!;
-            inputEditor.onDidPaste((e) => {
+            inputEditor.onDidPaste(() => {
                 const model = editor.getModel();
                 if (!model) return;
-
-                // 检测全选粘贴场景：用户全选内容后粘贴，Monaco 会替换选区，
-                // 但旧内容可能残留在 undo 栈中（Ctrl+Z 会恢复旧内容）。
-                // 如果粘贴覆盖了整个 model，则清空 undo 栈。
-                const fullRange = model.getFullModelRange();
-                if (fullRange.equalsRange(e.range)) {
-                    // 通过替换自身内容来清空 undo/redo 栈（不改变实际内容）
-                    const currentValue = model.getValue();
-                    // model.setValue('');
-                    editor.executeEdits('clear-input', [
-                        {
-                            range: model.getFullModelRange(),
-                            text: '',
-                        },
-                    ]);
-                    model.setValue(currentValue);
-                }
 
                 // 使用 Monaco Editor 内置的缩进检测 API
                 const detected = (model as any).detectIndentation ? (model as any).detectIndentation(true, 2) : null;
@@ -2983,6 +3056,10 @@ const configureInputEditor: () => void = () => {
 
     // 监听输入变化
     inputEditor.onDidChangeModelContent(() => {
+        const lineCount = getEditorLineCount(inputEditor);
+        currentInputLineCount.value = lineCount;
+        syncEditorLargeFileOptions(inputEditor, true);
+
         // 使用防抖更新行号宽度，避免频繁调用
         debouncedUpdateLineNumberWidth(inputEditor);
 
@@ -2990,8 +3067,25 @@ const configureInputEditor: () => void = () => {
         if (value.trim()) {
             const cleanedContent = value.replace(/[\u0000-\u0008\u000B-\u000C\u000E-\u0019]+/g, '');
 
-            // 检查行数和深度限制
-            const checkResult = checkLinesAndDepth(cleanedContent);
+            // 优先使用 Monaco model 的行数统计，避免重复扫描超大字符串
+            if (lineCount > MAX_LINES) {
+                showMessageError(`内容超过${MAX_LINES}行限制，请使用较小的文件或使用其他工具处理超大文件`);
+                maxLevel.value = 0;
+                selectedLevel.value = 0;
+                setTimeout(() => {
+                    clearInput(false);
+                }, 100);
+                return;
+            }
+
+            if (lineCount > FULL_FEATURE_MAX_LINES) {
+                maxLevel.value = 0;
+                selectedLevel.value = 0;
+                return;
+            }
+
+            // 检查 JSON 层级限制
+            const checkResult = checkJsonDepth(cleanedContent);
             if (!checkResult.isValid) {
                 showMessageError(checkResult.error || '内容不符合要求');
                 maxLevel.value = 0;
@@ -3026,7 +3120,7 @@ const configureInputEditor: () => void = () => {
             }
 
             try {
-                const { data: parsed } = preprocessJSON(cleanedContent);
+                const { data: parsed } = preprocessJSON(value);
                 maxLevel.value = calculateMaxLevel(parsed);
                 if (maxLevel.value > 0 && selectedLevel.value === 0) {
                     selectedLevel.value = getDefaultFoldLevel(maxLevel.value);
@@ -3400,23 +3494,8 @@ const calculateMaxLevel = (obj: any, currentLevel: number = 1): number => {
     return calculateJsonStructure(obj, 'level', currentLevel);
 };
 
-// 检查行数和深度，返回检查结果
-const checkLinesAndDepth = (content: string): { isValid: boolean; error?: string } => {
-    // 检查行数
-    let lineCount = 1;
-    for (let i = 0; i < content.length; i++) {
-        if (content.charCodeAt(i) === 10) {
-            lineCount++;
-            if (lineCount > MAX_LINES) break;
-        }
-    }
-    if (lineCount > MAX_LINES) {
-        return {
-            isValid: false,
-            error: `内容超过 ${MAX_LINES} 行限制，请使用较小的文件或使用其他工具处理超大文件`,
-        };
-    }
-
+// 检查 JSON 深度，返回检查结果
+const checkJsonDepth = (content: string): { isValid: boolean; error?: string } => {
     // 检查JSON层级（仅在JSON有效时检查）
     try {
         const { data: jsonData } = preprocessJSON(content);
@@ -4631,6 +4710,7 @@ const CompatibleCustomStringify = (data: any, indentSize: number, ...args: any[]
 
 // 格式化 JSON
 const formatJSON = () => {
+    if (!ensureProcessingFeatureAvailable()) return;
     const startTime = performance.now();
     const startLineCount = (inputEditor?.getValue() || '').split('\n').length;
 
@@ -4643,8 +4723,16 @@ const formatJSON = () => {
             return;
         }
 
+        const effectiveEncodingMode = encodingMode.value;
+        const effectivePreserveNumberLiterals = preserveNumberLiterals.value;
+
         // 创建格式化器
-        const formatter = new JsonPlusFormatter(encodingMode.value, indentSize.value, arrayNewLine.value, preserveNumberLiterals.value);
+        const formatter = new JsonPlusFormatter(
+            effectiveEncodingMode,
+            indentSize.value,
+            arrayNewLine.value,
+            effectivePreserveNumberLiterals
+        );
 
         // 解析 JSON5
         const { data, escapeMap } = formatter.parseJson5(value);
@@ -4653,8 +4741,9 @@ const formatJSON = () => {
         const formatted = formatter.format(data, escapeMap);
 
         // 异步计算所有折叠区域的信息（不阻塞，立即返回）
-        // 这样可以避免实时计算的高成本，特别是对于大数据量（7-10万行）
-        precomputeFoldingInfo(formatted).catch(() => {});
+        if (shouldPrecomputeFoldingInfo()) {
+            precomputeFoldingInfo(formatted).catch(() => {});
+        }
 
         outputEditor?.setValue(formatted);
 
@@ -4675,6 +4764,7 @@ const formatJSON = () => {
 
 // 压缩 JSON
 const compressJSON = () => {
+    if (!ensureProcessingFeatureAvailable()) return;
     try {
         outputType.value = 'json';
         const value = inputEditor?.getValue() || '';
@@ -4960,7 +5050,7 @@ const unescapeJSON = (recursive: boolean = true) => {
                     if (model) {
                         monaco.editor.setModelLanguage(model, 'json');
                     }
-                    outputEditor.updateOptions(getEditorOptions(indentSize.value, true, 'json', true));
+                    outputEditor.updateOptions(getEditorOptions(indentSize.value, true, 'json', true, getEditorLineCount(outputEditor)));
                     updateLineNumberWidth(outputEditor);
                     updateEditorHeight(outputEditor);
                 }
@@ -5270,7 +5360,7 @@ const unescapeJSON = (recursive: boolean = true) => {
 
                         // 更新其他配置
                         // 对于JSON输出，总是启用大文件折叠优化
-                        outputEditor.updateOptions(getEditorOptions(indentSize.value, true, 'json', true));
+                        outputEditor.updateOptions(getEditorOptions(indentSize.value, true, 'json', true, getEditorLineCount(outputEditor)));
                         updateLineNumberWidth(outputEditor);
                         updateEditorHeight(outputEditor);
                     }
@@ -5368,7 +5458,7 @@ const unescapeJSON = (recursive: boolean = true) => {
 
                     // 更新其他配置
                     // 对于JSON输出，总是启用大文件折叠优化
-                    outputEditor.updateOptions(getEditorOptions(indentSize.value, true, 'json', true));
+                    outputEditor.updateOptions(getEditorOptions(indentSize.value, true, 'json', true, getEditorLineCount(outputEditor)));
                     updateLineNumberWidth(outputEditor);
                     updateEditorHeight(outputEditor);
                 }
@@ -5417,7 +5507,7 @@ const unescapeJSON = (recursive: boolean = true) => {
 
                                     // 更新其他配置
                                     // 对于JSON输出，总是启用大文件折叠优化
-                                    outputEditor.updateOptions(getEditorOptions(indentSize.value, true, 'json', true));
+                                    outputEditor.updateOptions(getEditorOptions(indentSize.value, true, 'json', true, getEditorLineCount(outputEditor)));
                                     updateLineNumberWidth(outputEditor);
                                     updateEditorHeight(outputEditor);
                                 }
@@ -5439,7 +5529,7 @@ const unescapeJSON = (recursive: boolean = true) => {
 
                                 // 更新其他配置
                                 // 对于JSON输出，总是启用大文件折叠优化
-                                outputEditor.updateOptions(getEditorOptions(indentSize.value, true, 'json', true));
+                                outputEditor.updateOptions(getEditorOptions(indentSize.value, true, 'json', true, getEditorLineCount(outputEditor)));
                                 updateLineNumberWidth(outputEditor);
                                 updateEditorHeight(outputEditor);
                             }
@@ -5490,7 +5580,7 @@ const unescapeJSON = (recursive: boolean = true) => {
 
                     // 更新其他配置
                     // 对于JSON输出，总是启用大文件折叠优化
-                    outputEditor.updateOptions(getEditorOptions(indentSize.value, true, 'json', true));
+                    outputEditor.updateOptions(getEditorOptions(indentSize.value, true, 'json', true, getEditorLineCount(outputEditor)));
                     updateLineNumberWidth(outputEditor);
                     updateEditorHeight(outputEditor);
                 }
@@ -5510,7 +5600,7 @@ const unescapeJSON = (recursive: boolean = true) => {
 
                     // 更新其他配置
                     // 对于JSON输出，总是启用大文件折叠优化
-                    outputEditor.updateOptions(getEditorOptions(indentSize.value, true, 'json', true));
+                    outputEditor.updateOptions(getEditorOptions(indentSize.value, true, 'json', true, getEditorLineCount(outputEditor)));
                     updateLineNumberWidth(outputEditor);
                     updateEditorHeight(outputEditor);
                 }
@@ -5530,7 +5620,7 @@ const unescapeJSON = (recursive: boolean = true) => {
 
                 // 更新其他配置
                 // 对于JSON输出，总是启用大文件折叠优化
-                outputEditor.updateOptions(getEditorOptions(indentSize.value, true, 'json', true));
+                outputEditor.updateOptions(getEditorOptions(indentSize.value, true, 'json', true, getEditorLineCount(outputEditor)));
                 updateLineNumberWidth(outputEditor);
                 updateEditorHeight(outputEditor);
             }
@@ -5546,6 +5636,7 @@ const unescapeJSON = (recursive: boolean = true) => {
 
 // 压缩并转义功能
 const compressAndEscapeJSON = () => {
+    if (!ensureProcessingFeatureAvailable()) return;
     try {
         const value = inputEditor?.getValue() || '';
         if (!value.trim()) {
@@ -5589,7 +5680,7 @@ const compressAndEscapeJSON = () => {
 
             // 更新其他配置
             // 对于JSON输出，总是启用大文件折叠优化
-            outputEditor.updateOptions(getEditorOptions(indentSize.value, true, 'json', true));
+            outputEditor.updateOptions(getEditorOptions(indentSize.value, true, 'json', true, getEditorLineCount(outputEditor)));
             updateLineNumberWidth(outputEditor);
             updateEditorHeight(outputEditor);
         }
@@ -5602,6 +5693,7 @@ const compressAndEscapeJSON = () => {
 
 // 处理层级收缩
 const handleLevelAction = () => {
+    if (!ensureCollapseFeatureAvailable()) return;
     // 检查是否有正在进行的折叠操作，如果有则直接拒绝新请求
     if (isFoldOperationLocked) {
         showMessageWarning('请等待当前折叠操作完成');
@@ -5627,7 +5719,7 @@ const handleLevelAction = () => {
         let parsedData;
         let escapeMap;
         try {
-        const result = preprocessJSON(value, { preserveNumberLiterals: preserveNumberLiterals.value });
+            const result = preprocessJSON(value, { preserveNumberLiterals: preserveNumberLiterals.value });
             parsedData = result.data; // 提取实际的JSON数据
             escapeMap = result.escapeMap; // 获取转义映射
         } catch (error) {
@@ -5652,8 +5744,8 @@ const handleLevelAction = () => {
             }
 
             // 更新其他配置
-            // 对于10万行以内的JSON文件，总是启用大文件折叠优化
-            const updateOptions = getEditorOptions(indentSize.value, true, 'json', true);
+            // JSON 输出默认保留大文件折叠能力，超过 200 万行时自动切换为大文件优化模式
+            const updateOptions = getEditorOptions(indentSize.value, true, 'json', true, getEditorLineCount(outputEditor));
             outputEditor.updateOptions(updateOptions);
             updateLineNumberWidth(outputEditor);
             updateEditorHeight(outputEditor);
@@ -5736,11 +5828,13 @@ const openFetchJsonDialog = () => {
 
 // 打开分享对话框
 const openShareDialog = () => {
+    if (!ensureProcessingFeatureAvailable()) return;
     shareDialogVisible.value = true;
 };
 
 // 打开数据脱敏对话框
 const openDataMaskingDialog = () => {
+    if (!ensureProcessingFeatureAvailable()) return;
     // 检查输入编辑器是否有内容
     if (!inputEditor) {
         showMessageWarning('编辑器未初始化，请稍候再试');
@@ -5766,6 +5860,7 @@ const openDataMaskingDialog = () => {
 
 // 处理数据脱敏应用
 const handleDataMaskingApply = (maskedJson: string) => {
+    if (!ensureProcessingFeatureAvailable()) return;
     try {
         // 将脱敏后的JSON应用到编辑区域
         if (inputEditor) {
@@ -5900,6 +5995,7 @@ const calculateArchiveSize = (content: string): number => {
 };
 
 const handleSaveArchive = () => {
+    if (!ensureProcessingFeatureAvailable()) return;
     if (!inputEditor) {
         showMessageError('编辑器未初始化，请稍候再试');
         return;
@@ -5974,7 +6070,7 @@ const handleSaveArchive = () => {
             const saveSuccess = saveArchives();
 
             if (saveSuccess) {
-                showMessageSuccess(`已保存到本地存档（当前会话有效） - ${getArchivesTotalSizeInfo()}`);
+                showMessageSuccess(`已保存到本地存档（当前会话有效），${getArchivesTotalSizeInfo()}`);
             } else {
                 // 保存失败时，从内存数组中移除刚刚添加的存档
                 archives.value.shift();
@@ -6009,7 +6105,7 @@ const handleSaveArchive = () => {
         const saveSuccess = saveArchives();
 
         if (saveSuccess) {
-            showMessageSuccess(`已保存到本地存档（当前会话有效） - ${getArchivesTotalSizeInfo()}`);
+            showMessageSuccess(`已保存到本地存档（当前会话有效），${getArchivesTotalSizeInfo()}`);
         } else {
             // 保存失败时，从内存数组中移除刚刚添加的存档
             archives.value.shift();
@@ -6421,7 +6517,7 @@ const handleRefreshArchive = (item: JsonArchive) => {
 
             const saveSuccess = saveArchives();
             if (saveSuccess) {
-                showMessageSuccess(`已更新存档「${item.name}」的内容 - ${getArchivesTotalSizeInfo()}`);
+                showMessageSuccess(`已更新存档内容（当前会话有效），${getArchivesTotalSizeInfo()}`);
             } else {
                 // 保存失败时，回滚内存中的更改
                 const currentIndex = archives.value.findIndex(a => a.id === item.id);
@@ -6456,7 +6552,7 @@ const handleDeleteArchive = async (item: JsonArchive) => {
         const deletedArchive = archives.value.splice(index, 1)[0];
         const saveSuccess = saveArchives();
         if (saveSuccess) {
-            showMessageSuccess(`已删除存档 - ${getArchivesTotalSizeInfo()}`);
+            showMessageSuccess(`已删除存档（当前会话有效），${getArchivesTotalSizeInfo()}`);
         } else {
             // 保存失败时，将删除的存档重新添加回去
             archives.value.splice(index, 0, deletedArchive);
@@ -6483,7 +6579,7 @@ const handleRenameArchive = (item: JsonArchive) => {
         item.name = normalizedName;
         const saveSuccess = saveArchives();
         if (saveSuccess) {
-            showMessageSuccess(`已更新存档名称 - ${getArchivesTotalSizeInfo()}`);
+            showMessageSuccess('重命名成功');
         } else {
             // 保存失败时，回滚名称更改
             item.name = oldName;
@@ -6793,6 +6889,7 @@ const loadSharedDataFromUrl = async () => {
 
 // 处理转义相关命令
 const handleEscapeCommand = (command: string) => {
+    if (!ensureProcessingFeatureAvailable()) return;
     switch (command) {
         case 'unescape':
             unescapeJSON(recursiveUnescape.value);
@@ -6802,6 +6899,8 @@ const handleEscapeCommand = (command: string) => {
 
 // 处理高级功能命令
 const handleAdvancedCommand = (command: string) => {
+    if (command === 'sort' && !ensureProcessingFeatureAvailable()) return;
+    if (command === 'collapse' && !ensureCollapseFeatureAvailable()) return;
     switch (command) {
         case 'sort':
             applySort();
@@ -8103,6 +8202,7 @@ const performFieldSort = (data: any, rootPath: string, fieldName: string) => {
 
 // 执行字段排序
 const executeFieldSort = () => {
+    if (!ensureProcessingFeatureAvailable()) return;
     fieldSortDialogVisible.value = false;
 
     try {
@@ -8148,9 +8248,11 @@ const executeFieldSort = () => {
             const finalOutput = formatted.replace(/\\u([0-9a-fA-F]{4})/g, '\\u$1');
 
             // 异步计算所有折叠区域的信息（不阻塞，立即返回）
-            precomputeFoldingInfo(finalOutput).catch(error => {
-                // 静默处理错误，不影响主流程
-            });
+            if (shouldPrecomputeFoldingInfo()) {
+                precomputeFoldingInfo(finalOutput).catch(error => {
+                    // 静默处理错误，不影响主流程
+                });
+            }
 
             outputEditor?.setValue(finalOutput);
             updateEditorHeight(outputEditor);
@@ -8185,9 +8287,11 @@ const executeFieldSort = () => {
         const finalOutput = formatted.replace(/\\u([0-9a-fA-F]{4})/g, '\\u$1');
 
         // 异步计算所有折叠区域的信息（不阻塞，立即返回）
-        precomputeFoldingInfo(finalOutput).catch(error => {
-            // 静默处理错误，不影响主流程
-        });
+        if (shouldPrecomputeFoldingInfo()) {
+            precomputeFoldingInfo(finalOutput).catch(error => {
+                // 静默处理错误，不影响主流程
+            });
+        }
 
         outputEditor?.setValue(finalOutput);
 
@@ -8198,7 +8302,7 @@ const executeFieldSort = () => {
                 monaco.editor.setModelLanguage(model, 'json');
             }
 
-            outputEditor.updateOptions(getEditorOptions(indentSize.value, true, 'json', true));
+            outputEditor.updateOptions(getEditorOptions(indentSize.value, true, 'json', true, getEditorLineCount(outputEditor)));
             updateLineNumberWidth(outputEditor);
             updateEditorHeight(outputEditor);
         }
@@ -8241,6 +8345,7 @@ const sortStringLines = (input: string, method: 'dictionary' | 'length', order: 
 
 // 应用排序
 const applySort = () => {
+    if (!ensureProcessingFeatureAvailable()) return;
     try {
         const value = inputEditor?.getValue() || '';
 
@@ -8297,7 +8402,7 @@ const applySort = () => {
 
         // 异步计算所有折叠区域的信息（不阻塞，立即返回）
         // 这样可以避免实时计算的高成本，特别是对于大数据量
-        if (isJsonFormat) {
+        if (isJsonFormat && shouldPrecomputeFoldingInfo()) {
             precomputeFoldingInfo(outputResult).catch();
         }
 
@@ -8310,7 +8415,9 @@ const applySort = () => {
                 // 根据输出格式设置语言
                 monaco.editor.setModelLanguage(model, isJsonFormat ? 'json' : 'plaintext');
             }
-            outputEditor.updateOptions(getEditorOptions(indentSize.value, true, isJsonFormat ? 'json' : 'text', true));
+            outputEditor.updateOptions(
+                getEditorOptions(indentSize.value, true, isJsonFormat ? 'json' : 'text', true, getEditorLineCount(outputEditor))
+            );
             updateLineNumberWidth(outputEditor);
             updateEditorHeight(outputEditor);
         }
