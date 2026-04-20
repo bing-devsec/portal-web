@@ -1,22 +1,11 @@
 import { FingerprintDetector } from '../utils/fingerprint';
 
-// 全局变量保存指纹
-let globalFingerprintId = '';
-
-export default defineNuxtPlugin(async (nuxtApp) => {
-    // 定义一个函数获取或重新计算指纹
-    const recalculateFingerprint = async () => {
+export default defineNuxtPlugin(async () => {
+    const getFingerprint = async () => {
         try {
-            if (globalFingerprintId) {
-                return globalFingerprintId;
-            }
-            
-            // 需要重新计算指纹
-            const fingerprint = FingerprintDetector.getInstance();
-            const result = await fingerprint.getFingerprint();
-            globalFingerprintId = result.fingerprintId;
-            
-            return globalFingerprintId;
+            const detector = FingerprintDetector.getInstance();
+            const result = await detector.getFingerprint();
+            return result.fingerprintId;
         } catch (error) {
             return '';
         }
@@ -24,8 +13,8 @@ export default defineNuxtPlugin(async (nuxtApp) => {
 
     return {
         provide: {
-            fingerprint: globalFingerprintId,
-            recalculateFingerprint
+            fingerprint: getFingerprint,
+            recalculateFingerprint: getFingerprint
         }
     };
 }); 

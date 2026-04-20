@@ -106,7 +106,6 @@ import {
 } from "~/utils/seo";
 import { ResponseCode } from "~/utils/api";
 
-// 优化异步组件加载 - 延迟加载减少TBT，但移动端和桌面端都使用
 const MarkdownRenderer = defineAsyncComponent({
   loader: () => import("../../components/MarkdownRenderer.vue"),
   loadingComponent: defineComponent({
@@ -115,8 +114,8 @@ const MarkdownRenderer = defineAsyncComponent({
   errorComponent: defineComponent({
     template: '<div class="markdown-error">加载失败</div>',
   }),
-  delay: 200, // 延迟200ms，让SSR内容先显示，减少TBT
-  timeout: 5000,
+  delay: 0,
+  timeout: 10000,
   suspensible: true,
 });
 
@@ -411,25 +410,7 @@ const fetchArticleContent = async () => {
           article.value = result.data;
           visibleContent.value = result.data.content || "";
 
-          // 使用 requestIdleCallback 延迟切换到客户端渲染，减少TBT
-          if (import.meta.client) {
-            // 使用 requestIdleCallback 延迟切换，不阻塞主线程
-            if ("requestIdleCallback" in window) {
-              requestIdleCallback(
-                () => {
-                  isContentReady.value = true;
-                },
-                { timeout: 500 }
-              );
-            } else {
-              // 降级方案：延迟执行，让SSR内容先显示
-              setTimeout(() => {
-                isContentReady.value = true;
-              }, 200);
-            }
-          } else {
-            isContentReady.value = true;
-          }
+          isContentReady.value = true;
         } else {
           // API 返回其他错误码
           throw new Error(
@@ -481,22 +462,7 @@ const initArticleContent = async () => {
     article.value = serverArticle.value;
     visibleContent.value = serverArticle.value.content;
 
-    if (import.meta.client) {
-      if ("requestIdleCallback" in window) {
-        requestIdleCallback(
-          () => {
-            isContentReady.value = true;
-          },
-          { timeout: 1000 }
-        );
-      } else {
-        setTimeout(() => {
-          isContentReady.value = true;
-        }, 200);
-      }
-    } else {
-      isContentReady.value = true;
-    }
+    isContentReady.value = true;
     return;
   }
 
@@ -544,21 +510,7 @@ onMounted(() => {
     // 立即检测设备类型
     isMobile.value = window.innerWidth < 576;
 
-    // 使用 requestIdleCallback 延迟初始化，减少阻塞
-    // 但设置较短的timeout，确保内容能及时加载
-    if ("requestIdleCallback" in window) {
-      requestIdleCallback(
-        () => {
-          initArticleContent();
-        },
-        { timeout: 1000 }
-      );
-    } else {
-      // 降级方案：延迟执行，但不要太久
-      setTimeout(() => {
-        initArticleContent();
-      }, 100);
-    }
+    initArticleContent();
   }
 });
 
