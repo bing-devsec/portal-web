@@ -21,9 +21,28 @@
                     <div class="gradient-mask gradient-mask-left"></div>
                 </div>
 
-                <!-- 工具栏容器 -->
-                <div class="tool-bar" ref="toolBarRef" @scroll="handleToolBarScroll">
-                    <!-- 设置按钮 -->
+                <!-- Diff 模式工具栏 -->
+                <div v-if="isDiffMode" class="tool-bar diff-tool-bar">
+                    <el-button type="info" @click="openSettingsDialog" circle>
+                        <el-icon><Setting /></el-icon>
+                    </el-button>
+                    <div class="diff-nav-group">
+                        <el-button-group>
+                            <el-button type="primary" size="small" @click="goToPrevDiff" :disabled="diffCount === 0">
+                                <el-icon><ArrowLeft /></el-icon>
+                                <span>Prev</span>
+                            </el-button>
+                            <el-button type="primary" size="small" @click="goToNextDiff" :disabled="diffCount === 0">
+                                <span>Next</span>
+                                <el-icon><ArrowRight /></el-icon>
+                            </el-button>
+                        </el-button-group>
+                    </div>
+                    <el-button type="info" @click="exitDiffMode">退出</el-button>
+                </div>
+
+                <!-- 普通模式工具栏 -->
+                <div v-else class="tool-bar" ref="toolBarRef" @scroll="handleToolBarScroll">
                     <el-button type="info" @click="openSettingsDialog" circle>
                         <el-icon>
                             <Setting />
@@ -39,10 +58,10 @@
                         <el-button v-if="buttonVisibility.masking" type="primary" :disabled="!canUseProcessingFeatures" @click="openDataMaskingDialog">脱敏</el-button>
                         <el-button v-if="buttonVisibility.sort" type="primary" :disabled="!canUseProcessingFeatures" @click="handleAdvancedCommand('sort')">排序</el-button>
                         <el-button v-if="buttonVisibility.archive" type="primary" :disabled="!canUseProcessingFeatures" @click="handleSaveArchive">存档</el-button>
+                        <el-button v-if="buttonVisibility.diff" type="primary" @click="enterDiffMode">Diff</el-button>
                         <el-button v-if="buttonVisibility.share" type="primary" :disabled="!canUseProcessingFeatures" @click="openShareDialog">分享</el-button>
                     </el-button-group>
 
-                    <!-- 数据转换下拉按钮（紧挨着功能按钮组） -->
                     <el-dropdown v-if="buttonVisibility.dataConvert" trigger="click" @command="handleConvert">
                         <el-button type="primary" :disabled="!canUseProcessingFeatures">
                             数据转换
@@ -61,7 +80,6 @@
                         </template>
                     </el-dropdown>
 
-                    <!-- 层级控制 -->
                     <div v-if="buttonVisibility.collapse" class="collapse-control">
                         <el-select v-model="selectedLevel" placeholder="层级" class="level-select" fit-input-width :disabled="maxLevel === 0 || !canUseCollapseFeature">
                             <el-option v-if="maxLevel === 0" label="第0层" :value="0" :disabled="true" />
@@ -70,7 +88,6 @@
                         <el-button type="success" @click="handleLevelAction" :disabled="maxLevel === 0 || !canUseCollapseFeature">收缩</el-button>
                     </div>
 
-                    <!-- 界面控制：全屏 -->
                     <el-button v-if="buttonVisibility.fullscreen" type="warning" class="fullscreen-btn" @click="toggleFullscreen">
                         {{ isFullscreen ? '退出' : '全屏' }}
                     </el-button>
@@ -83,9 +100,83 @@
                 </div>
             </div>
 
-            <!-- 编辑区域 -->
-            <div class="editor-container">
-                <!-- 存档侧边栏（有存档时才显示） -->
+            <!-- Diff 编辑区域 -->
+            <div v-if="isDiffMode" class="editor-container diff-editor-container">
+                <div class="diff-panel diff-panel-left">
+                    <div class="panel-header diff-panel-header">
+                        <div class="panel-actions diff-panel-actions">
+                            <el-button @click="diffFormatJSON('left')" size="small" type="primary" plain>
+                                <span>格式化</span>
+                            </el-button>
+                            <el-button @click="diffSortJSON('left')" size="small" type="primary" plain>
+                                <span>排序</span>
+                            </el-button>
+                            <el-button @click="diffCopy('left')" size="small" type="success" plain>
+                                <span>复制</span>
+                            </el-button>
+                            <el-button @click="diffClear('left')" size="small" type="danger" plain>
+                                <span>清空</span>
+                            </el-button>
+                            <el-upload class="upload-json" accept=".json" :auto-upload="false" :show-file-list="false" :on-change="diffHandleUpload('left')">
+                                <el-button size="small" type="info" plain>
+                                    <span>上传</span>
+                                </el-button>
+                            </el-upload>
+                            <el-button @click="diffDownload('left')" size="small" type="info" plain>
+                                <span>下载</span>
+                            </el-button>
+                        </div>
+                    </div>
+                </div>
+                <div class="diff-panel diff-panel-center">
+                    <div class="panel-header diff-panel-header diff-panel-center-header"></div>
+                </div>
+                <div class="diff-panel diff-panel-right">
+                    <div class="panel-header diff-panel-header">
+                        <div class="panel-actions diff-panel-actions">
+                            <el-button @click="diffFormatJSON('right')" size="small" type="primary" plain>
+                                <span>格式化</span>
+                            </el-button>
+                            <el-button @click="diffSortJSON('right')" size="small" type="primary" plain>
+                                <span>排序</span>
+                            </el-button>
+                            <el-button @click="diffCopy('right')" size="small" type="success" plain>
+                                <span>复制</span>
+                            </el-button>
+                            <el-button @click="diffClear('right')" size="small" type="danger" plain>
+                                <span>清空</span>
+                            </el-button>
+                            <el-upload class="upload-json" accept=".json" :auto-upload="false" :show-file-list="false" :on-change="diffHandleUpload('right')">
+                                <el-button size="small" type="info" plain>
+                                    <span>上传</span>
+                                </el-button>
+                            </el-upload>
+                            <el-button @click="diffDownload('right')" size="small" type="info" plain>
+                                <span>下载</span>
+                            </el-button>
+                        </div>
+                    </div>
+                </div>
+                <div class="diff-editor-wrapper">
+                    <div ref="diffEditorContainer" class="diff-editor-instance"></div>
+                    <div class="diff-sync-overlay" :style="{ left: diffSyncOverlayLeftPx > 0 ? diffSyncOverlayLeftPx + 'px' : 'calc(50% - var(--diff-sync-lane-width))' }">
+                        <div class="diff-sync-lane"></div>
+                        <div
+                            v-for="btn in diffSyncButtons"
+                            :key="btn.changeIndex"
+                            class="diff-sync-btn-group"
+                            :class="{ 'is-active': btn.changeIndex === activeDiffIndex }"
+                            :style="{ top: btn.top + 'px' }"
+                        >
+                            <button class="diff-sync-btn diff-sync-btn-left" @click="handleDiffSync(btn.changeIndex, 'left')" title="右 → 左">←</button>
+                            <button class="diff-sync-btn diff-sync-btn-right" @click="handleDiffSync(btn.changeIndex, 'right')" title="左 → 右">→</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 普通编辑区域 -->
+            <div v-else class="editor-container">
                 <template v-if="archives.length">
                     <div
                         class="archive-sidebar"
@@ -316,6 +407,9 @@
                                         <el-checkbox v-model="buttonVisibility.archive">存档</el-checkbox>
                                     </div>
                                     <div class="button-visibility-item" style="grid-column: 4; grid-row: 2">
+                                        <el-checkbox v-model="buttonVisibility.diff">Diff</el-checkbox>
+                                    </div>
+                                    <div class="button-visibility-item" style="grid-column: 5; grid-row: 2">
                                         <el-checkbox v-model="buttonVisibility.share">分享</el-checkbox>
                                     </div>
                                 </div>
@@ -803,6 +897,7 @@ const defaultSettings = {
         masking: true,
         sort: true,
         archive: true,
+        diff: true,
         share: false
     },
     // 去除转义设置
@@ -927,8 +1022,440 @@ const toggleFullscreen = () => {isFullscreen.value = !isFullscreen.value;};
 
 // 监听 ESC 键退出全屏
 const handleEscapeKey = (event: KeyboardEvent) => {
-    if (event.key === 'Escape' && isFullscreen.value) {
-        isFullscreen.value = false;
+    if (event.key === 'Escape') {
+        if (isDiffMode.value) {
+            exitDiffMode();
+            return;
+        }
+        if (isFullscreen.value) {
+            isFullscreen.value = false;
+        }
+    }
+};
+
+// ==================== Diff 模式管理 ====================
+const isDiffMode = ref(false);
+const diffEditorContainer = ref<HTMLElement | null>(null);
+let diffEditor: monaco.editor.IStandaloneDiffEditor | null = null;
+const diffCount = ref(0);
+let diffUpdateDisposable: monaco.IDisposable | null = null;
+let wasFullscreenBeforeDiff = false;
+let diffEditorResizeObserver: ResizeObserver | null = null;
+let diffEditorLayoutRaf: number | null = null;
+
+const scheduleDiffEditorLayout = () => {
+    if (diffEditorLayoutRaf != null) return;
+    diffEditorLayoutRaf = requestAnimationFrame(() => {
+        diffEditorLayoutRaf = null;
+        diffEditor?.layout();
+        updateDiffSyncOverlayPosition();
+        updateDiffSyncButtons();
+    });
+};
+
+const enterDiffMode = () => {
+    wasFullscreenBeforeDiff = isFullscreen.value;
+    isDiffMode.value = true;
+    isFullscreen.value = true;
+
+    nextTick(() => {
+        createDiffEditor();
+    });
+};
+
+const exitDiffMode = () => {
+    destroyDiffEditor();
+    isDiffMode.value = false;
+    isFullscreen.value = wasFullscreenBeforeDiff;
+    diffCount.value = 0;
+
+    nextTick(() => {
+        if (inputEditor) updateEditorHeight(inputEditor);
+        if (outputEditor) updateEditorHeight(outputEditor);
+    });
+};
+
+let diffContentDisposables: monaco.IDisposable[] = [];
+
+const detectIndentSize = (content: string): number => {
+    const lines = content.split('\n');
+    const indentCounts: Record<number, number> = {};
+    for (const line of lines) {
+        const match = line.match(/^( +)\S/);
+        if (match) {
+            const len = match[1].length;
+            if (len > 0 && len <= 16) {
+                indentCounts[len] = (indentCounts[len] || 0) + 1;
+            }
+        }
+    }
+    const sizes = Object.keys(indentCounts).map(Number).sort((a, b) => a - b);
+    if (sizes.length === 0) return indentSize.value;
+    const minIndent = sizes[0];
+    if (minIndent >= 1 && minIndent <= 8) return minIndent;
+    return indentSize.value;
+};
+
+const updateDiffEditorTabSize = (editor: monaco.editor.ICodeEditor, content: string) => {
+    const detected = detectIndentSize(content);
+    const model = editor.getModel();
+    if (model) {
+        model.updateOptions({ tabSize: detected, indentSize: detected });
+    }
+};
+
+const createDiffEditor = () => {
+    if (!diffEditorContainer.value) return;
+    diffEditor = monaco.editor.createDiffEditor(diffEditorContainer.value, {
+        renderSideBySide: true,
+        ignoreTrimWhitespace: true,
+        enableSplitViewResizing: false,
+        folding: false,
+        readOnly: false,
+        originalEditable: true,
+        minimap: { enabled: showMinimap.value },
+        lineNumbers: 'on',
+        roundedSelection: true,
+        scrollBeyondLastLine: false,
+        smoothScrolling: true,
+        fontSize: fontSize.value,
+        lineHeight: 16,
+        renderGutterMenu: true,
+        wordWrap: wordWrap.value ? ('off' as const) : ('on' as const),
+        renderIndicators: false,
+        renderMarginRevertIcon: false,
+        renderOverviewRuler: false,
+        unicodeHighlight: { ambiguousCharacters: false },
+        stickyScroll: { enabled: false },
+        guides: {
+            indentation: showIndentGuide.value,
+            bracketPairs: showIndentGuide.value,
+            highlightActiveIndentation: showIndentGuide.value,
+        },
+    });
+
+    const originalModel = monaco.editor.createModel('', 'json');
+    const modifiedModel = monaco.editor.createModel('', 'json');
+    diffEditor.setModel({ original: originalModel, modified: modifiedModel });
+
+    const origEditor = diffEditor.getOriginalEditor();
+    const modEditor = diffEditor.getModifiedEditor();
+
+    diffContentDisposables.push(
+        originalModel.onDidChangeContent(() => {
+            updateDiffEditorTabSize(origEditor, originalModel.getValue());
+        }),
+        modifiedModel.onDidChangeContent(() => {
+            updateDiffEditorTabSize(modEditor, modifiedModel.getValue());
+        }),
+        modEditor.onDidScrollChange(() => {
+            updateDiffSyncButtons();
+        }),
+        origEditor.onDidLayoutChange(() => {
+            updateDiffSyncOverlayPosition();
+        })
+    );
+
+    diffUpdateDisposable = diffEditor.onDidUpdateDiff(() => {
+        const changes = diffEditor?.getLineChanges();
+        diffCount.value = changes ? changes.length : 0;
+        updateDiffSyncButtons();
+    });
+
+    updateDiffSyncOverlayPosition();
+    requestAnimationFrame(() => {
+        updateDiffSyncOverlayPosition();
+    });
+
+    // Keep diff editor height in sync with container (window resize, layout changes, etc.)
+    if (typeof ResizeObserver !== 'undefined') {
+        diffEditorResizeObserver?.disconnect();
+        diffEditorResizeObserver = new ResizeObserver(() => {
+            scheduleDiffEditorLayout();
+        });
+        diffEditorResizeObserver.observe(diffEditorContainer.value);
+    }
+    scheduleDiffEditorLayout();
+};
+
+const destroyDiffEditor = () => {
+    diffContentDisposables.forEach(d => d.dispose());
+    diffContentDisposables = [];
+    diffSyncButtons.value = [];
+    activeDiffIndex.value = -1;
+    if (diffEditorResizeObserver) {
+        diffEditorResizeObserver.disconnect();
+        diffEditorResizeObserver = null;
+    }
+    if (diffEditorLayoutRaf != null) {
+        cancelAnimationFrame(diffEditorLayoutRaf);
+        diffEditorLayoutRaf = null;
+    }
+    if (diffUpdateDisposable) {
+        diffUpdateDisposable.dispose();
+        diffUpdateDisposable = null;
+    }
+    if (diffEditor) {
+        const model = diffEditor.getModel();
+        diffEditor.dispose();
+        if (model) {
+            model.original?.dispose();
+            model.modified?.dispose();
+        }
+        diffEditor = null;
+    }
+};
+
+interface DiffSyncButton {
+    top: number;
+    changeIndex: number;
+}
+const diffSyncButtons = ref<DiffSyncButton[]>([]);
+const activeDiffIndex = ref(-1);
+const diffSyncOverlayLeftPx = ref(0);
+
+const updateDiffSyncOverlayPosition = () => {
+    if (!diffEditor) return;
+    const origEditor = diffEditor.getOriginalEditor();
+    const origLayout = origEditor.getLayoutInfo();
+    diffSyncOverlayLeftPx.value = origLayout.width;
+};
+
+const updateDiffSyncButtons = () => {
+    if (!diffEditor) { diffSyncButtons.value = []; return; }
+    const changes = diffEditor.getLineChanges();
+    if (!changes || changes.length === 0) {
+        diffSyncButtons.value = [];
+        activeDiffIndex.value = -1;
+        return;
+    }
+    if (activeDiffIndex.value >= changes.length) {
+        activeDiffIndex.value = changes.length - 1;
+    }
+
+    updateDiffSyncOverlayPosition();
+
+    const modEditor = diffEditor.getModifiedEditor();
+    const scrollTop = modEditor.getScrollTop();
+    const viewportHeight = modEditor.getLayoutInfo().height;
+    const lineHeight = modEditor.getOption(monaco.editor.EditorOption.lineHeight);
+    const buttons: DiffSyncButton[] = [];
+
+    for (let i = 0; i < changes.length; i++) {
+        const change = changes[i];
+        const modStart = change.modifiedStartLineNumber;
+        const modEnd = change.modifiedEndLineNumber || modStart;
+        const blockTop = modEditor.getTopForLineNumber(modStart);
+        const blockBottom = modEditor.getTopForLineNumber(modEnd) + lineHeight;
+        const centerPx = (blockTop + blockBottom) / 2 - scrollTop;
+        if (centerPx < -30 || centerPx > viewportHeight + 30) continue;
+        buttons.push({ top: centerPx, changeIndex: i });
+    }
+
+    diffSyncButtons.value = buttons;
+};
+
+const handleDiffSync = (changeIndex: number, direction: 'left' | 'right') => {
+    if (!diffEditor) return;
+    const changes = diffEditor.getLineChanges();
+    if (!changes || changeIndex >= changes.length) return;
+    activeDiffIndex.value = changeIndex;
+
+    const origModel = diffEditor.getModel()?.original;
+    const modModel = diffEditor.getModel()?.modified;
+    if (!origModel || !modModel) return;
+
+    const change = changes[changeIndex];
+    const origStart = change.originalStartLineNumber;
+    const origEnd = change.originalEndLineNumber;
+    const modStart = change.modifiedStartLineNumber;
+    const modEnd = change.modifiedEndLineNumber;
+
+    if (direction === 'left') {
+        const modContent = modEnd >= modStart
+            ? modModel.getValueInRange(new monaco.Range(modStart, 1, modEnd, modModel.getLineMaxColumn(modEnd)))
+            : '';
+        if (origEnd < origStart) {
+            if (modContent) {
+                origModel.applyEdits([{
+                    range: new monaco.Range(origStart + 1, 1, origStart + 1, 1),
+                    text: modContent + '\n',
+                }]);
+            }
+        } else if (modContent) {
+            origModel.applyEdits([{
+                range: new monaco.Range(origStart, 1, origEnd, origModel.getLineMaxColumn(origEnd)),
+                text: modContent,
+            }]);
+        } else {
+            const totalLines = origModel.getLineCount();
+            const delEnd = origEnd + 1;
+            const delRange = delEnd <= totalLines
+                ? new monaco.Range(origStart, 1, delEnd, 1)
+                : new monaco.Range(Math.max(1, origStart - 1), origStart > 1 ? origModel.getLineMaxColumn(origStart - 1) : 1, origEnd, origModel.getLineMaxColumn(origEnd));
+            origModel.applyEdits([{ range: delRange, text: '' }]);
+        }
+    } else {
+        const origContent = origEnd >= origStart
+            ? origModel.getValueInRange(new monaco.Range(origStart, 1, origEnd, origModel.getLineMaxColumn(origEnd)))
+            : '';
+        if (modEnd < modStart) {
+            if (origContent) {
+                modModel.applyEdits([{
+                    range: new monaco.Range(modStart + 1, 1, modStart + 1, 1),
+                    text: origContent + '\n',
+                }]);
+            }
+        } else if (origContent) {
+            modModel.applyEdits([{
+                range: new monaco.Range(modStart, 1, modEnd, modModel.getLineMaxColumn(modEnd)),
+                text: origContent,
+            }]);
+        } else {
+            const totalLines = modModel.getLineCount();
+            const delEnd = modEnd + 1;
+            const delRange = delEnd <= totalLines
+                ? new monaco.Range(modStart, 1, delEnd, 1)
+                : new monaco.Range(Math.max(1, modStart - 1), modStart > 1 ? modModel.getLineMaxColumn(modStart - 1) : 1, modEnd, modModel.getLineMaxColumn(modEnd));
+            modModel.applyEdits([{ range: delRange, text: '' }]);
+        }
+    }
+};
+
+const goToNextDiff = () => {
+    const changes = diffEditor?.getLineChanges();
+    if (!diffEditor || !changes || changes.length === 0) return;
+    activeDiffIndex.value = activeDiffIndex.value < 0
+        ? 0
+        : (activeDiffIndex.value + 1) % changes.length;
+    diffEditor.goToDiff('next');
+};
+
+const goToPrevDiff = () => {
+    const changes = diffEditor?.getLineChanges();
+    if (!diffEditor || !changes || changes.length === 0) return;
+    activeDiffIndex.value = activeDiffIndex.value < 0
+        ? changes.length - 1
+        : (activeDiffIndex.value - 1 + changes.length) % changes.length;
+    diffEditor.goToDiff('previous');
+};
+
+const getDiffSideEditor = (side: 'left' | 'right'): monaco.editor.IStandaloneCodeEditor | null => {
+    if (!diffEditor) return null;
+    return side === 'left'
+        ? diffEditor.getOriginalEditor() as monaco.editor.IStandaloneCodeEditor
+        : diffEditor.getModifiedEditor() as monaco.editor.IStandaloneCodeEditor;
+};
+
+const diffFormatJSON = (side: 'left' | 'right') => {
+    const editor = getDiffSideEditor(side);
+    if (!editor) return;
+    const value = editor.getValue();
+    if (!value.trim()) {
+        showMessageError('没有可格式化的内容');
+        return;
+    }
+    try {
+        const formatter = new JsonPlusFormatter(
+            encodingMode.value,
+            indentSize.value,
+            arrayNewLine.value,
+            preserveNumberLiterals.value
+        );
+        const { data, escapeMap } = formatter.parseJson5(value);
+        const formatted = formatter.format(data, escapeMap);
+        editor.setValue(formatted);
+        showMessageSuccess('格式化成功');
+    } catch (error: any) {
+        showMessageError('格式化失败: ' + error.message);
+    }
+};
+
+const diffSortJSON = (side: 'left' | 'right') => {
+    const editor = getDiffSideEditor(side);
+    if (!editor) return;
+    const value = editor.getValue();
+    if (!value.trim()) {
+        showMessageError('没有可排序的内容');
+        return;
+    }
+    try {
+        const result = preprocessJSON(value, { preserveNumberLiterals: true });
+        const sorted = sortJsonObject(result.data, sortMethod.value, sortOrder.value, '');
+        const formatter = new JsonPlusFormatter(false, indentSize.value, arrayNewLine.value, preserveNumberLiterals.value);
+        const formatted = formatter.format(sorted, result.escapeMap);
+        editor.setValue(formatted);
+        showMessageSuccess('排序成功');
+    } catch (error: any) {
+        showMessageError('排序失败: ' + error.message);
+    }
+};
+
+const diffCopy = async (side: 'left' | 'right') => {
+    const editor = getDiffSideEditor(side);
+    if (!editor) return;
+    const value = editor.getValue();
+    if (!value) {
+        showMessageWarning('没有可复制的内容');
+        return;
+    }
+    try {
+        await navigator.clipboard.writeText(value);
+        showMessageSuccess('复制成功');
+    } catch {
+        showMessageError('复制失败');
+    }
+};
+
+const diffClear = (side: 'left' | 'right') => {
+    const editor = getDiffSideEditor(side);
+    if (!editor) return;
+    editor.setValue('');
+    showMessageSuccess('已清空');
+};
+
+const diffHandleUpload = (side: 'left' | 'right') => (uploadFile: UploadFile) => {
+    const file = uploadFile.raw as File;
+    if (!file) { showMessageError('无法获取文件'); return; }
+    if (!file.name.toLowerCase().endsWith('.json')) { showMessageError('只能上传 JSON 文件'); return; }
+    if (file.size > MAX_FILE_SIZE) { showMessageError('文件大小不能超过 5 MB'); return; }
+    const reader = new FileReader();
+    reader.onload = e => {
+        if (e.target?.result) {
+            const editor = getDiffSideEditor(side);
+            if (editor) {
+                editor.setValue(e.target.result as string);
+                showMessageSuccess('文件上传成功');
+            }
+        }
+    };
+    reader.onerror = () => showMessageError('文件读取出错');
+    reader.readAsText(file, 'utf-8');
+};
+
+const diffDownload = async (side: 'left' | 'right') => {
+    const editor = getDiffSideEditor(side);
+    if (!editor) return;
+    const content = editor.getValue();
+    if (!content) {
+        showMessageWarning('没有可下载的内容');
+        return;
+    }
+    try {
+        const fullHash = await calculateHash(content);
+        const hash = fullHash.substring(0, 32);
+        const blob = new Blob([content], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = `${hash}.json`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
+        showMessageSuccess('下载成功');
+    } catch (error: any) {
+        showMessageError('下载失败');
     }
 };
 
@@ -1687,6 +2214,7 @@ const updateMinimap = () => {
 
     inputEditor?.updateOptions(options);
     outputEditor?.updateOptions(options);
+    diffEditor?.updateOptions(options);
 };
 
 const updateStickyScroll = () => {
@@ -2610,12 +3138,12 @@ const setupDoubleClickSelectString = (editor: monaco.editor.IStandaloneCodeEdito
 
 // 添加窗口大小变化的处理函数
 const handleResize = () => {
-    // 更新容器宽度
     const container = document.querySelector('.editor-container');
     if (container) {
         editorContainerWidth.value = container.getBoundingClientRect().width;
     }
     updateEditorLayout();
+    diffEditor?.layout();
 };
 
 // 添加防抖函数
@@ -2644,6 +3172,7 @@ watch(isFullscreen, () => {
         setTimeout(() => {
             if (inputEditor) inputEditor.layout();
             if (outputEditor) outputEditor.layout();
+            if (diffEditor) diffEditor.layout();
             handleResize();
         }, 80);
     });
@@ -3498,7 +4027,8 @@ onBeforeUnmount(() => {
         outputEditorResizeObserver = null;
     }
 
-    // 销毁编辑器实例
+    destroyDiffEditor();
+
     if (inputEditor) {
         inputEditor.dispose();
         inputEditor = null;
@@ -11101,5 +11631,167 @@ const transferToInput = (e: MouseEvent) => {
     font-size: 14px;
     line-height: 1.6;
     word-break: break-word;
+}
+
+/* ==================== Diff 模式样式 ==================== */
+.diff-tool-bar {
+    justify-content: center;
+    gap: 12px;
+}
+
+.diff-nav-group {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-left: 12px;
+}
+
+.diff-editor-container {
+    --diff-sync-lane-width: 35px;
+    display: flex;
+    flex-direction: column;
+    position: relative;
+}
+
+.diff-editor-container .diff-panel {
+    position: absolute;
+    top: 0;
+    height: 35px;
+    z-index: 5;
+    background: linear-gradient(to bottom, #fafbfc, #f6f8fa);
+    border-bottom: 1px solid #e4e7ed;
+    box-sizing: border-box;
+}
+
+.diff-panel-left {
+    left: 0;
+    width: calc(50% - var(--diff-sync-lane-width));
+}
+
+.diff-panel-center {
+    left: calc(50% - var(--diff-sync-lane-width));
+    width: var(--diff-sync-lane-width);
+    background: #fff !important;
+    border-left: 1px solid #e4e7ed;
+    border-right: 1px solid #e4e7ed;
+}
+
+.diff-panel-right {
+    right: 0;
+    width: 50%;
+}
+
+.diff-panel-center-header {
+    padding: 0;
+}
+
+.diff-panel-header {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    height: 35px;
+    padding: 5px 15px;
+    background: transparent;
+    border-bottom: none;
+    box-sizing: border-box;
+    cursor: default;
+}
+
+.diff-panel-actions {
+    display: flex;
+    gap: 8px;
+    opacity: 1;
+    pointer-events: auto;
+}
+
+.diff-panel-actions :deep(.el-button) {
+    transition: none !important;
+    animation: none !important;
+}
+
+.diff-panel-actions :deep(.el-button + .el-button) {
+    margin-left: 0 !important;
+}
+
+.diff-editor-wrapper {
+    flex: 1;
+    min-height: 0;
+    margin-top: 35px;
+    position: relative;
+    overflow: hidden;
+}
+
+.diff-editor-instance {
+    width: 100%;
+    height: 100%;
+}
+
+.diff-sync-overlay {
+    position: absolute;
+    top: 0;
+    width: var(--diff-sync-lane-width);
+    height: 100%;
+    pointer-events: none;
+    z-index: 10;
+}
+
+.diff-sync-lane {
+    position: absolute;
+    inset: 0;
+    background: #fff;
+    border-left: 1px solid #e4e7ed;
+    border-right: 1px solid #e4e7ed;
+    box-sizing: border-box;
+}
+
+.diff-sync-btn-group {
+    position: absolute;
+    left: 50%;
+    display: flex;
+    gap: 0;
+    pointer-events: auto;
+    transform: translate(-50%, -50%);
+    z-index: 1;
+}
+
+.diff-sync-btn {
+    width: 16px;
+    height: 20px;
+    border: none;
+    border-radius: 0;
+    background: transparent;
+    color: #409eff;
+    font-size: 15px;
+    font-weight: bold;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    line-height: 1;
+    transition: color 0.15s, opacity 0.15s;
+}
+
+.diff-editor-wrapper :deep(.monaco-diff-editor > .gutter.monaco-editor) {
+    background: #fff;
+    border-left: 1px solid #e4e7ed;
+    border-right: 1px solid #e4e7ed;
+    box-sizing: border-box;
+}
+
+.diff-editor-wrapper :deep(.monaco-diff-editor > .gutter.monaco-editor .gutterItem) {
+    display: none !important;
+}
+
+.diff-sync-btn:hover {
+    color: #1f78d1;
+}
+
+.diff-sync-btn-group.is-active .diff-sync-btn {
+    color: #f59e0b;
+}
+
+.diff-sync-btn:active {
+    opacity: 0.7;
 }
 </style>
