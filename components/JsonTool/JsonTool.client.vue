@@ -1598,14 +1598,6 @@ const getEditorOptions = (
 
     // 滚动配置
     scrollBeyondLastLine: false, // 禁止滚动超过最后一行
-    scrollbar: {
-        // 滚动条配置
-        vertical: 'visible' as const, // 垂直滚动条可见
-        verticalScrollbarSize: 10, // 垂直滚动条大小
-        useShadows: true, // 禁用阴影
-        scrollByPage: false, // 不按页滚动
-        alwaysConsumeMouseWheel: true, // 总是响应鼠标滚轮事件
-    },
     smoothScrolling: true, // 启用平滑滚动
     fixedOverflowWidgets: true, // 使溢出窗口(如提示、自动完成)固定显示
     stickyScroll: { enabled: stickyScroll.value }, // 根据设置控制粘性滚动
@@ -1736,6 +1728,74 @@ const updateOutputEditorConfig = (language: string = 'json', enableLargeFileFold
 
     updateLineNumberWidth(outputEditor);
     updateEditorHeight(outputEditor);
+};
+
+let lastFocusedEditor: monaco.editor.IStandaloneCodeEditor | null = null;
+
+const trackEditorFocus = (editor: monaco.editor.IStandaloneCodeEditor) => {
+    editor.onDidFocusEditorWidget(() => {
+        lastFocusedEditor = editor;
+    });
+};
+
+const openFindWidgetWithFocus = (editor: monaco.editor.IStandaloneCodeEditor) => {
+    editor.focus();
+    setTimeout(() => {
+        const findController = editor.getContribution('editor.contrib.findController') as any;
+        if (findController) {
+            findController.start({
+                forceRevealReplace: false,
+                seedSearchStringFromSelection: 'always',
+                shouldFocus: 1,
+            });
+        } else {
+            editor.getAction('actions.find')?.run();
+        }
+        setTimeout(() => {
+            const containers = [editor.getDomNode(), editor.getContainerDomNode()];
+            for (const container of containers) {
+                if (!container) continue;
+                const findInput = container.querySelector<HTMLTextAreaElement>('.find-widget .monaco-inputbox textarea')
+                    || container.querySelector<HTMLInputElement>('.find-widget .monaco-inputbox input');
+                if (findInput) {
+                    findInput.focus();
+                    return;
+                }
+            }
+        }, 50);
+    }, 0);
+};
+
+const handleGlobalFind = (event: KeyboardEvent) => {
+    if (!((event.metaKey || event.ctrlKey) && event.key === 'f')) return;
+
+    const target = event.target as HTMLElement | null;
+    if (!target) return;
+
+    const isInsideJsonTool = target.closest('.json-tool-container');
+    if (!isInsideJsonTool) return;
+
+    event.preventDefault();
+    event.stopPropagation();
+
+    const inputPanel = inputEditorContainer.value?.closest('.editor-panel');
+    const outputPanel = outputEditorContainer.value?.closest('.editor-panel');
+
+    let targetEditor: monaco.editor.IStandaloneCodeEditor | null = null;
+
+    if (inputPanel && inputPanel.contains(target)) {
+        targetEditor = inputEditor;
+    } else if (outputPanel && outputPanel.contains(target)) {
+        targetEditor = outputEditor;
+    } else if (lastFocusedEditor) {
+        targetEditor = lastFocusedEditor;
+    } else {
+        targetEditor = inputEditor;
+    }
+
+    if (targetEditor) {
+        openFindWidgetWithFocus(targetEditor);
+    }
 };
 
 // 设置折叠信息显示（在折叠区域显示 n keys 或 n items）
@@ -2943,6 +3003,8 @@ const configureInputEditor: () => void = () => {
     // 设置双击选中整个字符串（不复制到剪贴板）
     setupDoubleClickSelectString(inputEditor, false);
 
+    trackEditorFocus(inputEditor);
+
     // 右键菜单：Base64 编码
     inputEditor.addAction({
         id: 'base64-encode',
@@ -3055,9 +3117,23 @@ const configureInputEditor: () => void = () => {
     setupSelectionListener(inputEditor, inputEditorStatus, true);
 
     // 监听输入变化
-    inputEditor.onDidChangeModelContent(() => {
+    let prevInputLineCount = getEditorLineCount(inputEditor);
+    inputEditor.onDidChangeModelContent((e) => {
         const lineCount = getEditorLineCount(inputEditor);
+        const oldLineCount = prevInputLineCount;
         currentInputLineCount.value = lineCount;
+
+        const isFullReplace = e.changes.some(change => {
+            const replacedLines = change.range.endLineNumber - change.range.startLineNumber + 1;
+            return replacedLines >= oldLineCount && change.text.includes('\n');
+        });
+        if (isFullReplace) {
+            inputEditor?.updateOptions({ folding: false });
+            nextTick(() => {
+                inputEditor?.updateOptions({ folding: true });
+            });
+        }
+        prevInputLineCount = lineCount;
         syncEditorLargeFileOptions(inputEditor, true);
 
         // 使用防抖更新行号宽度，避免频繁调用
@@ -3079,20 +3155,23 @@ const configureInputEditor: () => void = () => {
             }
 
             if (lineCount > FULL_FEATURE_MAX_LINES) {
+                if (oldLineCount <= COLLAPSE_DISABLED_MAX_LINES && lineCount > COLLAPSE_DISABLED_MAX_LINES) {
+                    showProcessingRestrictedMessage();
+                } else if (oldLineCount <= FULL_FEATURE_MAX_LINES && lineCount > FULL_FEATURE_MAX_LINES) {
+                    showCollapseRestrictedMessage();
+                }
                 maxLevel.value = 0;
                 selectedLevel.value = 0;
                 return;
             }
 
-            // 检查 JSON 层级限制
-            const checkResult = checkJsonDepth(cleanedContent);
-            if (!checkResult.isValid) {
-                showMessageError(checkResult.error || '内容不符合要求');
-                maxLevel.value = 0;
-                selectedLevel.value = 0;
-                // 如果层级超过99层，自动清空编辑区域内容
-                if (checkResult.error && checkResult.error.includes('层级超过99层')) {
-                    // 延迟清空，避免在内容变化监听中直接修改编辑器内容导致的问题
+            try {
+                const { data: parsed } = preprocessJSON(cleanedContent);
+                const level = calculateMaxLevel(parsed);
+                if (level > 99) {
+                    showMessageError('JSON层级超过99层, 拒绝处理此JSON数据');
+                    maxLevel.value = 0;
+                    selectedLevel.value = 0;
                     setTimeout(() => {
                         if (inputEditor) {
                             const model = inputEditor.getModel();
@@ -3115,13 +3194,9 @@ const configureInputEditor: () => void = () => {
                             updateLineNumberWidth(outputEditor);
                         }
                     }, 100);
+                    return;
                 }
-                return;
-            }
-
-            try {
-                const { data: parsed } = preprocessJSON(value);
-                maxLevel.value = calculateMaxLevel(parsed);
+                maxLevel.value = level;
                 if (maxLevel.value > 0 && selectedLevel.value === 0) {
                     selectedLevel.value = getDefaultFoldLevel(maxLevel.value);
                 }
@@ -3151,6 +3226,7 @@ const configureOutputEditor: () => void = () => {
     setupSelectionListener(outputEditor, outputEditorStatus);
     // 设置折叠信息显示
     setupFoldingInfoDisplay(outputEditor);
+    trackEditorFocus(outputEditor);
 };
 
 // 使用Monaco Editor原生API的简单同步滚动
@@ -3337,6 +3413,7 @@ onMounted(async () => {
     if (typeof window === 'undefined') return;
 
     window.addEventListener('keydown', handleEscapeKey);
+    window.addEventListener('keydown', handleGlobalFind, true);
 
     // 初始化基础环境
     initializeMonacoEnvironment();
@@ -3409,6 +3486,7 @@ onBeforeUnmount(() => {
     window.removeEventListener('resize', debouncedResize);
     window.removeEventListener('resize', checkToolBarScroll);
     window.removeEventListener('keydown', handleEscapeKey);
+    window.removeEventListener('keydown', handleGlobalFind, true);
 
     // 清理 ResizeObserver
     if (inputEditorResizeObserver) {
@@ -4221,7 +4299,10 @@ class JsonPlusFormatter {
 
     // 生成转义占位符
     private createEscapePlaceholder(): string {
-        return '\uE000' + String.fromCharCode(0xf000 + this.escapePlaceholderCounter++); // 私人使用区字符
+        const id = this.escapePlaceholderCounter++;
+        const hi = 0xE001 + ((id >>> 10) & 0x7FF);
+        const lo = 0xE001 + (id & 0x3FF);
+        return '\uE000' + String.fromCharCode(hi) + String.fromCharCode(lo);
     }
 
     // 预处理字符串，处理非法转义和注释
@@ -4486,12 +4567,12 @@ class JsonPlusFormatter {
 
         for (let i = 0; i < processedStr.length; i++) {
             const char = processedStr[i];
-            if (char === '\uE000' && i + 1 < processedStr.length) {
-                const placeholder = processedStr.slice(i, i + 2);
+            if (char === '\uE000' && i + 2 < processedStr.length) {
+                const placeholder = processedStr.slice(i, i + 3);
                 const originalEscape = escapeMap.get(placeholder);
                 if (originalEscape) {
                     result += formatEscapePlaceholder(originalEscape);
-                    i += 1;
+                    i += 2;
                     continue;
                 }
             }
@@ -4601,12 +4682,12 @@ class JsonPlusFormatter {
 
         for (let i = 0; i < key.length; i++) {
             const char = key[i];
-            if (char === '\uE000' && i + 1 < key.length) {
-                const placeholder = key.slice(i, i + 2);
+            if (char === '\uE000' && i + 2 < key.length) {
+                const placeholder = key.slice(i, i + 3);
                 const originalEscape = escapeMap.get(placeholder);
                 if (originalEscape) {
                     result += formatEscapePlaceholder(originalEscape);
-                    i += 1;
+                    i += 2;
                     continue;
                 }
             }
@@ -9122,34 +9203,6 @@ const handleFileUpload = async (uploadFile: UploadFile) => {
         updateLineNumberWidth(outputEditor);
         updateEditorHeight(outputEditor);
 
-        // 计算新数据的最大层级，并检查是否需要调整 selectedLevel
-        try {
-            const parsed = JSON.parse(formattedContent);
-            const newMaxLevel = calculateMaxLevel(parsed);
-            const oldMaxLevel = maxLevel.value;
-
-            // 更新 maxLevel
-            maxLevel.value = newMaxLevel;
-
-            // 如果新层级小于当前选择的层级，自动调整 selectedLevel
-            if (selectedLevel.value > newMaxLevel) {
-                selectedLevel.value = newMaxLevel > 0 ? getDefaultFoldLevel(newMaxLevel) : 0;
-            } else if (newMaxLevel === 0) {
-                // 新数据是空的或无效
-                selectedLevel.value = 0;
-            }
-
-            // 如果层级发生变化，给出提示
-            if (oldMaxLevel !== newMaxLevel && newMaxLevel > 0) {
-                showMessageSuccess(`文件加载成功，已检测到 ${newMaxLevel} 层数据`);
-            }
-        } catch (e) {
-            // JSON 解析失败，重置层级
-            maxLevel.value = 0;
-            selectedLevel.value = 0;
-        }
-
-        // 显示成功提示
         showMessageSuccess('文件上传成功，已加载到编辑区域');
     } catch (error: any) {
         showMessageError('文件处理失败: ' + error.message);
