@@ -841,6 +841,7 @@ import * as toml from '@iarna/toml';
 import { create } from 'xmlbuilder2';
 import { Base64 } from 'js-base64';
 import { diffChars, type Change as DiffChange } from 'diff';
+import { histogramDiff, type Region as HistogramRegion } from 'histogram-diff';
 
 
 // ==================== 常量与全局状态 ====================
@@ -1086,9 +1087,263 @@ interface DiffLineChange {
 let diffLineChanges: DiffLineChange[] = [];
 let diffLeftDecorations: string[] = [];
 let diffRightDecorations: string[] = [];
+let diffLeftViewZoneIds: string[] = [];
+let diffRightViewZoneIds: string[] = [];
 
 // 同步滚动防死循环锁
 let diffSyncingScroll = false;
+
+// ==================== Tab/Storage（IndexedDB + 标签页隔离） ====================
+const TAB_ID_STORAGE_KEY = 'json-tool:tab-id';
+const TAB_ID_CHANNEL_NAME = 'json-tool-tab-id';
+type TabProbeMessage =
+    | { type: 'probe'; tabId: string; requesterInstanceId: string }
+    | { type: 'alive'; tabId: string; responderInstanceId: string; requesterInstanceId: string };
+const createRuntimeInstanceId = (): string => {
+    return typeof crypto !== 'undefined' && 'randomUUID' in crypto
+        ? crypto.randomUUID()
+        : `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+};
+const getOrCreateTabId = (): string => {
+    if (typeof window === 'undefined') return 'ssr';
+    try {
+        const existing = sessionStorage.getItem(TAB_ID_STORAGE_KEY);
+        if (existing) return existing;
+        const id = typeof crypto !== 'undefined' && 'randomUUID' in crypto
+            ? crypto.randomUUID()
+            : `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+        sessionStorage.setItem(TAB_ID_STORAGE_KEY, id);
+        return id;
+    } catch {
+        // sessionStorage 不可用时降级：仍生成一个 id，但刷新后不保证稳定
+        return `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+    }
+};
+const tabId = ref(getOrCreateTabId());
+const runtimeInstanceId = createRuntimeInstanceId();
+let tabIdChannel: BroadcastChannel | null = null;
+let isTabPageClosing = false;
+let tabIdConflictResponseCount = 0;
+
+const setCurrentTabId = (nextTabId: string) => {
+    tabId.value = nextTabId;
+    try {
+        sessionStorage.setItem(TAB_ID_STORAGE_KEY, nextTabId);
+    } catch {
+        // 忽略 sessionStorage 写失败：这种情况下只能退化为本次运行时有效
+    }
+};
+
+const generateFreshTabId = (): string => {
+    return typeof crypto !== 'undefined' && 'randomUUID' in crypto
+        ? crypto.randomUUID()
+        : `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+};
+
+const handleTabIdChannelMessage = (event: MessageEvent<TabProbeMessage>) => {
+    const data = event.data;
+    if (!data) return;
+    if (data.type === 'probe') {
+        if (isTabPageClosing) return;
+        if (data.requesterInstanceId === runtimeInstanceId) return;
+        if (data.tabId !== tabId.value) return;
+        const channel = tabIdChannel;
+        if (!channel) return;
+        channel.postMessage({
+            type: 'alive',
+            tabId: tabId.value,
+            responderInstanceId: runtimeInstanceId,
+            requesterInstanceId: data.requesterInstanceId,
+        } satisfies TabProbeMessage);
+        return;
+    }
+    if (data.type === 'alive') {
+        if (data.requesterInstanceId !== runtimeInstanceId) return;
+        if (data.responderInstanceId === runtimeInstanceId) return;
+        if (data.tabId !== tabId.value) return;
+        tabIdConflictResponseCount++;
+    }
+};
+
+const probeExistingTabIdConflict = async (): Promise<boolean> => {
+    if (typeof window === 'undefined' || typeof BroadcastChannel === 'undefined') return false;
+    const channel = tabIdChannel;
+    if (!channel) return false;
+    tabIdConflictResponseCount = 0;
+    channel.postMessage({
+        type: 'probe',
+        tabId: tabId.value,
+        requesterInstanceId: runtimeInstanceId,
+    } satisfies TabProbeMessage);
+    await new Promise(resolve => setTimeout(resolve, 120));
+    return tabIdConflictResponseCount > 0;
+};
+
+const ensureUniqueTabIdForThisPage = async () => {
+    if (typeof window === 'undefined') return;
+    const hasExistingTabId = (() => {
+        try {
+            return !!sessionStorage.getItem(TAB_ID_STORAGE_KEY);
+        } catch {
+            return false;
+        }
+    })();
+    if (!hasExistingTabId) return;
+    const hasConflict = await probeExistingTabIdConflict();
+    if (!hasConflict) return;
+    setCurrentTabId(generateFreshTabId());
+};
+
+const IDB_DB_NAME = 'json-tool-db';
+const IDB_DB_VERSION = 1;
+const IDB_STORE_ARCHIVES = 'archivesByTab';
+const IDB_STORE_DIFF_DRAFTS = 'diffDraftByTab';
+
+let idbOpenPromise: Promise<IDBDatabase> | null = null;
+const openJsonToolDb = (): Promise<IDBDatabase> => {
+    if (typeof window === 'undefined') return Promise.reject(new Error('IndexedDB not available'));
+    if (idbOpenPromise) return idbOpenPromise;
+    idbOpenPromise = new Promise((resolve, reject) => {
+        const req = indexedDB.open(IDB_DB_NAME, IDB_DB_VERSION);
+        req.onupgradeneeded = () => {
+            const db = req.result;
+            if (!db.objectStoreNames.contains(IDB_STORE_ARCHIVES)) {
+                db.createObjectStore(IDB_STORE_ARCHIVES, { keyPath: 'tabId' });
+            }
+            if (!db.objectStoreNames.contains(IDB_STORE_DIFF_DRAFTS)) {
+                db.createObjectStore(IDB_STORE_DIFF_DRAFTS, { keyPath: 'tabId' });
+            }
+        };
+        req.onsuccess = () => resolve(req.result);
+        req.onerror = () => reject(req.error ?? new Error('Failed to open IndexedDB'));
+    });
+    return idbOpenPromise;
+};
+
+const idbGet = async <T,>(storeName: string, key: IDBValidKey): Promise<T | undefined> => {
+    const db = await openJsonToolDb();
+    return await new Promise((resolve, reject) => {
+        const tx = db.transaction(storeName, 'readonly');
+        const store = tx.objectStore(storeName);
+        const req = store.get(key);
+        req.onsuccess = () => resolve(req.result as T | undefined);
+        req.onerror = () => reject(req.error ?? new Error('IndexedDB get failed'));
+    });
+};
+
+const idbPut = async (storeName: string, value: any): Promise<void> => {
+    const db = await openJsonToolDb();
+    await new Promise<void>((resolve, reject) => {
+        const tx = db.transaction(storeName, 'readwrite');
+        const store = tx.objectStore(storeName);
+        const req = store.put(value);
+        req.onsuccess = () => resolve();
+        req.onerror = () => reject(req.error ?? new Error('IndexedDB put failed'));
+    });
+};
+
+const idbCount = async (storeName: string): Promise<number> => {
+    const db = await openJsonToolDb();
+    return await new Promise<number>((resolve, reject) => {
+        const tx = db.transaction(storeName, 'readonly');
+        const store = tx.objectStore(storeName);
+        const req = store.count();
+        req.onsuccess = () => resolve(req.result);
+        req.onerror = () => reject(req.error ?? new Error('IndexedDB count failed'));
+    });
+};
+
+const calculateByteSize = (content: string): number => {
+    try {
+        const encoder = new TextEncoder();
+        return encoder.encode(content).length;
+    } catch {
+        // 兼容性降级：使用字符串长度近似
+        return content.length;
+    }
+};
+
+const MAX_SINGLE_ARCHIVE_SIZE = 30 * 1024 * 1024; // 30MB（硬限制）
+const MAX_DIFF_SIDE_SIZE = 30 * 1024 * 1024; // 30MB（硬限制）
+const MAX_DIFF_TAB_COUNT = 30; // Diff 草稿最多保留 30 个标签页（tabId）
+
+interface DiffDraftRecord {
+    tabId: string;
+    leftText: string;
+    rightText: string;
+    updatedAt: number;
+    version: number;
+}
+
+const diffDraftLeftText = ref('');
+const diffDraftRightText = ref('');
+
+const captureDiffDraftFromEditors = () => {
+    if (!diffLeftEditor || !diffRightEditor) return;
+    diffDraftLeftText.value = diffLeftEditor.getValue() ?? '';
+    diffDraftRightText.value = diffRightEditor.getValue() ?? '';
+};
+
+const saveDiffDraft = async (reason: string) => {
+    if (typeof window === 'undefined') return;
+    if (!tabId.value) return;
+
+    // 优先从 editor 读取；如果当前不在 diff 模式，则保存上次 exit 时缓存的内容
+    if (diffLeftEditor && diffRightEditor) {
+        captureDiffDraftFromEditors();
+    }
+
+    const left = diffDraftLeftText.value ?? '';
+    const right = diffDraftRightText.value ?? '';
+
+    const leftSize = calculateByteSize(left);
+    const rightSize = calculateByteSize(right);
+    if (leftSize > MAX_DIFF_SIDE_SIZE || rightSize > MAX_DIFF_SIDE_SIZE) {
+        showMessageError(`diff 草稿保存失败：左右任一侧内容大小不能超过 30MB（当前左 ${Math.round(leftSize / (1024 * 1024))}MB，右 ${Math.round(rightSize / (1024 * 1024))}MB）`);
+        return;
+    }
+
+    try {
+        const existing = await idbGet<DiffDraftRecord>(IDB_STORE_DIFF_DRAFTS, tabId.value);
+        if (!existing) {
+            const count = await idbCount(IDB_STORE_DIFF_DRAFTS);
+            if (count >= MAX_DIFF_TAB_COUNT) {
+                showMessageError(`diff 草稿保存失败：已达到标签页数量上限（${MAX_DIFF_TAB_COUNT}个）`);
+                return;
+            }
+        }
+        const record: DiffDraftRecord = {
+            tabId: tabId.value,
+            leftText: left,
+            rightText: right,
+            updatedAt: Date.now(),
+            version: 1,
+        };
+        await idbPut(IDB_STORE_DIFF_DRAFTS, record);
+    } catch (e: any) {
+        showMessageError(`diff 草稿保存失败（${reason}）：${e?.message ?? String(e)}`);
+    }
+};
+
+const restoreDiffDraftIntoEditors = async () => {
+    if (typeof window === 'undefined') return;
+    if (!tabId.value) return;
+    if (!diffLeftEditor || !diffRightEditor) return;
+
+    try {
+        const record = await idbGet<DiffDraftRecord>(IDB_STORE_DIFF_DRAFTS, tabId.value);
+        if (!record) return;
+        diffDraftLeftText.value = record.leftText ?? '';
+        diffDraftRightText.value = record.rightText ?? '';
+
+        const leftModel = diffLeftEditor.getModel();
+        const rightModel = diffRightEditor.getModel();
+        if (leftModel) leftModel.setValue(diffDraftLeftText.value);
+        if (rightModel) rightModel.setValue(diffDraftRightText.value);
+    } catch (e: any) {
+        showMessageError(`diff 草稿恢复失败：${e?.message ?? String(e)}`);
+    }
+};
 
 const getOutputEditorLanguage = () => {
     switch (outputType.value) {
@@ -1219,10 +1474,13 @@ const enterDiffMode = () => {
 
     nextTick(() => {
         createDiffEditor();
+        void restoreDiffDraftIntoEditors();
     });
 };
 
 const exitDiffMode = () => {
+    captureDiffDraftFromEditors();
+    void saveDiffDraft('退出 diff');
     destroyDiffEditor();
     isDiffMode.value = false;
     isFullscreen.value = wasFullscreenBeforeDiff;
@@ -1230,6 +1488,36 @@ const exitDiffMode = () => {
 
     void restoreNormalEditors();
 };
+
+const persistDiffDraftOnPageLeave = () => {
+    isTabPageClosing = true;
+    captureDiffDraftFromEditors();
+    void saveDiffDraft('页面离开');
+};
+
+onMounted(() => {
+    if (typeof BroadcastChannel !== 'undefined') {
+        tabIdChannel = new BroadcastChannel(TAB_ID_CHANNEL_NAME);
+        tabIdChannel.addEventListener('message', handleTabIdChannelMessage as EventListener);
+    }
+    window.addEventListener('pagehide', persistDiffDraftOnPageLeave);
+    window.addEventListener('beforeunload', persistDiffDraftOnPageLeave);
+    void (async () => {
+        await ensureUniqueTabIdForThisPage();
+        await loadArchives();
+    })();
+});
+
+onBeforeUnmount(() => {
+    isTabPageClosing = true;
+    window.removeEventListener('pagehide', persistDiffDraftOnPageLeave);
+    window.removeEventListener('beforeunload', persistDiffDraftOnPageLeave);
+    if (tabIdChannel) {
+        tabIdChannel.removeEventListener('message', handleTabIdChannelMessage as EventListener);
+        tabIdChannel.close();
+        tabIdChannel = null;
+    }
+});
 
 let diffContentDisposables: monaco.IDisposable[] = [];
 
@@ -1309,16 +1597,20 @@ const createDiffEditor = () => {
         ...baseOptions,
         model: rightModel,
     });
+    updateLineNumberWidth(diffLeftEditor);
+    updateLineNumberWidth(diffRightEditor);
 
     diffContentDisposables.push(
         ...setupSelectionListener(diffLeftEditor, diffLeftEditorStatus),
         ...setupSelectionListener(diffRightEditor, diffRightEditorStatus),
         leftModel.onDidChangeContent(() => {
             if (diffLeftEditor) updateDiffEditorTabSize(diffLeftEditor, leftModel.getValue());
+            updateLineNumberWidth(diffLeftEditor);
             scheduleDiffRecompute();
         }),
         rightModel.onDidChangeContent(() => {
             if (diffRightEditor) updateDiffEditorTabSize(diffRightEditor, rightModel.getValue());
+            updateLineNumberWidth(diffRightEditor);
             scheduleDiffRecompute();
         }),
         diffLeftEditor.onDidScrollChange(e => {
@@ -1368,6 +1660,7 @@ const destroyDiffEditor = () => {
     activeDiffIndex.value = -1;
     diffLeftEditorStatus.value = '';
     diffRightEditorStatus.value = '';
+    clearDiffViewZones();
 
     if (diffLeftResizeObserver) { diffLeftResizeObserver.disconnect(); diffLeftResizeObserver = null; }
     if (diffRightResizeObserver) { diffRightResizeObserver.disconnect(); diffRightResizeObserver = null; }
@@ -1389,6 +1682,8 @@ const destroyDiffEditor = () => {
     diffLineChanges = [];
     diffLeftDecorations = [];
     diffRightDecorations = [];
+    diffLeftViewZoneIds = [];
+    diffRightViewZoneIds = [];
     diffCount.value = 0;
 };
 
@@ -1398,6 +1693,12 @@ interface DiffSyncButton {
 }
 const diffSyncButtons = ref<DiffSyncButton[]>([]);
 const activeDiffIndex = ref(-1);
+
+interface DiffViewZoneSpec {
+    afterLineNumber: number;
+    heightInPx: number;
+    side: 'left' | 'right';
+}
 
 // ========== 自实现的行级 diff（基于 LCS） ==========
 let diffRecomputeRaf: number | null = null;
@@ -1410,45 +1711,254 @@ const scheduleDiffRecompute = () => {
     });
 };
 
+const getDiffLineRangeInfo = (change: DiffLineChange) => {
+    const hasLeft = change.originalEndLineNumber >= change.originalStartLineNumber;
+    const hasRight = change.modifiedEndLineNumber >= change.modifiedStartLineNumber;
+    const leftLineCount = hasLeft
+        ? change.originalEndLineNumber - change.originalStartLineNumber + 1
+        : 0;
+    const rightLineCount = hasRight
+        ? change.modifiedEndLineNumber - change.modifiedStartLineNumber + 1
+        : 0;
+    return { hasLeft, hasRight, leftLineCount, rightLineCount };
+};
+
+const clampViewZoneAfterLineNumber = (
+    editor: monaco.editor.IStandaloneCodeEditor,
+    afterLineNumber: number,
+): number => {
+    const model = editor.getModel();
+    const lineCount = model?.getLineCount() ?? 1;
+    return Math.max(0, Math.min(afterLineNumber, lineCount));
+};
+
+const getEditorBlockHeight = (
+    editor: monaco.editor.IStandaloneCodeEditor,
+    startLineNumber: number,
+    endLineNumber: number,
+): number => {
+    if (endLineNumber < startLineNumber) return 0;
+    const model = editor.getModel();
+    if (!model) return 0;
+    const lineCount = model.getLineCount();
+    if (lineCount <= 0) return 0;
+    const safeStart = Math.max(1, Math.min(startLineNumber, lineCount));
+    const safeEnd = Math.max(safeStart, Math.min(endLineNumber, lineCount));
+    const top = editor.getTopForLineNumber(safeStart);
+    const lineHeight = editor.getOption(monaco.editor.EditorOption.lineHeight);
+    const editorWithBottom = editor as monaco.editor.IStandaloneCodeEditor & {
+        getBottomForLineNumber?: (lineNumber: number) => number;
+    };
+
+    if (typeof editorWithBottom.getBottomForLineNumber === 'function') {
+        return Math.max(lineHeight, editorWithBottom.getBottomForLineNumber(safeEnd) - top);
+    }
+    if (safeEnd < lineCount) {
+        return Math.max(lineHeight, editor.getTopForLineNumber(safeEnd + 1) - top);
+    }
+    return Math.max(lineHeight, editor.getTopForLineNumber(safeEnd) + lineHeight - top);
+};
+
+const replaceDiffViewZones = (
+    editor: monaco.editor.IStandaloneCodeEditor | null,
+    currentZoneIds: string[],
+    specs: DiffViewZoneSpec[],
+): string[] => {
+    if (!editor) return [];
+    const nextZoneIds: string[] = [];
+    editor.changeViewZones(accessor => {
+        for (const zoneId of currentZoneIds) {
+            accessor.removeZone(zoneId);
+        }
+        for (const spec of specs) {
+            const heightInPx = Math.max(0, Math.round(spec.heightInPx));
+            if (heightInPx <= 0) continue;
+            const spacerNode = document.createElement('div');
+            spacerNode.className = `diff-view-zone-spacer diff-view-zone-spacer-${spec.side}`;
+            spacerNode.setAttribute('aria-hidden', 'true');
+            spacerNode.style.height = `${heightInPx}px`;
+            spacerNode.style.pointerEvents = 'none';
+            nextZoneIds.push(accessor.addZone({
+                afterLineNumber: clampViewZoneAfterLineNumber(editor, spec.afterLineNumber),
+                heightInPx,
+                domNode: spacerNode,
+                suppressMouseDown: true,
+            }));
+        }
+    });
+    return nextZoneIds;
+};
+
+const clearDiffViewZones = () => {
+    diffLeftViewZoneIds = replaceDiffViewZones(diffLeftEditor, diffLeftViewZoneIds, []);
+    diffRightViewZoneIds = replaceDiffViewZones(diffRightEditor, diffRightViewZoneIds, []);
+};
+
+const rebuildDiffViewZones = (changes: DiffLineChange[]) => {
+    if (!diffLeftEditor || !diffRightEditor) {
+        diffLeftViewZoneIds = [];
+        diffRightViewZoneIds = [];
+        return;
+    }
+
+    const leftSpecs: DiffViewZoneSpec[] = [];
+    const rightSpecs: DiffViewZoneSpec[] = [];
+
+    for (const change of changes) {
+        const { hasLeft, hasRight } = getDiffLineRangeInfo(change);
+        const leftHeight = hasLeft
+            ? getEditorBlockHeight(diffLeftEditor, change.originalStartLineNumber, change.originalEndLineNumber)
+            : 0;
+        const rightHeight = hasRight
+            ? getEditorBlockHeight(diffRightEditor, change.modifiedStartLineNumber, change.modifiedEndLineNumber)
+            : 0;
+
+        if (leftHeight === rightHeight) continue;
+
+        if (leftHeight > rightHeight) {
+            rightSpecs.push({
+                afterLineNumber: hasRight
+                    ? change.modifiedEndLineNumber
+                    : change.modifiedStartLineNumber - 1,
+                heightInPx: leftHeight - rightHeight,
+                side: 'right',
+            });
+        } else {
+            leftSpecs.push({
+                afterLineNumber: hasLeft
+                    ? change.originalEndLineNumber
+                    : change.originalStartLineNumber - 1,
+                heightInPx: rightHeight - leftHeight,
+                side: 'left',
+            });
+        }
+    }
+
+    diffLeftViewZoneIds = replaceDiffViewZones(diffLeftEditor, diffLeftViewZoneIds, leftSpecs);
+    diffRightViewZoneIds = replaceDiffViewZones(diffRightEditor, diffRightViewZoneIds, rightSpecs);
+};
+
+const getDiffChangeTop = (change: DiffLineChange): number => {
+    if (!diffLeftEditor || !diffRightEditor) return 0;
+    const leftLineHeight = diffLeftEditor.getOption(monaco.editor.EditorOption.lineHeight);
+    const rightLineHeight = diffRightEditor.getOption(monaco.editor.EditorOption.lineHeight);
+    const { hasLeft, hasRight, leftLineCount, rightLineCount } = getDiffLineRangeInfo(change);
+
+    const getSideCenter = (
+        editor: monaco.editor.IStandaloneCodeEditor,
+        startLineNumber: number,
+        endLineNumber: number,
+        lineCount: number,
+        lineHeight: number,
+    ) => {
+        if (lineCount <= 1) {
+            return editor.getTopForLineNumber(startLineNumber) + lineHeight / 2;
+        }
+        return getEditorBlockHeight(editor, startLineNumber, endLineNumber) / 2
+            + editor.getTopForLineNumber(startLineNumber);
+    };
+
+    if (hasLeft && hasRight) {
+        const leftCenter = getSideCenter(
+            diffLeftEditor,
+            change.originalStartLineNumber,
+            change.originalEndLineNumber,
+            leftLineCount,
+            leftLineHeight,
+        );
+        const rightCenter = getSideCenter(
+            diffRightEditor,
+            change.modifiedStartLineNumber,
+            change.modifiedEndLineNumber,
+            rightLineCount,
+            rightLineHeight,
+        );
+        return (leftCenter + rightCenter) / 2;
+    }
+    if (hasRight) {
+        return getSideCenter(
+            diffRightEditor,
+            change.modifiedStartLineNumber,
+            change.modifiedEndLineNumber,
+            rightLineCount,
+            rightLineHeight,
+        );
+    }
+    if (hasLeft) {
+        return getSideCenter(
+            diffLeftEditor,
+            change.originalStartLineNumber,
+            change.originalEndLineNumber,
+            leftLineCount,
+            leftLineHeight,
+        );
+    }
+    return 0;
+};
+
 /**
  * 把一行代码归一化为"结构内容"：去掉首尾空白、把 tab 视作等同于空格压缩、
  * 最终只保留内部非空白串的序列（用单个空格分隔）。这样 `  "a":1` 和 `\t"a": 1`
  * 以及 `"a": 1  ` 会被视作同一行，不会误报成 diff——这符合 JSON diff 的语义。
  *
- * 注意：归一化仅用于 LCS 比较，返回的 change 行号仍使用原始行号，
+ * 注意：归一化仅用于行级匹配，返回的 change 行号仍使用原始行号，
  * 高亮显示、同步按钮位置等用户可见内容不会受影响。
  */
 const normalizeLineForDiff = (line: string): string => {
     return line.replace(/\s+/g, ' ').trim();
 };
 
-/**
- * 计算两组字符串数组之间的行级差异，返回与 Monaco IDiffEditor.getLineChanges()
- * 结构兼容的 DiffLineChange 数组。
- *
- * 比较时忽略行内空白差异（符合 JSON diff 对"结构一致"的语义期望）。
- */
-const computeLineDiff = (leftLines: string[], rightLines: string[]): DiffLineChange[] => {
-    const m = leftLines.length;
-    const n = rightLines.length;
+const trimHistogramRegion = (
+    leftNorm: string[],
+    rightNorm: string[],
+    region: HistogramRegion,
+): HistogramRegion | null => {
+    let [aLo, aHi, bLo, bHi] = region;
 
-    // 预先计算归一化后的行内容，LCS 比较全部走归一化结果
-    const leftNorm = leftLines.map(normalizeLineForDiff);
-    const rightNorm = rightLines.map(normalizeLineForDiff);
-
-    // LCS 动态规划表（滚动数组优化，避免 m*n 的内存）
-    // 行数过多时降级按全等退出以避免卡死（1 万行以上直接按块粗暴标差）
-    if (m * n > 5_000_000) {
-        // 粗暴策略：如果内容完全不等，则整段视为一个大 change
-        if (m === 0 && n === 0) return [];
-        return [{
-            originalStartLineNumber: 1,
-            originalEndLineNumber: m,
-            modifiedStartLineNumber: 1,
-            modifiedEndLineNumber: n,
-        }];
+    while (aLo < aHi && bLo < bHi && leftNorm[aLo] === rightNorm[bLo]) {
+        aLo++;
+        bLo++;
     }
 
+    while (aLo < aHi && bLo < bHi && leftNorm[aHi - 1] === rightNorm[bHi - 1]) {
+        aHi--;
+        bHi--;
+    }
+
+    if (aLo === aHi && bLo === bHi) return null;
+    return [aLo, aHi, bLo, bHi];
+};
+
+const mapHistogramRegionsToLineChanges = (
+    leftNorm: string[],
+    rightNorm: string[],
+    regions: HistogramRegion[],
+    lineOffset: number,
+): DiffLineChange[] => {
+    return regions
+        .map(region => trimHistogramRegion(leftNorm, rightNorm, region))
+        .filter((region): region is HistogramRegion => region !== null)
+        .map(([aLo, aHi, bLo, bHi]) => ({
+            originalStartLineNumber: lineOffset + aLo + 1,
+            originalEndLineNumber: lineOffset + aHi,
+            modifiedStartLineNumber: lineOffset + bLo + 1,
+            modifiedEndLineNumber: lineOffset + bHi,
+        }));
+};
+
+const offsetLineChanges = (changes: DiffLineChange[], lineOffset: number): DiffLineChange[] => {
+    if (lineOffset === 0) return changes;
+    return changes.map(change => ({
+        originalStartLineNumber: change.originalStartLineNumber + lineOffset,
+        originalEndLineNumber: change.originalEndLineNumber + lineOffset,
+        modifiedStartLineNumber: change.modifiedStartLineNumber + lineOffset,
+        modifiedEndLineNumber: change.modifiedEndLineNumber + lineOffset,
+    }));
+};
+
+const computeLineDiffWithLcsFallback = (leftNorm: string[], rightNorm: string[]): DiffLineChange[] => {
+    const m = leftNorm.length;
+    const n = rightNorm.length;
     const dp: number[][] = [];
     for (let i = 0; i <= m; i++) dp.push(new Array(n + 1).fill(0));
     for (let i = 1; i <= m; i++) {
@@ -1520,6 +2030,57 @@ const computeLineDiff = (leftLines: string[], rightLines: string[]): DiffLineCha
     }
     flush();
     return changes;
+};
+
+/**
+ * 计算两组字符串数组之间的行级差异，返回与 Monaco IDiffEditor.getLineChanges()
+ * 结构兼容的 DiffLineChange 数组。
+ *
+ * 主路径使用 histogram diff（更适合重复行较多的大 JSON / 数组场景），
+ * 并先线性裁掉公共前后缀以避免超大相同文件误报成整段 diff。
+ */
+const computeLineDiff = (leftLines: string[], rightLines: string[]): DiffLineChange[] => {
+    const m = leftLines.length;
+    const n = rightLines.length;
+
+    const leftNorm = leftLines.map(normalizeLineForDiff);
+    const rightNorm = rightLines.map(normalizeLineForDiff);
+
+    if (m === 0 && n === 0) return [];
+
+    let prefixLen = 0;
+    const minLen = Math.min(m, n);
+    while (prefixLen < minLen && leftNorm[prefixLen] === rightNorm[prefixLen]) {
+        prefixLen++;
+    }
+
+    if (prefixLen === m && prefixLen === n) return [];
+
+    let leftTrimEnd = m;
+    let rightTrimEnd = n;
+    while (
+        leftTrimEnd > prefixLen &&
+        rightTrimEnd > prefixLen &&
+        leftNorm[leftTrimEnd - 1] === rightNorm[rightTrimEnd - 1]
+    ) {
+        leftTrimEnd--;
+        rightTrimEnd--;
+    }
+
+    const leftWindow = leftNorm.slice(prefixLen, leftTrimEnd);
+    const rightWindow = rightNorm.slice(prefixLen, rightTrimEnd);
+    if (leftWindow.length === 0 && rightWindow.length === 0) return [];
+
+    try {
+        return mapHistogramRegionsToLineChanges(
+            leftWindow,
+            rightWindow,
+            histogramDiff(leftWindow, rightWindow),
+            prefixLen,
+        );
+    } catch {
+        return offsetLineChanges(computeLineDiffWithLcsFallback(leftWindow, rightWindow), prefixLen);
+    }
 };
 
 // ========== 行内 diff（字符级，基于 jsdiff 的 diffChars） ==========
@@ -1648,6 +2209,7 @@ const recomputeDiff = () => {
         diffLineChanges = [];
         diffCount.value = 0;
         diffSyncButtons.value = [];
+        clearDiffViewZones();
         return;
     }
     const leftModel = diffLeftEditor.getModel();
@@ -1659,15 +2221,14 @@ const recomputeDiff = () => {
     const changes = computeLineDiff(leftLines, rightLines);
     diffLineChanges = changes;
     diffCount.value = changes.length;
+    clearDiffViewZones();
+    rebuildDiffViewZones(changes);
 
     // 分别在左右编辑器上打差异行高亮
     const leftDecos: monaco.editor.IModelDeltaDecoration[] = [];
     const rightDecos: monaco.editor.IModelDeltaDecoration[] = [];
     for (const c of changes) {
-        const leftLineCount = c.originalEndLineNumber - c.originalStartLineNumber + 1;
-        const rightLineCount = c.modifiedEndLineNumber - c.modifiedStartLineNumber + 1;
-        const hasLeft = c.originalEndLineNumber >= c.originalStartLineNumber;
-        const hasRight = c.modifiedEndLineNumber >= c.modifiedStartLineNumber;
+        const { leftLineCount, rightLineCount, hasLeft, hasRight } = getDiffLineRangeInfo(c);
 
         if (hasLeft) {
             leftDecos.push({
@@ -1734,25 +2295,12 @@ const updateDiffSyncButtons = () => {
 
     const scrollTop = diffRightEditor.getScrollTop();
     const viewportHeight = diffRightEditor.getLayoutInfo().height;
-    const lineHeight = diffRightEditor.getOption(monaco.editor.EditorOption.lineHeight);
     const buttons: DiffSyncButton[] = [];
 
     for (let i = 0; i < diffLineChanges.length; i++) {
-        const change = diffLineChanges[i];
-        let blockTop: number;
-        let blockBottom: number;
-        if (change.modifiedEndLineNumber >= change.modifiedStartLineNumber) {
-            blockTop = diffRightEditor.getTopForLineNumber(change.modifiedStartLineNumber);
-            blockBottom = diffRightEditor.getTopForLineNumber(change.modifiedEndLineNumber) + lineHeight;
-        } else {
-            // 纯删除：右侧没有对应行，用 "删除所在插入点" 的 Y 坐标
-            const anchor = Math.max(1, change.modifiedStartLineNumber);
-            blockTop = diffRightEditor.getTopForLineNumber(anchor);
-            blockBottom = blockTop + lineHeight;
-        }
-        const centerPx = (blockTop + blockBottom) / 2 - scrollTop;
-        if (centerPx < -30 || centerPx > viewportHeight + 30) continue;
-        buttons.push({ top: centerPx, changeIndex: i });
+        const buttonTop = getDiffChangeTop(diffLineChanges[i]) - scrollTop;
+        if (buttonTop < -30 || buttonTop > viewportHeight + 30) continue;
+        buttons.push({ top: buttonTop, changeIndex: i });
     }
     diffSyncButtons.value = buttons;
 };
@@ -1878,10 +2426,17 @@ const revealDiffChange = (index: number) => {
     if (!diffLeftEditor || !diffRightEditor) return;
     if (index < 0 || index >= diffLineChanges.length) return;
     const change = diffLineChanges[index];
-    const leftLine = Math.max(1, change.originalStartLineNumber);
-    const rightLine = Math.max(1, change.modifiedStartLineNumber);
-    diffLeftEditor.revealLineInCenterIfOutsideViewport(leftLine);
-    diffRightEditor.revealLineInCenterIfOutsideViewport(rightLine);
+    const viewportHeight = diffRightEditor.getLayoutInfo().height;
+    const rightLineHeight = diffRightEditor.getOption(monaco.editor.EditorOption.lineHeight);
+    const targetScrollTop = Math.max(0, getDiffChangeTop(change) - (viewportHeight - rightLineHeight) / 2);
+
+    diffSyncingScroll = true;
+    try {
+        diffLeftEditor.setScrollTop(targetScrollTop);
+        diffRightEditor.setScrollTop(targetScrollTop);
+    } finally {
+        diffSyncingScroll = false;
+    }
 };
 
 const goToNextDiff = () => {
@@ -2026,8 +2581,6 @@ interface JsonArchive {
     content: string;
 }
 
-const ARCHIVE_STORAGE_KEY = 'json-tool-archives';
-const MAX_ARCHIVE_TOTAL_SIZE = 5 * 1024 * 1024; // 存档总大小限制：5MB
 const MAX_ARCHIVE_COUNT = 20; // 存档数量上限
 const archives = ref<JsonArchive[]>([]);
 const draggingArchiveId = ref<string | null>(null);
@@ -2036,34 +2589,50 @@ const dragEnabledArchiveId = ref<string | null>(null);
 const dropIndicatorIndex = ref<number | null>(null);
 const archiveListRef = ref<HTMLElement | null>(null);
 
-// 加载存档
-const loadArchives = () => {
+interface ArchiveBucketRecord {
+    tabId: string;
+    archives: JsonArchive[];
+    updatedAt: number;
+    version: number;
+}
+
+// 加载存档（IndexedDB + 标签页隔离）
+const loadArchives = async () => {
     if (typeof window === 'undefined') return;
     try {
-        const raw = sessionStorage.getItem(ARCHIVE_STORAGE_KEY);
-        if (!raw) return;
-        const parsed = JSON.parse(raw);
-        if (Array.isArray(parsed)) {
-            archives.value = parsed;
-        }
-    } catch {
+        const record = await idbGet<ArchiveBucketRecord>(IDB_STORE_ARCHIVES, tabId.value);
+        archives.value = Array.isArray(record?.archives) ? record!.archives : [];
+    } catch (e: any) {
         archives.value = [];
+        showMessageError(`存档加载失败：${e?.message ?? String(e)}`);
     }
 };
 
-// 保存存档
-const saveArchives = (): boolean => {
+// 保存存档（IndexedDB + 标签页隔离）
+const saveArchives = async (): Promise<boolean> => {
     if (typeof window === 'undefined') return true;
     try {
-        sessionStorage.setItem(ARCHIVE_STORAGE_KEY, JSON.stringify(archives.value));
+        // IndexedDB 不能直接存 Vue 的响应式 Proxy，这里显式转成普通对象数组。
+        const plainArchives: JsonArchive[] = archives.value.map(item => ({
+            id: item.id,
+            name: item.name,
+            size: item.size,
+            content: item.content,
+        }));
+        const record: ArchiveBucketRecord = {
+            tabId: tabId.value,
+            archives: plainArchives,
+            updatedAt: Date.now(),
+            version: 1,
+        };
+        await idbPut(IDB_STORE_ARCHIVES, record);
         return true;
-    } catch (error) {
-        showMessageError('存档保存失败：浏览器存储空间可能已满');
+    } catch (error: any) {
+        showMessageError(`存档保存失败：${error?.message ?? '浏览器存储异常'}`);
         return false;
     }
 };
 
-loadArchives(); // 初始化存档数据
 
 // 字段排序对话框相关状态
 const fieldSortDialogVisible = ref(false);
@@ -2752,6 +3321,7 @@ const updateWordWrap = () => {
     nextTick(() => {
         updateEditorLayout();
         scheduleDiffEditorLayout();
+        scheduleDiffRecompute();
     });
 };
 
@@ -2763,6 +3333,13 @@ const updateFontSize = () => {
 
     inputEditor?.updateOptions(options);
     outputEditor?.updateOptions(options);
+    diffLeftEditor?.updateOptions(options);
+    diffRightEditor?.updateOptions(options);
+
+    nextTick(() => {
+        scheduleDiffEditorLayout();
+        scheduleDiffRecompute();
+    });
 };
 
 // 更新缩进指南
@@ -3546,11 +4123,8 @@ const formatFileSize = (bytes: number): string => {
 // 获取存档总大小信息
 const getArchivesTotalSizeInfo = (): string => {
     const totalSize = archives.value.reduce((sum, archive) => sum + archive.size, 0);
-    const remainingSize = Math.max(0, MAX_ARCHIVE_TOTAL_SIZE - totalSize);
     const formattedUsedSize = formatFileSize(totalSize);
-    const formattedRemainingSize = formatFileSize(remainingSize);
-
-    return `已使用 ${formattedUsedSize}，剩余 ${formattedRemainingSize}`;
+    return `已使用 ${formattedUsedSize}`;
 };
 
 // 更新编辑器状态栏信息
@@ -7187,14 +7761,7 @@ const handleArchiveNameCancel = () => {
 };
 
 const calculateArchiveSize = (content: string): number => {
-    try {
-        // 使用 TextEncoder 更精确计算字节数
-        const encoder = new TextEncoder();
-        return encoder.encode(content).length;
-    } catch {
-        // 兼容性降级：使用字符串长度近似
-        return content.length;
-    }
+    return calculateByteSize(content);
 };
 
 const handleSaveArchive = () => {
@@ -7217,21 +7784,12 @@ const handleSaveArchive = () => {
     }
 
     const size = calculateArchiveSize(content);
-    const totalSize = archives.value.reduce((sum, item) => sum + item.size, 0);
-
-    if (totalSize + size > MAX_ARCHIVE_TOTAL_SIZE) {
-        showMessageError('存档失败：所有存档总大小超过限制，请先清理部分存档');
+    if (size > MAX_SINGLE_ARCHIVE_SIZE) {
+        showMessageError(`存档失败：单个存档大小不能超过 30MB（当前 ${Math.round(size / (1024 * 1024))}MB）`);
         return;
     }
 
     if (customArchiveName.value) {
-        // 最后一次完整检查（防止由于异步操作导致的状态不一致）
-        const finalTotalSize = archives.value.reduce((sum, item) => sum + item.size, 0);
-        if (finalTotalSize + size > MAX_ARCHIVE_TOTAL_SIZE) {
-            showMessageError('存档失败：所有存档总大小超过限制，请先清理部分存档');
-            return;
-        }
-
         // 使用自定义弹窗
         archiveNameDialogTitle.value = '保存存档';
         // 使用最小的未使用数字作为默认值
@@ -7239,16 +7797,10 @@ const handleSaveArchive = () => {
         archiveNameDialogPlaceholder.value = '请输入存档名称';
         archiveNameDialogExcludeId.value = ''; // 新增时不需要排除
         archiveNameDialogCallback.value = (name: string) => {
+            void (async () => {
             // 再次检查存档数量上限（防止在弹窗打开期间存档数量达到上限）
             if (archives.value.length >= MAX_ARCHIVE_COUNT) {
                 showMessageError(`存档数量已达到上限（${MAX_ARCHIVE_COUNT}个），请先删除部分存档`);
-                return;
-            }
-
-            // 再次检查存档总大小上限（防止在弹窗打开期间大小发生变化）
-            const currentTotalSize = archives.value.reduce((sum, item) => sum + item.size, 0);
-            if (currentTotalSize + size > MAX_ARCHIVE_TOTAL_SIZE) {
-                showMessageError('存档失败：所有存档总大小超过限制，请先清理部分存档');
                 return;
             }
 
@@ -7270,24 +7822,18 @@ const handleSaveArchive = () => {
 
             // 新存档放在最前面
             archives.value.unshift(archive);
-            const saveSuccess = saveArchives();
+            const saveSuccess = await saveArchives();
 
             if (saveSuccess) {
-                showMessageSuccess(`已保存到本地存档（当前会话有效），${getArchivesTotalSizeInfo()}`);
+                showMessageSuccess(`已保存到本标签页存档，${getArchivesTotalSizeInfo()}`);
             } else {
                 // 保存失败时，从内存数组中移除刚刚添加的存档
                 archives.value.shift();
             }
+            })();
         };
         archiveNameDialogVisible.value = true;
     } else {
-        // 最后一次完整检查（防止由于异步操作导致的状态不一致）
-        const finalTotalSize = archives.value.reduce((sum, item) => sum + item.size, 0);
-        if (finalTotalSize + size > MAX_ARCHIVE_TOTAL_SIZE) {
-            showMessageError('存档失败：所有存档总大小超过限制，请先清理部分存档');
-            return;
-        }
-
         // 自动命名：使用最小的未使用数字
         const nextNum = findNextAvailableNumber();
         let name = normalizeArchiveName(`${nextNum}`);
@@ -7305,14 +7851,15 @@ const handleSaveArchive = () => {
 
         // 新存档放在最前面
         archives.value.unshift(archive);
-        const saveSuccess = saveArchives();
-
-        if (saveSuccess) {
-            showMessageSuccess(`已保存到本地存档（当前会话有效），${getArchivesTotalSizeInfo()}`);
-        } else {
-            // 保存失败时，从内存数组中移除刚刚添加的存档
-            archives.value.shift();
-        }
+        void (async () => {
+            const saveSuccess = await saveArchives();
+            if (saveSuccess) {
+                showMessageSuccess(`已保存到本标签页存档，${getArchivesTotalSizeInfo()}`);
+            } else {
+                // 保存失败时，从内存数组中移除刚刚添加的存档
+                archives.value.shift();
+            }
+        })();
     }
 };
 
@@ -7684,7 +8231,7 @@ const stopArchiveResize = () => {
 };
 
 // 更新存档内容（将当前编辑区域的内容保存到指定存档）
-const handleRefreshArchive = (item: JsonArchive) => {
+const handleRefreshArchive = async (item: JsonArchive) => {
     if (!inputEditor) {
         showMessageError('编辑器未初始化，请稍候再试');
         return;
@@ -7696,14 +8243,9 @@ const handleRefreshArchive = (item: JsonArchive) => {
         return;
     }
 
-    // 检查是否超出存档总大小限制
-    const currentTotalSize = archives.value.reduce((sum, archive) => sum + archive.size, 0);
-    const oldSize = item.size;
     const newSize = calculateArchiveSize(newContent);
-    const newTotalSize = currentTotalSize - oldSize + newSize;
-
-    if (newTotalSize > MAX_ARCHIVE_TOTAL_SIZE) {
-        showMessageError('更新存档失败：所有存档总大小超过限制，请先清理部分存档');
+    if (newSize > MAX_SINGLE_ARCHIVE_SIZE) {
+        showMessageError(`更新存档失败：单个存档大小不能超过 30MB（当前 ${Math.round(newSize / (1024 * 1024))}MB）`);
         return;
     }
 
@@ -7718,9 +8260,9 @@ const handleRefreshArchive = (item: JsonArchive) => {
             archives.value[index].content = newContent;
             archives.value[index].size = newSize;
 
-            const saveSuccess = saveArchives();
+            const saveSuccess = await saveArchives();
             if (saveSuccess) {
-                showMessageSuccess(`已更新存档内容（当前会话有效），${getArchivesTotalSizeInfo()}`);
+                showMessageSuccess(`已更新本标签页存档，${getArchivesTotalSizeInfo()}`);
             } else {
                 // 保存失败时，回滚内存中的更改
                 const currentIndex = archives.value.findIndex(a => a.id === item.id);
@@ -7753,9 +8295,9 @@ const handleDeleteArchive = async (item: JsonArchive) => {
     const index = archives.value.findIndex(a => a.id === item.id);
     if (index !== -1) {
         const deletedArchive = archives.value.splice(index, 1)[0];
-        const saveSuccess = saveArchives();
+        const saveSuccess = await saveArchives();
         if (saveSuccess) {
-            showMessageSuccess(`已删除存档（当前会话有效），${getArchivesTotalSizeInfo()}`);
+            showMessageSuccess(`已删除本标签页存档，${getArchivesTotalSizeInfo()}`);
         } else {
             // 保存失败时，将删除的存档重新添加回去
             archives.value.splice(index, 0, deletedArchive);
@@ -7770,6 +8312,7 @@ const handleRenameArchive = (item: JsonArchive) => {
     archiveNameDialogPlaceholder.value = '请输入存档名称';
     archiveNameDialogExcludeId.value = item.id; // 编辑时排除当前存档
     archiveNameDialogCallback.value = (name: string) => {
+        void (async () => {
         const normalizedName = normalizeArchiveName(name);
         if (!normalizedName) {
             showMessageError('存档名称不能为空');
@@ -7780,13 +8323,14 @@ const handleRenameArchive = (item: JsonArchive) => {
 
         const oldName = item.name;
         item.name = normalizedName;
-        const saveSuccess = saveArchives();
+        const saveSuccess = await saveArchives();
         if (saveSuccess) {
             showMessageSuccess('重命名成功');
         } else {
             // 保存失败时，回滚名称更改
             item.name = oldName;
         }
+        })();
     };
     archiveNameDialogVisible.value = true;
 };
@@ -7882,7 +8426,7 @@ const onArchiveListDragOver = (event: DragEvent) => {
     dropIndicatorIndex.value = computeDropIndex(event.clientY);
 };
 
-const onArchiveListDrop = (event: DragEvent) => {
+const onArchiveListDrop = async (event: DragEvent) => {
     if (!draggingArchiveId.value) {
         resetArchiveDragState();
         return;
@@ -7908,7 +8452,7 @@ const onArchiveListDrop = (event: DragEvent) => {
             insertIndex = Math.max(0, Math.min(insertIndex, archives.value.length));
             archives.value.splice(insertIndex, 0, moved);
 
-            const saveSuccess = saveArchives();
+            const saveSuccess = await saveArchives();
             if (!saveSuccess) {
                 // 保存失败时，回滚拖拽排序
                 archives.value.splice(insertIndex, 1);
@@ -7923,7 +8467,7 @@ const onArchiveListDrop = (event: DragEvent) => {
     resetArchiveDragState();
 };
 
-const onArchiveDrop = (targetId: string, event?: DragEvent) => {
+const onArchiveDrop = async (targetId: string, event?: DragEvent) => {
     const sourceId = draggingArchiveId.value;
     if (!sourceId || sourceId === targetId) {
         resetArchiveDragState();
@@ -7948,7 +8492,7 @@ const onArchiveDrop = (targetId: string, event?: DragEvent) => {
     insertIndex = Math.max(0, Math.min(insertIndex, archives.value.length));
     archives.value.splice(insertIndex, 0, moved);
 
-    const saveSuccess = saveArchives();
+    const saveSuccess = await saveArchives();
     if (!saveSuccess) {
         // 保存失败时，回滚拖拽排序
         archives.value.splice(insertIndex, 1);
@@ -12429,6 +12973,35 @@ const transferToInput = (e: MouseEvent) => {
 .diff-editor-row :deep(.diff-inline-insert) {
     background: rgba(0, 200, 0, 0.35);
     border-radius: 2px;
+}
+
+/* ---------------- 缺失行占位区 ---------------- */
+.diff-editor-row :deep(.diff-view-zone-spacer) {
+    width: 100%;
+    box-sizing: border-box;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.75);
+}
+
+.diff-editor-row :deep(.diff-view-zone-spacer-left) {
+    background-color: rgba(255, 243, 243, 0.92);
+    background-image: repeating-linear-gradient(
+        -45deg,
+        rgba(204, 102, 102, 0.2) 0,
+        rgba(204, 102, 102, 0.2) 2px,
+        transparent 2px,
+        transparent 9px
+    );
+}
+
+.diff-editor-row :deep(.diff-view-zone-spacer-right) {
+    background-color: rgba(243, 251, 243, 0.92);
+    background-image: repeating-linear-gradient(
+        -45deg,
+        rgba(92, 184, 92, 0.2) 0,
+        rgba(92, 184, 92, 0.2) 2px,
+        transparent 2px,
+        transparent 9px
+    );
 }
 
 /* ---------------- 底部 status 行 ---------------- */
