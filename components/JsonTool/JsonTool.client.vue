@@ -28,17 +28,17 @@
                     </el-button>
                     <div class="diff-nav-group">
                         <el-button-group>
-                            <el-button type="primary" size="small" @click="goToPrevDiff" :disabled="diffCount === 0">
+                            <el-button type="primary" @click="goToPrevDiff" :disabled="diffCount === 0">
                                 <el-icon><ArrowLeft /></el-icon>
                                 <span>Prev</span>
                             </el-button>
-                            <el-button type="primary" size="small" @click="goToNextDiff" :disabled="diffCount === 0">
+                            <el-button type="primary" @click="goToNextDiff" :disabled="diffCount === 0">
                                 <span>Next</span>
                                 <el-icon><ArrowRight /></el-icon>
                             </el-button>
                         </el-button-group>
                     </div>
-                    <el-button type="info" @click="exitDiffMode">退出</el-button>
+                    <el-button type="info" @click="exitDiffMode">Exit</el-button>
                 </div>
 
                 <!-- 普通模式工具栏 -->
@@ -88,8 +88,8 @@
                         <el-button type="success" @click="handleLevelAction" :disabled="maxLevel === 0 || !canUseCollapseFeature">收缩</el-button>
                     </div>
 
-                    <el-button v-if="buttonVisibility.fullscreen" type="warning" class="fullscreen-btn" @click="toggleFullscreen">
-                        {{ isFullscreen ? '退出' : '全屏' }}
+                    <el-button v-if="buttonVisibility.fullscreen" :type="isFullscreen ? 'info' : 'warning'" class="fullscreen-btn" @click="toggleFullscreen">
+                        {{ isFullscreen ? '退出全屏' : '全屏' }}
                     </el-button>
                 </div>
 
@@ -100,10 +100,11 @@
                 </div>
             </div>
 
-            <!-- Diff 编辑区域 -->
+            <!-- Diff 编辑区域：三列 flex = 左独立 Monaco + 24px 中间面板 + 右独立 Monaco -->
             <div v-if="isDiffMode" class="editor-container diff-editor-container">
-                <div class="diff-panel diff-panel-left">
-                    <div class="panel-header diff-panel-header">
+                <!-- 顶部 header 行 -->
+                <div class="diff-row diff-header-row">
+                    <div class="diff-cell diff-cell-left diff-header-cell">
                         <div class="panel-actions diff-panel-actions">
                             <el-button @click="diffFormatJSON('left')" size="small" type="primary" plain>
                                 <span>格式化</span>
@@ -127,12 +128,8 @@
                             </el-button>
                         </div>
                     </div>
-                </div>
-                <div class="diff-panel diff-panel-center">
-                    <div class="panel-header diff-panel-header diff-panel-center-header"></div>
-                </div>
-                <div class="diff-panel diff-panel-right">
-                    <div class="panel-header diff-panel-header">
+                    <div class="diff-cell diff-cell-center diff-header-cell"></div>
+                    <div class="diff-cell diff-cell-right diff-header-cell">
                         <div class="panel-actions diff-panel-actions">
                             <el-button @click="diffFormatJSON('right')" size="small" type="primary" plain>
                                 <span>格式化</span>
@@ -157,31 +154,37 @@
                         </div>
                     </div>
                 </div>
-                <div class="diff-editor-wrapper">
-                    <div class="diff-editor-main">
-                        <div ref="diffEditorContainer" class="diff-editor-instance"></div>
-                        <div class="diff-sync-overlay" :style="{ left: diffSyncOverlayLeftPx > 0 ? diffSyncOverlayLeftPx + 'px' : 'calc(50% - var(--diff-sync-lane-width))' }">
-                            <div class="diff-sync-lane"></div>
-                            <div
-                                v-for="btn in diffSyncButtons"
-                                :key="btn.changeIndex"
-                                class="diff-sync-btn-group"
-                                :class="{ 'is-active': btn.changeIndex === activeDiffIndex }"
-                                :style="{ top: btn.top + 'px' }"
-                            >
-                                <button class="diff-sync-btn diff-sync-btn-left" @click="handleDiffSync(btn.changeIndex, 'left')" title="右 → 左">←</button>
-                                <button class="diff-sync-btn diff-sync-btn-right" @click="handleDiffSync(btn.changeIndex, 'right')" title="左 → 右">→</button>
-                            </div>
+
+                <!-- 中部编辑器行：三列 flex，左右各挂独立 Monaco，中间是真实的同步面板 -->
+                <div class="diff-row diff-editor-row">
+                    <div class="diff-cell diff-cell-left diff-editor-host">
+                        <div ref="diffLeftEditorContainer" class="diff-editor-instance"></div>
+                    </div>
+                    <div class="diff-cell diff-cell-center diff-sync-panel">
+                        <div
+                            v-for="btn in diffSyncButtons"
+                            :key="btn.changeIndex"
+                            class="diff-sync-btn-group"
+                            :class="{ 'is-active': btn.changeIndex === activeDiffIndex }"
+                            :style="{ top: btn.top + 'px' }"
+                        >
+                            <button class="diff-sync-btn diff-sync-btn-left" @click="handleDiffSync(btn.changeIndex, 'left')" title="右 → 左">←</button>
+                            <button class="diff-sync-btn diff-sync-btn-right" @click="handleDiffSync(btn.changeIndex, 'right')" title="左 → 右">→</button>
                         </div>
                     </div>
-                    <div class="diff-status-row">
-                        <div class="editor-status-bar diff-status-bar diff-status-bar-left">
-                            <span v-if="diffLeftEditorStatus" class="status-text">{{ diffLeftEditorStatus }}</span>
-                        </div>
-                        <div class="diff-status-spacer"></div>
-                        <div class="editor-status-bar diff-status-bar diff-status-bar-right">
-                            <span v-if="diffRightEditorStatus" class="status-text">{{ diffRightEditorStatus }}</span>
-                        </div>
+                    <div class="diff-cell diff-cell-right diff-editor-host">
+                        <div ref="diffRightEditorContainer" class="diff-editor-instance"></div>
+                    </div>
+                </div>
+
+                <!-- 底部 status 行 -->
+                <div class="diff-row diff-status-row">
+                    <div class="diff-cell diff-cell-left editor-status-bar diff-status-bar">
+                        <span v-if="diffLeftEditorStatus" class="status-text">{{ diffLeftEditorStatus }}</span>
+                    </div>
+                    <div class="diff-cell diff-cell-center diff-status-center"></div>
+                    <div class="diff-cell diff-cell-right editor-status-bar diff-status-bar">
+                        <span v-if="diffRightEditorStatus" class="status-text">{{ diffRightEditorStatus }}</span>
                     </div>
                 </div>
             </div>
@@ -837,6 +840,7 @@ import yaml from 'js-yaml';
 import * as toml from '@iarna/toml';
 import { create } from 'xmlbuilder2';
 import { Base64 } from 'js-base64';
+import { diffChars, type Change as DiffChange } from 'diff';
 
 
 // ==================== 常量与全局状态 ====================
@@ -1058,26 +1062,158 @@ const handleEscapeKey = (event: KeyboardEvent) => {
 
 // ==================== Diff 模式管理 ====================
 const isDiffMode = ref(false);
-const diffEditorContainer = ref<HTMLElement | null>(null);
-let diffEditor: monaco.editor.IStandaloneDiffEditor | null = null;
+const diffLeftEditorContainer = ref<HTMLElement | null>(null);
+const diffRightEditorContainer = ref<HTMLElement | null>(null);
+let diffLeftEditor: monaco.editor.IStandaloneCodeEditor | null = null;
+let diffRightEditor: monaco.editor.IStandaloneCodeEditor | null = null;
 const diffCount = ref(0);
-let diffUpdateDisposable: monaco.IDisposable | null = null;
 let wasFullscreenBeforeDiff = false;
-let diffEditorResizeObserver: ResizeObserver | null = null;
+let diffLeftResizeObserver: ResizeObserver | null = null;
+let diffRightResizeObserver: ResizeObserver | null = null;
 let diffEditorLayoutRaf: number | null = null;
+let normalModeInputSnapshot = '';
+let normalModeOutputSnapshot = '';
+let normalModeInputViewState: monaco.editor.ICodeEditorViewState | null = null;
+let normalModeOutputViewState: monaco.editor.ICodeEditorViewState | null = null;
+
+// Diff 计算产出的行级变化集（与旧 Monaco IDiffEditor.getLineChanges 结构兼容）
+interface DiffLineChange {
+    originalStartLineNumber: number;
+    originalEndLineNumber: number;   // < start 表示纯插入（左侧在此处插入空）
+    modifiedStartLineNumber: number;
+    modifiedEndLineNumber: number;   // < start 表示纯删除（右侧在此处插入空）
+}
+let diffLineChanges: DiffLineChange[] = [];
+let diffLeftDecorations: string[] = [];
+let diffRightDecorations: string[] = [];
+
+// 同步滚动防死循环锁
+let diffSyncingScroll = false;
+
+const getOutputEditorLanguage = () => {
+    switch (outputType.value) {
+        case 'yaml':
+            return 'yaml';
+        case 'toml':
+            return 'toml';
+        case 'xml':
+            return 'xml';
+        case 'go':
+            return 'go';
+        case 'text':
+            return 'plaintext';
+        default:
+            return 'json';
+    }
+};
+
+const cacheNormalEditorsState = () => {
+    normalModeInputSnapshot = inputEditor?.getValue() || '';
+    normalModeOutputSnapshot = outputEditor?.getValue() || '';
+    normalModeInputViewState = inputEditor?.saveViewState() || null;
+    normalModeOutputViewState = outputEditor?.saveViewState() || null;
+};
+
+const destroyNormalEditors = () => {
+    if (inputEditorResizeObserver) {
+        inputEditorResizeObserver.disconnect();
+        inputEditorResizeObserver = null;
+    }
+    if (outputEditorResizeObserver) {
+        outputEditorResizeObserver.disconnect();
+        outputEditorResizeObserver = null;
+    }
+    if (inputMarkersListener) {
+        inputMarkersListener.dispose();
+        inputMarkersListener = null;
+    }
+    if (inputEditor) {
+        inputEditor.dispose();
+        inputEditor = null;
+    }
+    if (outputEditor) {
+        outputEditor.dispose();
+        outputEditor = null;
+    }
+    editorsInitialized.value = false;
+    inputEditorErrors.value = [];
+    currentErrorIndex.value = -1;
+    inputEditorStatus.value = '';
+    outputEditorStatus.value = '';
+};
+
+const restoreNormalEditors = async () => {
+    await nextTick();
+    if (!inputEditorContainer.value || !outputEditorContainer.value) return;
+
+    createInputEditor();
+    createOutputEditor();
+    configureInputEditor();
+    configureOutputEditor();
+
+    if (inputEditor) {
+        inputEditor.setValue(normalModeInputSnapshot);
+    }
+    if (outputEditor) {
+        outputEditor.setValue(normalModeOutputSnapshot);
+        updateOutputEditorConfig(
+            getOutputEditorLanguage(),
+            outputType.value === 'json',
+            outputType.value === 'go' ? 4 : undefined
+        );
+    }
+
+    initializeEditorLayout();
+    setupResizeObservers();
+    refreshInputEditorErrors();
+
+    nextTick(() => {
+        if (normalModeInputViewState) {
+            inputEditor?.restoreViewState(normalModeInputViewState);
+        }
+        if (normalModeOutputViewState) {
+            outputEditor?.restoreViewState(normalModeOutputViewState);
+        }
+        if (inputEditor) {
+            updateLineNumberWidth(inputEditor);
+            updateEditorHeight(inputEditor);
+        }
+        if (outputEditor) {
+            updateLineNumberWidth(outputEditor);
+            updateEditorHeight(outputEditor);
+        }
+    });
+};
+
+const layoutOneDiffEditor = (editor: monaco.editor.IStandaloneCodeEditor | null, container: HTMLElement | null) => {
+    if (!editor || !container) return;
+    const rect = container.getBoundingClientRect();
+    if (rect.width > 0 && rect.height > 0) {
+        editor.layout({ width: rect.width, height: rect.height });
+    } else {
+        editor.layout();
+    }
+};
 
 const scheduleDiffEditorLayout = () => {
     if (diffEditorLayoutRaf != null) return;
     diffEditorLayoutRaf = requestAnimationFrame(() => {
         diffEditorLayoutRaf = null;
-        diffEditor?.layout();
-        updateDiffSyncOverlayPosition();
+        layoutOneDiffEditor(diffLeftEditor, diffLeftEditorContainer.value);
+        layoutOneDiffEditor(diffRightEditor, diffRightEditorContainer.value);
+        // 下一帧再 layout 一次，确保容器在尺寸恢复后 Monaco 内容正确渲染
+        requestAnimationFrame(() => {
+            layoutOneDiffEditor(diffLeftEditor, diffLeftEditorContainer.value);
+            layoutOneDiffEditor(diffRightEditor, diffRightEditorContainer.value);
+        });
         updateDiffSyncButtons();
     });
 };
 
 const enterDiffMode = () => {
     wasFullscreenBeforeDiff = isFullscreen.value;
+    cacheNormalEditorsState();
+    destroyNormalEditors();
     isDiffMode.value = true;
     isFullscreen.value = true;
 
@@ -1092,10 +1228,7 @@ const exitDiffMode = () => {
     isFullscreen.value = wasFullscreenBeforeDiff;
     diffCount.value = 0;
 
-    nextTick(() => {
-        if (inputEditor) updateEditorHeight(inputEditor);
-        if (outputEditor) updateEditorHeight(outputEditor);
-    });
+    void restoreNormalEditors();
 };
 
 let diffContentDisposables: monaco.IDisposable[] = [];
@@ -1128,83 +1261,104 @@ const updateDiffEditorTabSize = (editor: monaco.editor.ICodeEditor, content: str
 };
 
 const createDiffEditor = () => {
-    if (!diffEditorContainer.value) return;
-    diffEditor = monaco.editor.createDiffEditor(diffEditorContainer.value, {
-        renderSideBySide: true,
-        ignoreTrimWhitespace: true,
-        enableSplitViewResizing: false,
+    if (!diffLeftEditorContainer.value || !diffRightEditorContainer.value) return;
+
+    const baseOptions: monaco.editor.IStandaloneEditorConstructionOptions = {
+        language: 'json',
         folding: false,
         readOnly: false,
-        originalEditable: true,
         minimap: { enabled: showMinimap.value },
         lineNumbers: 'on',
+        lineNumbersMinChars: 3,
         roundedSelection: true,
         scrollBeyondLastLine: false,
         smoothScrolling: true,
+        scrollbar: {
+            verticalScrollbarSize: 12,
+            horizontalScrollbarSize: 12,
+            verticalSliderSize: 12,
+            horizontalSliderSize: 12,
+            useShadows: false,
+        },
         fontSize: fontSize.value,
         lineHeight: 16,
-        renderGutterMenu: true,
-        wordWrap: wordWrap.value ? ('off' as const) : ('on' as const),
-        renderIndicators: false,
-        renderMarginRevertIcon: false,
-        renderOverviewRuler: false,
-        unicodeHighlight: { ambiguousCharacters: false },
+        wordWrap: wordWrap.value ? ('on' as const) : ('off' as const),
+        unicodeHighlight: {
+            ambiguousCharacters: true,
+            invisibleCharacters: true,
+            nonBasicASCII: false,
+        },
         stickyScroll: { enabled: false },
+        automaticLayout: false,
+        renderLineHighlight: 'all',
         guides: {
             indentation: showIndentGuide.value,
             bracketPairs: showIndentGuide.value,
             highlightActiveIndentation: showIndentGuide.value,
         },
+    };
+
+    const leftModel = monaco.editor.createModel('', 'json');
+    const rightModel = monaco.editor.createModel('', 'json');
+
+    diffLeftEditor = monaco.editor.create(diffLeftEditorContainer.value, {
+        ...baseOptions,
+        model: leftModel,
     });
-
-    const originalModel = monaco.editor.createModel('', 'json');
-    const modifiedModel = monaco.editor.createModel('', 'json');
-    diffEditor.setModel({ original: originalModel, modified: modifiedModel });
-
-    const origEditor = diffEditor.getOriginalEditor();
-    const modEditor = diffEditor.getModifiedEditor();
+    diffRightEditor = monaco.editor.create(diffRightEditorContainer.value, {
+        ...baseOptions,
+        model: rightModel,
+    });
 
     diffContentDisposables.push(
-        ...setupSelectionListener(origEditor, diffLeftEditorStatus),
-        ...setupSelectionListener(modEditor, diffRightEditorStatus),
-        originalModel.onDidChangeContent(() => {
-            updateDiffEditorTabSize(origEditor, originalModel.getValue());
+        ...setupSelectionListener(diffLeftEditor, diffLeftEditorStatus),
+        ...setupSelectionListener(diffRightEditor, diffRightEditorStatus),
+        leftModel.onDidChangeContent(() => {
+            if (diffLeftEditor) updateDiffEditorTabSize(diffLeftEditor, leftModel.getValue());
+            scheduleDiffRecompute();
         }),
-        modifiedModel.onDidChangeContent(() => {
-            updateDiffEditorTabSize(modEditor, modifiedModel.getValue());
+        rightModel.onDidChangeContent(() => {
+            if (diffRightEditor) updateDiffEditorTabSize(diffRightEditor, rightModel.getValue());
+            scheduleDiffRecompute();
         }),
-        modEditor.onDidScrollChange(() => {
+        diffLeftEditor.onDidScrollChange(e => {
+            if (diffSyncingScroll || !diffRightEditor) return;
+            diffSyncingScroll = true;
+            try {
+                diffRightEditor.setScrollTop(e.scrollTop);
+                diffRightEditor.setScrollLeft(e.scrollLeft);
+            } finally {
+                diffSyncingScroll = false;
+            }
             updateDiffSyncButtons();
         }),
-        origEditor.onDidLayoutChange(() => {
-            updateDiffSyncOverlayPosition();
-        })
+        diffRightEditor.onDidScrollChange(e => {
+            if (diffSyncingScroll || !diffLeftEditor) return;
+            diffSyncingScroll = true;
+            try {
+                diffLeftEditor.setScrollTop(e.scrollTop);
+                diffLeftEditor.setScrollLeft(e.scrollLeft);
+            } finally {
+                diffSyncingScroll = false;
+            }
+            updateDiffSyncButtons();
+        }),
+        diffLeftEditor.onDidLayoutChange(() => updateDiffSyncButtons()),
+        diffRightEditor.onDidLayoutChange(() => updateDiffSyncButtons())
     );
 
-    diffUpdateDisposable = diffEditor.onDidUpdateDiff(() => {
-        const changes = diffEditor?.getLineChanges();
-        diffCount.value = changes ? changes.length : 0;
-        updateDiffSyncButtons();
-    });
-
-    updateDiffSyncOverlayPosition();
-    requestAnimationFrame(() => {
-        updateDiffSyncOverlayPosition();
-    });
-
-    // Keep diff editor height in sync with container (window resize, layout changes, etc.)
+    // ResizeObserver 分别监听两个容器
     if (typeof ResizeObserver !== 'undefined') {
-        diffEditorResizeObserver?.disconnect();
-        diffEditorResizeObserver = new ResizeObserver(() => {
-            scheduleDiffEditorLayout();
-        });
-        const diffLayoutContainer = diffEditorContainer.value.parentElement;
-        if (diffLayoutContainer) {
-            diffEditorResizeObserver.observe(diffLayoutContainer);
-        }
-        diffEditorResizeObserver.observe(diffEditorContainer.value);
+        diffLeftResizeObserver?.disconnect();
+        diffRightResizeObserver?.disconnect();
+        diffLeftResizeObserver = new ResizeObserver(() => scheduleDiffEditorLayout());
+        diffRightResizeObserver = new ResizeObserver(() => scheduleDiffEditorLayout());
+        diffLeftResizeObserver.observe(diffLeftEditorContainer.value);
+        diffRightResizeObserver.observe(diffRightEditorContainer.value);
     }
+
     scheduleDiffEditorLayout();
+    scheduleDiffRecompute();
 };
 
 const destroyDiffEditor = () => {
@@ -1214,27 +1368,28 @@ const destroyDiffEditor = () => {
     activeDiffIndex.value = -1;
     diffLeftEditorStatus.value = '';
     diffRightEditorStatus.value = '';
-    if (diffEditorResizeObserver) {
-        diffEditorResizeObserver.disconnect();
-        diffEditorResizeObserver = null;
+
+    if (diffLeftResizeObserver) { diffLeftResizeObserver.disconnect(); diffLeftResizeObserver = null; }
+    if (diffRightResizeObserver) { diffRightResizeObserver.disconnect(); diffRightResizeObserver = null; }
+    if (diffEditorLayoutRaf != null) { cancelAnimationFrame(diffEditorLayoutRaf); diffEditorLayoutRaf = null; }
+    if (diffRecomputeRaf != null) { cancelAnimationFrame(diffRecomputeRaf); diffRecomputeRaf = null; }
+
+    if (diffLeftEditor) {
+        const m = diffLeftEditor.getModel();
+        diffLeftEditor.dispose();
+        m?.dispose();
+        diffLeftEditor = null;
     }
-    if (diffEditorLayoutRaf != null) {
-        cancelAnimationFrame(diffEditorLayoutRaf);
-        diffEditorLayoutRaf = null;
+    if (diffRightEditor) {
+        const m = diffRightEditor.getModel();
+        diffRightEditor.dispose();
+        m?.dispose();
+        diffRightEditor = null;
     }
-    if (diffUpdateDisposable) {
-        diffUpdateDisposable.dispose();
-        diffUpdateDisposable = null;
-    }
-    if (diffEditor) {
-        const model = diffEditor.getModel();
-        diffEditor.dispose();
-        if (model) {
-            model.original?.dispose();
-            model.modified?.dispose();
-        }
-        diffEditor = null;
-    }
+    diffLineChanges = [];
+    diffLeftDecorations = [];
+    diffRightDecorations = [];
+    diffCount.value = 0;
 };
 
 interface DiffSyncButton {
@@ -1243,78 +1398,437 @@ interface DiffSyncButton {
 }
 const diffSyncButtons = ref<DiffSyncButton[]>([]);
 const activeDiffIndex = ref(-1);
-const diffSyncOverlayLeftPx = ref(0);
 
-const updateDiffSyncOverlayPosition = () => {
-    if (!diffEditor) return;
-    const origEditor = diffEditor.getOriginalEditor();
-    const origLayout = origEditor.getLayoutInfo();
-    diffSyncOverlayLeftPx.value = origLayout.width;
+// ========== 自实现的行级 diff（基于 LCS） ==========
+let diffRecomputeRaf: number | null = null;
+
+const scheduleDiffRecompute = () => {
+    if (diffRecomputeRaf != null) return;
+    diffRecomputeRaf = requestAnimationFrame(() => {
+        diffRecomputeRaf = null;
+        recomputeDiff();
+    });
+};
+
+/**
+ * 把一行代码归一化为"结构内容"：去掉首尾空白、把 tab 视作等同于空格压缩、
+ * 最终只保留内部非空白串的序列（用单个空格分隔）。这样 `  "a":1` 和 `\t"a": 1`
+ * 以及 `"a": 1  ` 会被视作同一行，不会误报成 diff——这符合 JSON diff 的语义。
+ *
+ * 注意：归一化仅用于 LCS 比较，返回的 change 行号仍使用原始行号，
+ * 高亮显示、同步按钮位置等用户可见内容不会受影响。
+ */
+const normalizeLineForDiff = (line: string): string => {
+    return line.replace(/\s+/g, ' ').trim();
+};
+
+/**
+ * 计算两组字符串数组之间的行级差异，返回与 Monaco IDiffEditor.getLineChanges()
+ * 结构兼容的 DiffLineChange 数组。
+ *
+ * 比较时忽略行内空白差异（符合 JSON diff 对"结构一致"的语义期望）。
+ */
+const computeLineDiff = (leftLines: string[], rightLines: string[]): DiffLineChange[] => {
+    const m = leftLines.length;
+    const n = rightLines.length;
+
+    // 预先计算归一化后的行内容，LCS 比较全部走归一化结果
+    const leftNorm = leftLines.map(normalizeLineForDiff);
+    const rightNorm = rightLines.map(normalizeLineForDiff);
+
+    // LCS 动态规划表（滚动数组优化，避免 m*n 的内存）
+    // 行数过多时降级按全等退出以避免卡死（1 万行以上直接按块粗暴标差）
+    if (m * n > 5_000_000) {
+        // 粗暴策略：如果内容完全不等，则整段视为一个大 change
+        if (m === 0 && n === 0) return [];
+        return [{
+            originalStartLineNumber: 1,
+            originalEndLineNumber: m,
+            modifiedStartLineNumber: 1,
+            modifiedEndLineNumber: n,
+        }];
+    }
+
+    const dp: number[][] = [];
+    for (let i = 0; i <= m; i++) dp.push(new Array(n + 1).fill(0));
+    for (let i = 1; i <= m; i++) {
+        for (let j = 1; j <= n; j++) {
+            if (leftNorm[i - 1] === rightNorm[j - 1]) {
+                dp[i][j] = dp[i - 1][j - 1] + 1;
+            } else {
+                dp[i][j] = Math.max(dp[i - 1][j], dp[i][j - 1]);
+            }
+        }
+    }
+
+    // 回溯得到编辑脚本：sequence of 'eq' | 'del' | 'ins'
+    const ops: Array<{ type: 'eq' | 'del' | 'ins'; left?: number; right?: number }> = [];
+    let i = m, j = n;
+    while (i > 0 && j > 0) {
+        if (leftNorm[i - 1] === rightNorm[j - 1]) {
+            ops.push({ type: 'eq', left: i, right: j });
+            i--; j--;
+        } else if (dp[i - 1][j] >= dp[i][j - 1]) {
+            ops.push({ type: 'del', left: i });
+            i--;
+        } else {
+            ops.push({ type: 'ins', right: j });
+            j--;
+        }
+    }
+    while (i > 0) { ops.push({ type: 'del', left: i-- }); }
+    while (j > 0) { ops.push({ type: 'ins', right: j-- }); }
+    ops.reverse();
+
+    // 将连续的 del/ins 合并成一个 change 块，严格按行号升序
+    const changes: DiffLineChange[] = [];
+    let curOrigStart = -1, curOrigEnd = -1, curModStart = -1, curModEnd = -1;
+    let lastLeft = 0, lastRight = 0;
+    const flush = () => {
+        if (curOrigStart === -1 && curModStart === -1) return;
+        const origS = curOrigStart === -1 ? lastLeft : curOrigStart;
+        const origE = curOrigEnd === -1 ? origS - 1 : curOrigEnd;
+        const modS = curModStart === -1 ? lastRight : curModStart;
+        const modE = curModEnd === -1 ? modS - 1 : curModEnd;
+        changes.push({
+            originalStartLineNumber: origS,
+            originalEndLineNumber: origE,
+            modifiedStartLineNumber: modS,
+            modifiedEndLineNumber: modE,
+        });
+        curOrigStart = curOrigEnd = curModStart = curModEnd = -1;
+    };
+
+    for (const op of ops) {
+        if (op.type === 'eq') {
+            flush();
+            lastLeft = op.left!;
+            lastRight = op.right!;
+        } else if (op.type === 'del') {
+            if (curOrigStart === -1) {
+                curOrigStart = op.left!;
+                if (curModStart === -1) curModStart = lastRight + 1;
+            }
+            curOrigEnd = op.left!;
+        } else {
+            if (curModStart === -1) {
+                curModStart = op.right!;
+                if (curOrigStart === -1) curOrigStart = lastLeft + 1;
+            }
+            curModEnd = op.right!;
+        }
+    }
+    flush();
+    return changes;
+};
+
+// ========== 行内 diff（字符级，基于 jsdiff 的 diffChars） ==========
+/**
+ * 行内差异片段。startCol / endCol 采用 Monaco 的 1-based 列号约定
+ * （等同于 UTF-16 code unit 序号 + 1），可以直接构造 monaco.Range。
+ */
+interface InlineDiffSegment {
+    startCol: number;
+    endCol: number;
+}
+
+interface InlineDiffResult {
+    leftSegments: InlineDiffSegment[];
+    rightSegments: InlineDiffSegment[];
+    /** 差异窗口过大、放弃精细化时为 true（此时整段被标为一个大片段） */
+    tooLarge: boolean;
+}
+
+/** 单行长度超过这个阈值直接跳过行内 diff（避免 UI 卡顿） */
+const INLINE_DIFF_MAX_LINE_LEN = 200_000;
+/** 前后缀裁剪后中间差异窗口超过这个阈值，放弃 diffChars，整段标记 */
+const INLINE_DIFF_WINDOW_LIMIT = 20_000;
+
+/**
+ * 计算两行字符串的行内字符级差异，返回可直接用于 Monaco inlineClassName
+ * 装饰的列号片段。内部做了前后缀公共串裁剪 + 差异窗口兜底，
+ * 能安全处理 ~1MB 长字符串的常见 case（差异集中在一小段）。
+ */
+const computeInlineDiff = (left: string, right: string): InlineDiffResult | null => {
+    if (left === right) return null;
+
+    // 防御：超长单行直接放弃行内细化
+    if (left.length > INLINE_DIFF_MAX_LINE_LEN || right.length > INLINE_DIFF_MAX_LINE_LEN) {
+        return null;
+    }
+
+    // 1. 最长公共前缀
+    const minLen = Math.min(left.length, right.length);
+    let prefixLen = 0;
+    while (prefixLen < minLen && left.charCodeAt(prefixLen) === right.charCodeAt(prefixLen)) {
+        prefixLen++;
+    }
+    // 2. 最长公共后缀（不能和前缀重叠）
+    let suffixLen = 0;
+    const maxSuffix = minLen - prefixLen;
+    while (
+        suffixLen < maxSuffix &&
+        left.charCodeAt(left.length - 1 - suffixLen) === right.charCodeAt(right.length - 1 - suffixLen)
+    ) {
+        suffixLen++;
+    }
+
+    const leftMidLen = left.length - prefixLen - suffixLen;
+    const rightMidLen = right.length - prefixLen - suffixLen;
+
+    // 裁剪后完全一致（理论上不该走到，留作防御）
+    if (leftMidLen === 0 && rightMidLen === 0) return null;
+
+    // 差异窗口过大，直接整段标记，不再跑 diffChars
+    if (leftMidLen + rightMidLen > INLINE_DIFF_WINDOW_LIMIT) {
+        return {
+            leftSegments: leftMidLen > 0
+                ? [{ startCol: prefixLen + 1, endCol: prefixLen + leftMidLen + 1 }]
+                : [],
+            rightSegments: rightMidLen > 0
+                ? [{ startCol: prefixLen + 1, endCol: prefixLen + rightMidLen + 1 }]
+                : [],
+            tooLarge: true,
+        };
+    }
+
+    const leftMid = left.slice(prefixLen, left.length - suffixLen);
+    const rightMid = right.slice(prefixLen, right.length - suffixLen);
+
+    let changes: DiffChange[];
+    try {
+        changes = diffChars(leftMid, rightMid);
+    } catch {
+        // jsdiff 在极端输入下可能抛错，安全降级
+        return {
+            leftSegments: leftMidLen > 0
+                ? [{ startCol: prefixLen + 1, endCol: prefixLen + leftMidLen + 1 }]
+                : [],
+            rightSegments: rightMidLen > 0
+                ? [{ startCol: prefixLen + 1, endCol: prefixLen + rightMidLen + 1 }]
+                : [],
+            tooLarge: true,
+        };
+    }
+
+    const leftSegments: InlineDiffSegment[] = [];
+    const rightSegments: InlineDiffSegment[] = [];
+    let leftPos = prefixLen;
+    let rightPos = prefixLen;
+
+    for (const change of changes) {
+        const len = change.value.length;
+        if (change.added) {
+            if (len > 0) {
+                rightSegments.push({
+                    startCol: rightPos + 1,
+                    endCol: rightPos + len + 1,
+                });
+            }
+            rightPos += len;
+        } else if (change.removed) {
+            if (len > 0) {
+                leftSegments.push({
+                    startCol: leftPos + 1,
+                    endCol: leftPos + len + 1,
+                });
+            }
+            leftPos += len;
+        } else {
+            leftPos += len;
+            rightPos += len;
+        }
+    }
+
+    return { leftSegments, rightSegments, tooLarge: false };
+};
+
+const recomputeDiff = () => {
+    if (!diffLeftEditor || !diffRightEditor) {
+        diffLineChanges = [];
+        diffCount.value = 0;
+        diffSyncButtons.value = [];
+        return;
+    }
+    const leftModel = diffLeftEditor.getModel();
+    const rightModel = diffRightEditor.getModel();
+    if (!leftModel || !rightModel) return;
+
+    const leftLines = leftModel.getLinesContent();
+    const rightLines = rightModel.getLinesContent();
+    const changes = computeLineDiff(leftLines, rightLines);
+    diffLineChanges = changes;
+    diffCount.value = changes.length;
+
+    // 分别在左右编辑器上打差异行高亮
+    const leftDecos: monaco.editor.IModelDeltaDecoration[] = [];
+    const rightDecos: monaco.editor.IModelDeltaDecoration[] = [];
+    for (const c of changes) {
+        const leftLineCount = c.originalEndLineNumber - c.originalStartLineNumber + 1;
+        const rightLineCount = c.modifiedEndLineNumber - c.modifiedStartLineNumber + 1;
+        const hasLeft = c.originalEndLineNumber >= c.originalStartLineNumber;
+        const hasRight = c.modifiedEndLineNumber >= c.modifiedStartLineNumber;
+
+        if (hasLeft) {
+            leftDecos.push({
+                range: new monaco.Range(c.originalStartLineNumber, 1, c.originalEndLineNumber, 1),
+                options: {
+                    isWholeLine: true,
+                    className: 'diff-line-delete',
+                    linesDecorationsClassName: 'diff-line-delete-margin',
+                },
+            });
+        }
+        if (hasRight) {
+            rightDecos.push({
+                range: new monaco.Range(c.modifiedStartLineNumber, 1, c.modifiedEndLineNumber, 1),
+                options: {
+                    isWholeLine: true,
+                    className: 'diff-line-insert',
+                    linesDecorationsClassName: 'diff-line-insert-margin',
+                },
+            });
+        }
+
+        // 行内字符级 diff：
+        // - "1 删 1 增" 的孤立替换：直接比对这两行；
+        // - "N 删 N 增" 的等长替换块：按位置强配对 left[i] ↔ right[i]，
+        //   因为等行数的连续替换块基本就是"逐行修改"场景，按位置配对正确率高；
+        // - 行数不等（N 删 M 增且 N≠M）：跳过行内 diff，避免位置错位产生误导。
+        if (hasLeft && hasRight && leftLineCount === rightLineCount) {
+            for (let k = 0; k < leftLineCount; k++) {
+                const leftLineNo = c.originalStartLineNumber + k;
+                const rightLineNo = c.modifiedStartLineNumber + k;
+                const leftLine = leftLines[leftLineNo - 1] ?? '';
+                const rightLine = rightLines[rightLineNo - 1] ?? '';
+                const inline = computeInlineDiff(leftLine, rightLine);
+                if (!inline) continue;
+                for (const seg of inline.leftSegments) {
+                    leftDecos.push({
+                        range: new monaco.Range(leftLineNo, seg.startCol, leftLineNo, seg.endCol),
+                        options: { inlineClassName: 'diff-inline-delete' },
+                    });
+                }
+                for (const seg of inline.rightSegments) {
+                    rightDecos.push({
+                        range: new monaco.Range(rightLineNo, seg.startCol, rightLineNo, seg.endCol),
+                        options: { inlineClassName: 'diff-inline-insert' },
+                    });
+                }
+            }
+        }
+    }
+    diffLeftDecorations = diffLeftEditor.deltaDecorations(diffLeftDecorations, leftDecos);
+    diffRightDecorations = diffRightEditor.deltaDecorations(diffRightDecorations, rightDecos);
+
+    if (activeDiffIndex.value >= changes.length) activeDiffIndex.value = changes.length - 1;
+    updateDiffSyncButtons();
 };
 
 const updateDiffSyncButtons = () => {
-    if (!diffEditor) { diffSyncButtons.value = []; return; }
-    const changes = diffEditor.getLineChanges();
-    if (!changes || changes.length === 0) {
+    if (!diffLeftEditor || !diffRightEditor || diffLineChanges.length === 0) {
         diffSyncButtons.value = [];
-        activeDiffIndex.value = -1;
+        if (diffLineChanges.length === 0) activeDiffIndex.value = -1;
         return;
     }
-    if (activeDiffIndex.value >= changes.length) {
-        activeDiffIndex.value = changes.length - 1;
-    }
 
-    updateDiffSyncOverlayPosition();
-
-    const modEditor = diffEditor.getModifiedEditor();
-    const scrollTop = modEditor.getScrollTop();
-    const viewportHeight = modEditor.getLayoutInfo().height;
-    const lineHeight = modEditor.getOption(monaco.editor.EditorOption.lineHeight);
+    const scrollTop = diffRightEditor.getScrollTop();
+    const viewportHeight = diffRightEditor.getLayoutInfo().height;
+    const lineHeight = diffRightEditor.getOption(monaco.editor.EditorOption.lineHeight);
     const buttons: DiffSyncButton[] = [];
 
-    for (let i = 0; i < changes.length; i++) {
-        const change = changes[i];
-        const modStart = change.modifiedStartLineNumber;
-        const modEnd = change.modifiedEndLineNumber || modStart;
-        const blockTop = modEditor.getTopForLineNumber(modStart);
-        const blockBottom = modEditor.getTopForLineNumber(modEnd) + lineHeight;
+    for (let i = 0; i < diffLineChanges.length; i++) {
+        const change = diffLineChanges[i];
+        let blockTop: number;
+        let blockBottom: number;
+        if (change.modifiedEndLineNumber >= change.modifiedStartLineNumber) {
+            blockTop = diffRightEditor.getTopForLineNumber(change.modifiedStartLineNumber);
+            blockBottom = diffRightEditor.getTopForLineNumber(change.modifiedEndLineNumber) + lineHeight;
+        } else {
+            // 纯删除：右侧没有对应行，用 "删除所在插入点" 的 Y 坐标
+            const anchor = Math.max(1, change.modifiedStartLineNumber);
+            blockTop = diffRightEditor.getTopForLineNumber(anchor);
+            blockBottom = blockTop + lineHeight;
+        }
         const centerPx = (blockTop + blockBottom) / 2 - scrollTop;
         if (centerPx < -30 || centerPx > viewportHeight + 30) continue;
         buttons.push({ top: centerPx, changeIndex: i });
     }
-
     diffSyncButtons.value = buttons;
 };
 
+/**
+ * 用 executeEdits 做全文替换，保留 undo/redo 栈。
+ * 关键点：
+ *   1. 通过 pushStackElement 把本次替换强制切成独立的 undo step，
+ *      避免和用户此前的手动输入合并在一起、一次 Ctrl+Z 撤销过多；
+ *   2. source 参数会挂到 undo step 上，便于未来排查到底是哪个操作产生的变更。
+ *
+ * 绝对不要直接 editor.setValue(...) —— setValue 会把整个 undo/redo 栈清空，
+ * 导致用户感觉"撤销/取消撤销失灵"。
+ */
+const replaceEditorValuePreservingUndo = (
+    editor: monaco.editor.IStandaloneCodeEditor,
+    newValue: string,
+    source: string,
+) => {
+    const model = editor.getModel();
+    if (!model) {
+        editor.setValue(newValue);
+        return;
+    }
+    const currentValue = model.getValue();
+    if (currentValue === newValue) return;
+
+    const lastLine = model.getLineCount();
+    const lastCol = model.getLineMaxColumn(lastLine);
+    const fullRange = new monaco.Range(1, 1, lastLine, lastCol);
+
+    // 关键：编辑前后各切一次 undo step，保证本次替换独占一个 undo group
+    model.pushStackElement();
+    editor.executeEdits(source, [{ range: fullRange, text: newValue }]);
+    model.pushStackElement();
+};
+
 const handleDiffSync = (changeIndex: number, direction: 'left' | 'right') => {
-    if (!diffEditor) return;
-    const changes = diffEditor.getLineChanges();
-    if (!changes || changeIndex >= changes.length) return;
+    if (!diffLeftEditor || !diffRightEditor) return;
+    if (changeIndex < 0 || changeIndex >= diffLineChanges.length) return;
     activeDiffIndex.value = changeIndex;
 
-    const origModel = diffEditor.getModel()?.original;
-    const modModel = diffEditor.getModel()?.modified;
+    const origModel = diffLeftEditor.getModel();
+    const modModel = diffRightEditor.getModel();
     if (!origModel || !modModel) return;
 
-    const change = changes[changeIndex];
+    const change = diffLineChanges[changeIndex];
     const origStart = change.originalStartLineNumber;
     const origEnd = change.originalEndLineNumber;
     const modStart = change.modifiedStartLineNumber;
     const modEnd = change.modifiedEndLineNumber;
 
+    // 关键：把"同步箭头"整个操作包成一个独立的 undo step，
+    // 这样 Ctrl+Z 能精准撤销这一次同步，而不会和用户之前/之后的手动输入合并。
+    // 只对实际被修改的一侧模型切 undo step。
+    const targetModel = direction === 'left' ? origModel : modModel;
+    targetModel.pushStackElement();
+
     if (direction === 'left') {
+        // 右 → 左：用 modified 的内容覆盖 original 的差异块
         const modContent = modEnd >= modStart
             ? modModel.getValueInRange(new monaco.Range(modStart, 1, modEnd, modModel.getLineMaxColumn(modEnd)))
             : '';
         if (origEnd < origStart) {
+            // 左侧是纯插入点（没有对应行）→ 在 origStart 所指行之后插入
             if (modContent) {
-                origModel.applyEdits([{
-                    range: new monaco.Range(origStart + 1, 1, origStart + 1, 1),
-                    text: modContent + '\n',
-                }]);
+                const insertLine = Math.max(1, origStart);
+                const totalLines = origModel.getLineCount();
+                const range = insertLine > totalLines
+                    ? new monaco.Range(totalLines, origModel.getLineMaxColumn(totalLines), totalLines, origModel.getLineMaxColumn(totalLines))
+                    : new monaco.Range(insertLine, 1, insertLine, 1);
+                const text = insertLine > totalLines ? '\n' + modContent : modContent + '\n';
+                diffLeftEditor.executeEdits('diff-sync-right-to-left', [{ range, text }]);
             }
         } else if (modContent) {
-            origModel.applyEdits([{
+            diffLeftEditor.executeEdits('diff-sync-right-to-left', [{
                 range: new monaco.Range(origStart, 1, origEnd, origModel.getLineMaxColumn(origEnd)),
                 text: modContent,
             }]);
@@ -1324,21 +1838,25 @@ const handleDiffSync = (changeIndex: number, direction: 'left' | 'right') => {
             const delRange = delEnd <= totalLines
                 ? new monaco.Range(origStart, 1, delEnd, 1)
                 : new monaco.Range(Math.max(1, origStart - 1), origStart > 1 ? origModel.getLineMaxColumn(origStart - 1) : 1, origEnd, origModel.getLineMaxColumn(origEnd));
-            origModel.applyEdits([{ range: delRange, text: '' }]);
+            diffLeftEditor.executeEdits('diff-sync-right-to-left', [{ range: delRange, text: '' }]);
         }
     } else {
+        // 左 → 右：用 original 的内容覆盖 modified 的差异块
         const origContent = origEnd >= origStart
             ? origModel.getValueInRange(new monaco.Range(origStart, 1, origEnd, origModel.getLineMaxColumn(origEnd)))
             : '';
         if (modEnd < modStart) {
             if (origContent) {
-                modModel.applyEdits([{
-                    range: new monaco.Range(modStart + 1, 1, modStart + 1, 1),
-                    text: origContent + '\n',
-                }]);
+                const insertLine = Math.max(1, modStart);
+                const totalLines = modModel.getLineCount();
+                const range = insertLine > totalLines
+                    ? new monaco.Range(totalLines, modModel.getLineMaxColumn(totalLines), totalLines, modModel.getLineMaxColumn(totalLines))
+                    : new monaco.Range(insertLine, 1, insertLine, 1);
+                const text = insertLine > totalLines ? '\n' + origContent : origContent + '\n';
+                diffRightEditor.executeEdits('diff-sync-left-to-right', [{ range, text }]);
             }
         } else if (origContent) {
-            modModel.applyEdits([{
+            diffRightEditor.executeEdits('diff-sync-left-to-right', [{
                 range: new monaco.Range(modStart, 1, modEnd, modModel.getLineMaxColumn(modEnd)),
                 text: origContent,
             }]);
@@ -1348,34 +1866,44 @@ const handleDiffSync = (changeIndex: number, direction: 'left' | 'right') => {
             const delRange = delEnd <= totalLines
                 ? new monaco.Range(modStart, 1, delEnd, 1)
                 : new monaco.Range(Math.max(1, modStart - 1), modStart > 1 ? modModel.getLineMaxColumn(modStart - 1) : 1, modEnd, modModel.getLineMaxColumn(modEnd));
-            modModel.applyEdits([{ range: delRange, text: '' }]);
+            diffRightEditor.executeEdits('diff-sync-left-to-right', [{ range: delRange, text: '' }]);
         }
     }
+
+    // 同步后再切一次，确保后续的手动输入不会被合并进来
+    targetModel.pushStackElement();
+};
+
+const revealDiffChange = (index: number) => {
+    if (!diffLeftEditor || !diffRightEditor) return;
+    if (index < 0 || index >= diffLineChanges.length) return;
+    const change = diffLineChanges[index];
+    const leftLine = Math.max(1, change.originalStartLineNumber);
+    const rightLine = Math.max(1, change.modifiedStartLineNumber);
+    diffLeftEditor.revealLineInCenterIfOutsideViewport(leftLine);
+    diffRightEditor.revealLineInCenterIfOutsideViewport(rightLine);
 };
 
 const goToNextDiff = () => {
-    const changes = diffEditor?.getLineChanges();
-    if (!diffEditor || !changes || changes.length === 0) return;
+    if (diffLineChanges.length === 0) return;
     activeDiffIndex.value = activeDiffIndex.value < 0
         ? 0
-        : (activeDiffIndex.value + 1) % changes.length;
-    diffEditor.goToDiff('next');
+        : (activeDiffIndex.value + 1) % diffLineChanges.length;
+    revealDiffChange(activeDiffIndex.value);
+    updateDiffSyncButtons();
 };
 
 const goToPrevDiff = () => {
-    const changes = diffEditor?.getLineChanges();
-    if (!diffEditor || !changes || changes.length === 0) return;
+    if (diffLineChanges.length === 0) return;
     activeDiffIndex.value = activeDiffIndex.value < 0
-        ? changes.length - 1
-        : (activeDiffIndex.value - 1 + changes.length) % changes.length;
-    diffEditor.goToDiff('previous');
+        ? diffLineChanges.length - 1
+        : (activeDiffIndex.value - 1 + diffLineChanges.length) % diffLineChanges.length;
+    revealDiffChange(activeDiffIndex.value);
+    updateDiffSyncButtons();
 };
 
 const getDiffSideEditor = (side: 'left' | 'right'): monaco.editor.IStandaloneCodeEditor | null => {
-    if (!diffEditor) return null;
-    return side === 'left'
-        ? diffEditor.getOriginalEditor() as monaco.editor.IStandaloneCodeEditor
-        : diffEditor.getModifiedEditor() as monaco.editor.IStandaloneCodeEditor;
+    return side === 'left' ? diffLeftEditor : diffRightEditor;
 };
 
 const diffFormatJSON = (side: 'left' | 'right') => {
@@ -1395,7 +1923,7 @@ const diffFormatJSON = (side: 'left' | 'right') => {
         );
         const { data, escapeMap } = formatter.parseJson5(value);
         const formatted = formatter.format(data, escapeMap);
-        editor.setValue(formatted);
+        replaceEditorValuePreservingUndo(editor, formatted, `diff-format-${side}`);
         showMessageSuccess('格式化成功');
     } catch (error: any) {
         showMessageError('格式化失败: ' + error.message);
@@ -1415,7 +1943,7 @@ const diffSortJSON = (side: 'left' | 'right') => {
         const sorted = sortJsonObject(result.data, sortMethod.value, sortOrder.value, '');
         const formatter = new JsonPlusFormatter(false, indentSize.value, arrayNewLine.value, preserveNumberLiterals.value);
         const formatted = formatter.format(sorted, result.escapeMap);
-        editor.setValue(formatted);
+        replaceEditorValuePreservingUndo(editor, formatted, `diff-sort-${side}`);
         showMessageSuccess('排序成功');
     } catch (error: any) {
         showMessageError('排序失败: ' + error.message);
@@ -1441,7 +1969,7 @@ const diffCopy = async (side: 'left' | 'right') => {
 const diffClear = (side: 'left' | 'right') => {
     const editor = getDiffSideEditor(side);
     if (!editor) return;
-    editor.setValue('');
+    replaceEditorValuePreservingUndo(editor, '', `diff-clear-${side}`);
     showMessageSuccess('已清空');
 };
 
@@ -1455,7 +1983,7 @@ const diffHandleUpload = (side: 'left' | 'right') => (uploadFile: UploadFile) =>
         if (e.target?.result) {
             const editor = getDiffSideEditor(side);
             if (editor) {
-                editor.setValue(e.target.result as string);
+                replaceEditorValuePreservingUndo(editor, e.target.result as string, `diff-upload-${side}`);
                 showMessageSuccess('文件上传成功');
             }
         }
@@ -2162,6 +2690,15 @@ const getEditorOptions = (
     fixedOverflowWidgets: true, // 使溢出窗口(如提示、自动完成)固定显示
     stickyScroll: { enabled: stickyScroll.value }, // 根据设置控制粘性滚动
 
+    // 滚动条尺寸：让纵向/横向滚动条更纤细一些
+    scrollbar: {
+        verticalScrollbarSize: 12,
+        horizontalScrollbarSize: 12,
+        verticalSliderSize: 12,
+        horizontalSliderSize: 12,
+        useShadows: false,
+    },
+
     // 折叠配置
     folding: true, // 启用代码折叠功能（这是基础配置，必须开启）
     ...getLargeFileOptions(enableLargeFileFolding, lineCount),
@@ -2207,7 +2744,9 @@ const updateWordWrap = () => {
 
     inputEditor?.updateOptions(options);
     outputEditor?.updateOptions(options);
-    diffEditor?.updateOptions(options);
+    // Diff 模式下左右是独立的 Monaco 编辑器，直接各自 updateOptions 即可
+    diffLeftEditor?.updateOptions(options);
+    diffRightEditor?.updateOptions(options);
 
     // 换行设置改变后，需要重新布局编辑器以确保正确显示
     nextTick(() => {
@@ -2249,7 +2788,8 @@ const updateMinimap = () => {
 
     inputEditor?.updateOptions(options);
     outputEditor?.updateOptions(options);
-    diffEditor?.updateOptions(options);
+    diffLeftEditor?.updateOptions(options);
+    diffRightEditor?.updateOptions(options);
 };
 
 const updateStickyScroll = () => {
@@ -3208,7 +3748,8 @@ watch(isFullscreen, () => {
         setTimeout(() => {
             if (inputEditor) inputEditor.layout();
             if (outputEditor) outputEditor.layout();
-            if (diffEditor) diffEditor.layout();
+            if (diffLeftEditor) diffLeftEditor.layout();
+            if (diffRightEditor) diffRightEditor.layout();
             handleResize();
         }, 80);
     });
@@ -3949,8 +4490,16 @@ const setupResizeObservers = () => {
     if (inputEditorContainer.value) {
         const inputContainer = inputEditorContainer.value.parentElement; // .monaco-editor-container
         if (inputContainer && !inputEditorResizeObserver) {
-            inputEditorResizeObserver = new ResizeObserver(() => {
-                // 使用防抖更新编辑器布局
+            inputEditorResizeObserver = new ResizeObserver((entries) => {
+                // 立即同步 Monaco 布局，保证滚动条在拖动浏览器边界时紧贴容器边缘
+                if (inputEditor) {
+                    const entry = entries[0];
+                    const contentRect = entry?.contentRect;
+                    const width = contentRect ? contentRect.width : inputContainer.clientWidth;
+                    const height = contentRect ? contentRect.height : inputContainer.clientHeight;
+                    inputEditor.layout({ width, height });
+                }
+                // 继续触发其它与 resize 相关的防抖副作用（如尺寸状态、diff 布局等）
                 debouncedResize();
             });
             inputEditorResizeObserver.observe(inputContainer);
@@ -3961,8 +4510,15 @@ const setupResizeObservers = () => {
     if (outputEditorContainer.value) {
         const outputContainer = outputEditorContainer.value.parentElement; // .monaco-editor-container
         if (outputContainer && !outputEditorResizeObserver) {
-            outputEditorResizeObserver = new ResizeObserver(() => {
-                // 使用防抖更新编辑器布局
+            outputEditorResizeObserver = new ResizeObserver((entries) => {
+                // 立即同步 Monaco 布局，保证滚动条在拖动浏览器边界时紧贴容器边缘
+                if (outputEditor) {
+                    const entry = entries[0];
+                    const contentRect = entry?.contentRect;
+                    const width = contentRect ? contentRect.width : outputContainer.clientWidth;
+                    const height = contentRect ? contentRect.height : outputContainer.clientHeight;
+                    outputEditor.layout({ width, height });
+                }
                 debouncedResize();
             });
             outputEditorResizeObserver.observe(outputContainer);
@@ -10505,6 +11061,23 @@ const transferToInput = (e: MouseEvent) => {
     border-color: #a16207 !important;
 }
 
+/* 退出全屏状态下按钮显示为灰色（与 type="info" 的设置按钮保持一致） */
+.fullscreen-btn.el-button--info {
+    background-color: #909399 !important;
+    border-color: #909399 !important;
+    color: #fff !important;
+}
+
+.fullscreen-btn.el-button--info:hover {
+    background-color: #a6a9ad !important;
+    border-color: #a6a9ad !important;
+}
+
+.fullscreen-btn.el-button--info:active {
+    background-color: #82848a !important;
+    border-color: #82848a !important;
+}
+
 /* 同步滚动按钮自定义为蓝色 */
 .editor-container {
     display: flex;
@@ -10649,8 +11222,8 @@ const transferToInput = (e: MouseEvent) => {
     align-items: center;
     gap: 8px;
     padding: 4px 8px;
-    background: rgba(255, 255, 255, 0.96);
-    border: 1px solid #ebeef5;
+    background: rgba(255, 255, 255, 0.76);
+    border: 1px solid rgba(235, 238, 245, 0.9);
     border-top: none;
     border-bottom-left-radius: 4px;
     border-bottom-right-radius: 4px;
@@ -11687,54 +12260,59 @@ const transferToInput = (e: MouseEvent) => {
 }
 
 .diff-editor-container {
-    --diff-sync-lane-width: 35px;
     display: flex;
     flex-direction: column;
     position: relative;
+    overflow: hidden;
+    background: #fff;
+    border: 1px solid #e4e7ed;
+    border-radius: 4px;
 }
 
-.diff-editor-container .diff-panel {
-    position: absolute;
-    top: 0;
-    height: 35px;
-    z-index: 5;
-    background: linear-gradient(to bottom, #fafbfc, #f6f8fa);
-    border-bottom: 1px solid #e4e7ed;
+.diff-row {
+    display: flex;
+    min-width: 0;
+}
+
+.diff-cell {
     box-sizing: border-box;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
 }
 
-.diff-panel-left {
-    left: 0;
-    width: calc(50% - var(--diff-sync-lane-width));
+.diff-cell-left,
+.diff-cell-right {
+    flex: 1 1 0;
+    min-width: 0;
 }
 
-.diff-panel-center {
-    left: calc(50% - var(--diff-sync-lane-width));
-    width: var(--diff-sync-lane-width);
-    background: #fff !important;
+.diff-cell-center {
+    flex: 0 0 35px;
+    width: 35px;
+    background: linear-gradient(to bottom, #fafbfc, #f5f7fa);
     border-left: 1px solid #e4e7ed;
     border-right: 1px solid #e4e7ed;
+    position: relative;
 }
 
-.diff-panel-right {
-    right: 0;
-    width: 50%;
-}
-
-.diff-panel-center-header {
-    padding: 0;
-}
-
-.diff-panel-header {
-    display: flex;
-    justify-content: center;
-    align-items: center;
+/* ---------------- 顶部 header 行 ---------------- */
+.diff-header-row {
+    flex: 0 0 35px;
     height: 35px;
-    padding: 5px 15px;
-    background: linear-gradient(to bottom,#fafbfc,#f6f8fa);
     border-bottom: 1px solid #e4e7ed;
-    box-sizing: border-box;
-    cursor: default;
+    background: linear-gradient(to bottom, #fafbfc, #f6f8fa);
+}
+
+.diff-header-cell {
+    flex-direction: row;
+    align-items: center;
+    justify-content: center;
+    padding: 5px 15px;
+}
+
+.diff-header-cell.diff-cell-center {
+    padding: 0;
 }
 
 .diff-panel-actions {
@@ -11753,65 +12331,45 @@ const transferToInput = (e: MouseEvent) => {
     margin-left: 0 !important;
 }
 
-.diff-editor-wrapper {
+/* ---------------- 中部编辑器行 ---------------- */
+.diff-editor-row {
     flex: 1;
     min-height: 0;
-    margin-top: 35px;
-    display: flex;
-    flex-direction: column;
-    position: relative;
     overflow: hidden;
 }
 
-.diff-editor-main {
-    flex: 1;
-    min-height: 0;
+.diff-editor-host {
     position: relative;
     overflow: hidden;
 }
 
 .diff-editor-instance {
-    flex: 1;
     width: 100%;
     height: 100%;
 }
 
-.diff-sync-overlay {
-    position: absolute;
-    top: 0;
-    width: var(--diff-sync-lane-width);
-    height: 100%;
+.diff-editor-row .diff-cell-center {
     pointer-events: none;
-    z-index: 10;
 }
 
-.diff-sync-lane {
-    position: absolute;
-    inset: 0;
-    background: #fff;
-    border-left: 1px solid #e4e7ed;
-    border-right: 1px solid #e4e7ed;
-    box-sizing: border-box;
-}
-
-.diff-sync-btn-group {
+.diff-editor-row .diff-sync-btn-group {
     position: absolute;
     left: 50%;
+    transform: translate(-50%, -50%);
     display: flex;
+    flex-direction: row;
     gap: 0;
     pointer-events: auto;
-    transform: translate(-50%, -50%);
     z-index: 1;
 }
 
 .diff-sync-btn {
     width: 16px;
-    height: 20px;
+    height: 18px;
     border: none;
-    border-radius: 0;
     background: transparent;
     color: #409eff;
-    font-size: 15px;
+    font-size: 14px;
     font-weight: bold;
     cursor: pointer;
     display: flex;
@@ -11822,41 +12380,9 @@ const transferToInput = (e: MouseEvent) => {
     transition: color 0.15s, opacity 0.15s;
 }
 
-.diff-editor-wrapper :deep(.monaco-diff-editor > .gutter.monaco-editor) {
-    background: #fff;
-    border-left: 1px solid #e4e7ed;
-    border-right: 1px solid #e4e7ed;
-    box-sizing: border-box;
-}
-
-.diff-editor-wrapper :deep(.monaco-diff-editor > .gutter.monaco-editor .gutterItem) {
-    display: none !important;
-}
-
-.diff-status-row {
-    display: flex;
-    min-height: 22px;
-}
-
-.diff-status-bar {
-    flex: 0 0 auto;
-    min-width: 0;
-}
-
-.diff-status-bar-left {
-    width: calc(50% - var(--diff-sync-lane-width));
-}
-
-.diff-status-spacer {
-    width: var(--diff-sync-lane-width);
-    background: linear-gradient(to bottom, #fafbfc, #f5f7fa);
-    border-left: 1px solid #e4e7ed;
-    border-right: 1px solid #e4e7ed;
-    box-sizing: border-box;
-}
-
-.diff-status-bar-right {
-    width: 50%;
+.diff-sync-btn-left,
+.diff-sync-btn-right {
+    border-radius: 0;
 }
 
 .diff-sync-btn:hover {
@@ -11869,5 +12395,53 @@ const transferToInput = (e: MouseEvent) => {
 
 .diff-sync-btn:active {
     opacity: 0.7;
+}
+
+/* ---------------- 差异行高亮装饰 ---------------- */
+.diff-editor-row :deep(.diff-line-delete) {
+    background: rgba(255, 0, 0, 0.12);
+}
+
+.diff-editor-row :deep(.diff-line-insert) {
+    background: rgba(0, 200, 0, 0.12);
+}
+
+.diff-editor-row :deep(.diff-line-delete-margin) {
+    background: rgba(255, 0, 0, 0.4);
+    width: 3px !important;
+    margin-left: 2px;
+}
+
+.diff-editor-row :deep(.diff-line-insert-margin) {
+    background: rgba(0, 200, 0, 0.5);
+    width: 3px !important;
+    margin-left: 2px;
+}
+
+/* ---------------- 行内字符级差异高亮 ---------------- */
+/* 背景色加深一档，使其在整行底色之上仍清晰可见；不用下划线/删除线，
+   避免 JSON 中本身包含的转义字符或路径出现视觉干扰。 */
+.diff-editor-row :deep(.diff-inline-delete) {
+    background: rgba(255, 0, 0, 0.35);
+    border-radius: 2px;
+}
+
+.diff-editor-row :deep(.diff-inline-insert) {
+    background: rgba(0, 200, 0, 0.35);
+    border-radius: 2px;
+}
+
+/* ---------------- 底部 status 行 ---------------- */
+.diff-status-row {
+    flex: 0 0 22px;
+    min-height: 22px;
+}
+
+.diff-status-bar {
+    box-sizing: border-box;
+    min-width: 0;
+    overflow: hidden;
+    flex-direction: row;
+    align-items: center;
 }
 </style>
