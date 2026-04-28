@@ -836,6 +836,7 @@ import ShareDialog from './ShareDialog.vue';
 import DataMaskingDialog from './DataMaskingDialog.vue';
 import ArchiveNameDialog from './ArchiveNameDialog.vue';
 import JSON5 from 'json5';
+import { parseTree, type Node as JsonAstNode } from 'jsonc-parser';
 import yaml from 'js-yaml';
 import * as toml from '@iarna/toml';
 import { create } from 'xmlbuilder2';
@@ -3978,8 +3979,71 @@ const setupFoldingInfoDisplay = (editor: monaco.editor.IStandaloneCodeEditor) =>
     (editor as any).__clearFoldingInfoElements = clearInfoElements;
 };
 
-// 查找字符串的完整范围（包括引号）
-const findStringRange = (model: monaco.editor.ITextModel, position: monaco.Position): monaco.Range | null => {
+const findStringRangeByAst = (model: monaco.editor.ITextModel, position: monaco.Position): monaco.Range | null => {
+    const languageId = model.getLanguageId();
+    if (languageId !== 'json') {
+        return null;
+    }
+
+    const content = model.getValue();
+    const root = parseTree(content, [], {
+        allowTrailingComma: true,
+        disallowComments: false,
+        allowEmptyContent: true,
+    });
+
+    if (!root) {
+        return null;
+    }
+
+    const maxOffset = content.length;
+    const rawOffset = model.getOffsetAt(position);
+    const candidateOffsets = Array.from(new Set([
+        Math.min(rawOffset, maxOffset),
+        Math.min(Math.max(rawOffset - 1, 0), maxOffset),
+    ]));
+
+    const findInnermostStringNode = (node: JsonAstNode, targetOffset: number): JsonAstNode | null => {
+        const nodeEnd = node.offset + node.length;
+        const isWithinNode = targetOffset >= node.offset && targetOffset < nodeEnd;
+        const isAtRightBoundary = targetOffset === nodeEnd;
+
+        if (!isWithinNode && !isAtRightBoundary) {
+            return null;
+        }
+
+        if (node.children) {
+            for (const child of node.children) {
+                const matched = findInnermostStringNode(child, targetOffset);
+                if (matched) {
+                    return matched;
+                }
+            }
+        }
+
+        if (node.type === 'string' && node.length >= 2) {
+            return node;
+        }
+
+        return null;
+    };
+
+    for (const candidateOffset of candidateOffsets) {
+        const matchedNode = findInnermostStringNode(root, candidateOffset);
+        if (!matchedNode || matchedNode.length < 2) {
+            continue;
+        }
+
+        const start = model.getPositionAt(matchedNode.offset);
+        const end = model.getPositionAt(matchedNode.offset + matchedNode.length);
+        return new monaco.Range(start.lineNumber, start.column, end.lineNumber, end.column);
+    }
+
+    return null;
+};
+
+// 兜底：按当前行扫描，查找字符串的完整范围（包括引号）
+const findStringRangeByScan = (model: monaco.editor.ITextModel, position: monaco.Position): monaco.Range | null => {
     const lineNumber = position.lineNumber;
     const column = position.column;
     const lineContent = model.getLineContent(lineNumber);
@@ -4069,6 +4133,11 @@ const findStringRange = (model: monaco.editor.ITextModel, position: monaco.Posit
     }
 
     return null;
+};
+
+// 查找字符串的完整范围（包括引号）
+const findStringRange = (model: monaco.editor.ITextModel, position: monaco.Position): monaco.Range | null => {
+    return findStringRangeByAst(model, position) ?? findStringRangeByScan(model, position);
 };
 
 // 复制文本到剪贴板
@@ -5377,9 +5446,11 @@ const handleConvert = (command: string) => {
         }
 
         // 处理其他格式转换（不启用高精度浮点数，即使用户开启了设置）
+        // 注意：转换到 YAML/TOML/XML/Go 是“语义转换”，需要按 JSON 规范解码字符串中的 \uXXXX。
+        // 否则 preprocessJSON 会用私有区占位符保护 \uXXXX，导致结果里出现 ... 这类占位符字符。
         let parsed;
         try {
-            const result = preprocessJSON(value, { preserveNumberLiterals: false });
+            const result = preprocessJSON(value, { preserveNumberLiterals: false, encodingMode: true });
             parsed = result.data;
         } catch (error) {
             showMessageError('请输入有效的 JSON 数据');
@@ -5434,10 +5505,9 @@ const handleConvert = (command: string) => {
 // 智能解码函数：自动识别并解码各种编码格式
 // ========================================
 
-// Unicode 解码（\uXXXX 格式）- 避免循环解码
+// Unicode 解码（\uXXXX 格式）- 仅替换命中的转义片段，保留上下文
 const decodeUnicode = (str: string): string | null => {
     try {
-        // 手动检查每个 \uXXXX，只匹配单反斜杠的（不匹配 \\u）
         let result = '';
         let i = 0;
         let hasMatch = false;
@@ -5465,88 +5535,87 @@ const decodeUnicode = (str: string): string | null => {
     }
 };
 
-// Hex 解码（\xHH 格式）- 支持 UTF-8 组合解码
+const decodeUTF8Bytes = (bytes: number[]): string => {
+    let result = '';
+    let i = 0;
+    while (i < bytes.length) {
+        const byte = bytes[i];
+        if (byte < 128) {
+            result += String.fromCharCode(byte);
+            i++;
+        } else if (byte >= 192 && byte < 224 && i + 1 < bytes.length) {
+            const code = ((byte & 31) << 6) | (bytes[i + 1] & 63);
+            result += String.fromCharCode(code);
+            i += 2;
+        } else if (byte >= 224 && byte < 240 && i + 2 < bytes.length) {
+            const code = ((byte & 15) << 12) | ((bytes[i + 1] & 63) << 6) | (bytes[i + 2] & 63);
+            result += String.fromCharCode(code);
+            i += 3;
+        } else if (byte >= 240 && byte < 248 && i + 3 < bytes.length) {
+            const code = ((byte & 7) << 18) | ((bytes[i + 1] & 63) << 12) | ((bytes[i + 2] & 63) << 6) | (bytes[i + 3] & 63);
+            if (code >= 0x10000) {
+                const high = Math.floor((code - 0x10000) / 0x400) + 0xd800;
+                const low = ((code - 0x10000) % 0x400) + 0xdc00;
+                result += String.fromCharCode(high, low);
+            } else {
+                result += String.fromCharCode(code);
+            }
+            i += 4;
+        } else {
+            result += String.fromCharCode(byte);
+            i++;
+        }
+    }
+    return result;
+};
+
+const isReadableHexDecoded = (decoded: string): boolean => {
+    if (/[\u4e00-\u9fa5]/.test(decoded)) return true;
+    return /^[\x20-\x7E]*$/.test(decoded);
+};
+
+// Hex 解码（\xHH 格式）- 仅替换连续命中的片段，保留上下文
 const decodeHex = (str: string): string | null => {
     try {
-        // 收集所有 \xHH 序列
-        const regex = /\\x([0-9a-fA-F]{2})/gi;
-        const bytes: number[] = [];
-        let lastIndex = 0;
+        let result = '';
+        let i = 0;
         let hasMatch = false;
 
-        let match;
-        while ((match = regex.exec(str)) !== null) {
-            // 检查是否是连续的（中间只有反斜杠）
-            const matchStart = match.index;
-            const matchEnd = matchStart + match[0].length;
-
-            // 收集匹配前的反斜杠（除了已经处理过的）
-            const beforeText = str.slice(lastIndex, matchStart);
-            const backslashCount = (beforeText.match(/\\+$/) || [''])[0].length;
-
-            // 如果前面有奇数个反斜杠，这个 \x 不是真正的转义
-            if (backslashCount % 2 === 1) {
-                lastIndex = matchEnd;
-                continue;
-            }
-
-            bytes.push(parseInt(match[1], 16));
-            lastIndex = matchEnd;
-            hasMatch = true;
-        }
-
-        if (!hasMatch || bytes.length === 0) {
-            return null;
-        }
-
-        // 将字节解码为 UTF-8
-        const decodeUTF8Bytes = (bytes: number[]): string => {
-            let result = '';
-            let i = 0;
-            while (i < bytes.length) {
-                const byte = bytes[i];
-                if (byte < 128) {
-                    result += String.fromCharCode(byte);
-                    i++;
-                } else if (byte >= 192 && byte < 224 && i + 1 < bytes.length) {
-                    const code = ((byte & 31) << 6) | (bytes[i + 1] & 63);
-                    result += String.fromCharCode(code);
-                    i += 2;
-                } else if (byte >= 224 && byte < 240 && i + 2 < bytes.length) {
-                    const code = ((byte & 15) << 12) | ((bytes[i + 1] & 63) << 6) | (bytes[i + 2] & 63);
-                    result += String.fromCharCode(code);
-                    i += 3;
-                } else if (byte >= 240 && byte < 248 && i + 3 < bytes.length) {
-                    const code = ((byte & 7) << 18) | ((bytes[i + 1] & 63) << 12) | ((bytes[i + 2] & 63) << 6) | (bytes[i + 3] & 63);
-                    if (code >= 0x10000) {
-                        const high = Math.floor((code - 0x10000) / 0x400) + 0xd800;
-                        const low = ((code - 0x10000) % 0x400) + 0xdc00;
-                        result += String.fromCharCode(high, low);
-                    } else {
-                        result += String.fromCharCode(code);
+        while (i < str.length) {
+            if (
+                str[i] === '\\' &&
+                i + 3 < str.length &&
+                str[i + 1] === 'x' &&
+                /^[0-9a-fA-F]{2}$/.test(str.substring(i + 2, i + 4))
+            ) {
+                const prevBackslash = (result.match(/\\+$/) || [''])[0].length;
+                if (prevBackslash % 2 === 0) {
+                    const bytes: number[] = [];
+                    let j = i;
+                    while (
+                        j + 3 < str.length &&
+                        str[j] === '\\' &&
+                        str[j + 1] === 'x' &&
+                        /^[0-9a-fA-F]{2}$/.test(str.substring(j + 2, j + 4))
+                    ) {
+                        bytes.push(parseInt(str.substring(j + 2, j + 4), 16));
+                        j += 4;
                     }
-                    i += 4;
-                } else {
-                    result += String.fromCharCode(byte);
-                    i++;
+                    const decoded = decodeUTF8Bytes(bytes);
+                    if (isReadableHexDecoded(decoded)) {
+                        result += decoded;
+                        hasMatch = true;
+                        i = j;
+                        continue;
+                    }
                 }
             }
-            return result;
-        };
 
-        const decoded = decodeUTF8Bytes(bytes);
-
-        // 检查是否包含有效的中文字符（避免解码出乱码）
-        if (/[\u4e00-\u9fa5]/.test(decoded)) {
-            return decoded;
+            result += str[i];
+            i++;
         }
 
-        // 如果解码后是 ASCII 可打印字符，也返回
-        if (/^[\x20-\x7E]*$/.test(decoded)) {
-            return decoded;
-        }
-
-        return null;
+        return hasMatch ? result : null;
     } catch {
         return null;
     }
@@ -5566,35 +5635,21 @@ const isLikelyEncoded = (str: string): boolean => {
     return false;
 };
 
-// 智能解码：尝试所有解码方式（只循环一次，避免循环解码）
+// 智能解码：仅做一层、局部替换式解码，避免整串被某一种编码误吞
 const smartDecode = (str: string): string => {
-    // 首先检查是否包含编码格式
     if (!isLikelyEncoded(str)) {
         return str;
     }
 
     let result = str;
-    let changed = true;
-    const maxIterations = 1; // 只循环一次，避免循环解码
-    let iterations = 0;
+    const unicodeDecoded = decodeUnicode(result);
+    if (unicodeDecoded && unicodeDecoded !== result) {
+        result = unicodeDecoded;
+    }
 
-    while (changed && iterations < maxIterations) {
-        changed = false;
-        iterations++;
-
-        // Unicode 解码（只解码单反斜杠的 \uXXXX，避免双重解码）
-        const unicodeDecoded = decodeUnicode(result);
-        if (unicodeDecoded && unicodeDecoded !== result) {
-            result = unicodeDecoded;
-            changed = true;
-        }
-
-        // Hex 解码
-        const hexDecoded = decodeHex(result);
-        if (hexDecoded && hexDecoded !== result) {
-            result = hexDecoded;
-            changed = true;
-        }
+    const hexDecoded = decodeHex(result);
+    if (hexDecoded && hexDecoded !== result) {
+        result = hexDecoded;
     }
 
     return result;
@@ -5772,10 +5827,30 @@ class JsonPlusFormatter {
             } catch {
                 data = JSON5.parse(processedInput);
             }
+            if (this.encodingMode) {
+                data = this.decodeParsedData(data);
+            }
             return { data, escapeMap };
         } catch (error) {
             throw new Error('JSON5 解析失败: ' + (error as Error).message);
         }
+    }
+
+    private decodeParsedData(value: any): any {
+        if (typeof value === 'string') {
+            return smartDecode(value);
+        }
+        if (Array.isArray(value)) {
+            return value.map(item => this.decodeParsedData(item));
+        }
+        if (value && typeof value === 'object') {
+            const result: Record<string, any> = {};
+            for (const key of Object.keys(value)) {
+                result[key] = this.decodeParsedData(value[key]);
+            }
+            return result;
+        }
+        return value;
     }
 
     // 预处理特殊值，将JavaScript特殊值转换为JSON兼容格式
@@ -6229,12 +6304,7 @@ class JsonPlusFormatter {
 
     // 格式化字符串
     private formatString(str: string, escapeMap: Map<string, string>): string {
-        let processedStr = str;
-
-        // 如果是解码模式，对字符串值进行智能解码
-        if (this.encodingMode) {
-            processedStr = smartDecode(str);
-        }
+        const processedStr = str;
 
         // 检查是否是高精度数字对象的JSON字符串，如果是则直接返回数字字符串
         try {
