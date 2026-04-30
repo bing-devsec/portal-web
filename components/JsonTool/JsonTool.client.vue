@@ -422,7 +422,7 @@
                                             <el-checkbox v-model="buttonVisibility.archive">存档</el-checkbox>
                                         </div>
                                         <div class="button-visibility-item" style="grid-column: 4; grid-row: 2">
-                                            <el-checkbox v-model="buttonVisibility.diff">Diff</el-checkbox>
+                                            <el-checkbox v-model="buttonVisibility.diff">对比</el-checkbox>
                                         </div>
                                         <div class="button-visibility-item" style="grid-column: 5; grid-row: 2">
                                             <el-checkbox v-model="buttonVisibility.share">分享</el-checkbox>
