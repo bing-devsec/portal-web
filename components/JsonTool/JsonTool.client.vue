@@ -246,7 +246,7 @@
                     <div class="archive-resizer" @mousedown="startArchiveResize" @touchstart.passive="startArchiveResize"></div>
                 </template>
 
-                <div class="editor-panel" :style="{ width: `${leftPanelWidth}%` }">
+                <div class="editor-panel editor-panel-input" :style="{ width: `${leftPanelWidth}%` }">
                     <div class="panel-header" @dblclick="toggleInputMaximize">
                         <div class="panel-title">
                             <span>编辑区域</span>
@@ -281,20 +281,20 @@
                                 <span>加载编辑器中...</span>
                             </div>
                             <div ref="inputEditorContainer" class="monaco-editor-instance"></div>
-                            <div v-if="inputEditorErrors.length > 0" class="error-nav-bar">
+                        </div>
+                        <!-- 编辑区域状态栏 -->
+                        <div class="editor-status-bar" v-if="inputEditorStatus || inputEditorErrors.length > 0">
+                            <span v-if="inputEditorStatus" class="status-text">{{ inputEditorStatus }}</span>
+                            <div v-if="inputEditorErrors.length > 0" class="error-nav-inline" role="group" aria-label="错误导航">
                                 <el-icon class="error-nav-icon error-warning-icon"><WarningFilled /></el-icon>
                                 <span class="error-nav-count">{{ inputEditorErrors.length }}</span>
-                                <button type="button" class="error-nav-btn" @click="goToPrevError" aria-label="上一个错误">
+                                <button type="button" class="error-nav-btn" @click="goToPrevError" aria-label="上一个错误" title="上一个错误">
                                     <el-icon class="error-nav-icon error-nav-arrow"><ArrowUp /></el-icon>
                                 </button>
-                                <button type="button" class="error-nav-btn" @click="goToNextError" aria-label="下一个错误">
+                                <button type="button" class="error-nav-btn" @click="goToNextError" aria-label="下一个错误" title="下一个错误">
                                     <el-icon class="error-nav-icon error-nav-arrow"><ArrowDown /></el-icon>
                                 </button>
                             </div>
-                        </div>
-                        <!-- 编辑区域状态栏 -->
-                        <div class="editor-status-bar" v-if="inputEditorStatus">
-                            <span class="status-text">{{ inputEditorStatus }}</span>
                         </div>
                     </div>
                 </div>
@@ -309,7 +309,7 @@
                     </el-button>
                 </div>
 
-                <div class="editor-panel" :style="{ width: `${100 - leftPanelWidth}%` }">
+                <div class="editor-panel editor-panel-output" :style="{ width: `${100 - leftPanelWidth}%` }">
                     <div class="panel-header" @dblclick="toggleOutputMaximize">
                         <div class="panel-title">
                             <span>预览区域</span>
@@ -604,20 +604,6 @@
 
                             <el-divider style="margin: 12px 0" />
 
-                            <div class="settings-subsection">
-                                <div class="settings-subsection-title">
-                                    <span class="settings-subsection-title-label">浮点数处理</span>
-                                    <span class="settings-subsection-title-desc">
-                                        {{ preserveNumberLiterals ? '数字字面量保持不变' : '标准 JSON 格式化处理' }}
-                                    </span>
-                                </div>
-                                <div class="settings-item">
-                                    <el-switch v-model="preserveNumberLiterals" active-text="控制" inactive-text="不控制" size="default" />
-                                </div>
-                            </div>
-
-                            <el-divider style="margin: 12px 0" />
-
                             <div class="settings-item">
                                 <div class="settings-item-header">
                                     <span class="settings-label">数组样式</span>
@@ -773,53 +759,60 @@
             </template>
         </el-dialog>
 
-        <!-- 演示模式遮罩层 -->
-        <div v-if="isDemoMode" class="demo-overlay" @click="endDemoMode">
-            <div class="demo-content">
-                <!-- 教学弹窗 -->
-                <div
-                    v-if="demoGuideVisible && currentDemoStepData"
-                    class="demo-guide-popup"
-                    :style="{
-                        top: popupTop + 'px',
-                        left: popupLeft + 'px',
-                        position: 'fixed',
-                    }"
-                    @click.stop
-                >
-                    <div class="demo-guide-header" @mousedown.stop.prevent="startDrag">
-                        <h3>{{ currentDemoStepData.title }}</h3>
-                        <button class="demo-close-btn" @click="endDemoMode">×</button>
-                    </div>
-                    <div class="demo-guide-content">
-                        <p>{{ currentDemoStepData.content }}</p>
-                        <div v-if="isDemoMode" class="demo-current-settings">
-                            <strong>当前设置：</strong>
-                            <span style="margin-left: 8px"
-                                >排序范围：<code>{{ sortRootPath || '(留空)' }}</code></span
-                            >
-                            <span style="margin-left: 12px"
-                                >排序字段：<code>{{ sortFieldName || '(未设置)' }}</code></span
-                            >
-                        </div>
-                    </div>
-                    <div class="demo-guide-footer">
-                        <el-button
-                            v-for="(btn, index) in currentDemoStepData.buttons"
-                            :key="index"
-                            :type="btn.action === endDemoMode ? 'primary' : 'default'"
-                            @click="btn.action()"
-                        >
-                            {{ btn.text }}
-                        </el-button>
-                    </div>
-                    <!-- 步骤指示器 -->
-                    <div class="demo-step-indicator">
-                        <span v-for="i in demoStepsCount" :key="i" :class="['step-dot', { active: i === currentDemoStep + 1 }]"></span>
+        <!-- 演示模式：Popover 贴边引导，不使用遮罩层 -->
+        <el-popover
+            v-if="isDemoMode && demoGuideVisible && currentDemoStepData"
+            :visible="true"
+            :virtual-ref="demoPopoverAnchor"
+            virtual-triggering
+            :width="420"
+            :placement="demoPopoverPlacement"
+            :show-arrow="true"
+            :teleported="true"
+            popper-class="demo-guide-popover"
+            :offset="12"
+        >
+            <div class="demo-guide-inner">
+                <div class="demo-guide-header">
+                    <h3>{{ currentDemoStepData.title }}</h3>
+                    <button class="demo-close-btn" @click="endDemoMode">×</button>
+                </div>
+                <div class="demo-guide-content">
+                    <p>{{ currentDemoStepData.content }}</p>
+                    <div class="demo-current-settings">
+                        <strong>当前设置：</strong>
+                        <ul class="demo-settings-list">
+                            <li>
+                                <span class="demo-settings-label">排序方向：</span>
+                                <code>{{ sortOrder === 'asc' ? '正序（升序）' : '倒序（降序）' }}</code>
+                            </li>
+                            <li>
+                                <span class="demo-settings-label">排序范围：</span>
+                                <code>{{ sortRootPath || '(留空)' }}</code>
+                            </li>
+                            <li>
+                                <span class="demo-settings-label">排序字段：</span>
+                                <code>{{ sortFieldName || '(未设置)' }}</code>
+                            </li>
+                        </ul>
                     </div>
                 </div>
+                <div class="demo-guide-footer">
+                    <el-button
+                        v-for="(btn, index) in currentDemoStepData.buttons"
+                        :key="index"
+                        size="small"
+                        :type="btn.action === endDemoMode ? 'primary' : 'default'"
+                        @click="btn.action()"
+                    >
+                        {{ btn.text }}
+                    </el-button>
+                </div>
+                <div class="demo-step-indicator">
+                    <span v-for="i in demoStepsCount" :key="i" :class="['step-dot', { active: i === currentDemoStep + 1 }]"></span>
+                </div>
             </div>
-        </div>
+        </el-popover>
     </div>
 </template>
 
@@ -951,8 +944,6 @@ const defaultSettings = {
     encodingMode: false,
     // 数组风格
     arrayNewLine: true,
-    // 保留数字字面值设置
-    preserveNumberLiterals: false,
     // 排序设置
     sortMethod: 'dictionary' as 'dictionary' | 'length' | 'field',
     // 排序方向
@@ -998,7 +989,6 @@ const saveSettings = () => {
         indentSize: indentSize.value,
         encodingMode: encodingMode.value,
         arrayNewLine: arrayNewLine.value,
-        preserveNumberLiterals: preserveNumberLiterals.value,
         sortMethod: sortMethod.value,
         sortOrder: sortOrder.value,
         customArchiveName: customArchiveName.value,
@@ -1014,7 +1004,7 @@ const wordWrap = ref(savedSettings.wordWrap); // 字符串换行设置
 const fontSize = ref(savedSettings.fontSize || 14); // 字体大小设置
 const showIndentGuide = ref(savedSettings.showIndentGuide); // 添加缩进指南状态
 const arrayNewLine = ref(savedSettings.arrayNewLine); // 添加数组换行控制开关
-const preserveNumberLiterals = ref<boolean>(savedSettings.preserveNumberLiterals ?? ((savedSettings as any).floatPrecision ?? 0) > 0);
+const preserveNumberLiterals = { value: true } as const; // 始终保持数字字面量，保证无损格式化（禁止用户关闭）
 const isFullscreen = ref(false);
 const defaultFullscreen = ref(savedSettings.defaultFullscreen ?? savedSettings.isFullscreen ?? false); // 是否默认全屏
 
@@ -2494,6 +2484,15 @@ const diffSortJSON = (side: 'left' | 'right') => {
         showMessageError('没有可排序的内容');
         return;
     }
+    // Diff 模式下的"按字段值排序"需要配合字段排序对话框收集根路径与字段名，
+    // 此处与普通模式行为保持一致：弹出对话框，执行阶段根据 fieldSortTarget 回写到对应编辑器。
+    if (sortMethod.value === 'field') {
+        fieldSortTarget.value = side === 'left' ? 'diff-left' : 'diff-right';
+        sortRootPath.value = '';
+        sortFieldName.value = '';
+        fieldSortDialogVisible.value = true;
+        return;
+    }
     try {
         const result = preprocessJSON(value, { preserveNumberLiterals: true });
         const sorted = sortJsonObject(result.data, sortMethod.value, sortOrder.value, '');
@@ -2639,6 +2638,8 @@ const saveArchives = async (): Promise<boolean> => {
 const fieldSortDialogVisible = ref(false);
 const sortRootPath = ref<string>('');
 const sortFieldName = ref<string>('');
+// 字段排序目标：'input'=普通模式，'diff-left'/'diff-right'=Diff 模式的左右编辑器
+const fieldSortTarget = ref<'input' | 'diff-left' | 'diff-right'>('input');
 
 // 字段排序演示相关状态
 const isDemoMode = ref(false);
@@ -2648,54 +2649,51 @@ const savedInputContent = ref<string | null>(null);
 const demoResults = ref<any>({});
 const currentDemoStep = ref(0);
 const demoStepsCount = ref(0);
-const demoData = ref(JSON.parse('[{"id":1,"name":"Dylan Mullins","education":[{"university":"MIT","graduationYear":2003},{"university":"Harvard University","graduationYear":1983}]},{"id":2,"name":"Logan Boyle","education":[{"university":"Yale University","graduationYear":2000},{"university":"University of Pennsylvania","graduationYear":2020}]},{"id":3,"name":"Emma Davis","education":[{"university":"Stanford University","graduationYear":2010},{"university":"Columbia University","graduationYear":2015}]}]'));
+const demoData = ref(JSON.parse('[{"id":3,"name":"Emma Davis","education":[{"university":"Stanford University","graduationYear":2010},{"university":"Columbia University","graduationYear":2015}]},{"id":1,"name":"Dylan Mullins","education":[{"university":"MIT","graduationYear":2003},{"university":"Harvard University","graduationYear":1983}]},{"id":2,"name":"Logan Boyle","education":[{"university":"Yale University","graduationYear":2000},{"university":"University of Pennsylvania","graduationYear":2020}]}]'));
 const demoMapData = ref(JSON.parse('{"B":{"id":102,"key":"task-B","value":{"score":100}},"A":{"id":101,"key":"task-A","value":{"score":70}},"C":{"id":103,"key":"task-C","value":{"score":80}},"E":{"id":105,"key":"task-E","value":{"score":60}},"D":{"id":104,"key":"task-D","value":{"score":null}}}'));
 
-// 拖拽相关状态
-const popupLeft = ref(0);
-const popupTop = ref(0);
-const isDragging = ref(false);
-const dragOffsetX = ref(0);
-const dragOffsetY = ref(0);
-const DEMO_POPUP_WIDTH = 640;
+// 演示 Popover 锚点与定位相关状态
+const demoPopoverAnchor = ref<HTMLElement | null>(null);
+const demoPopoverPlacement = ref<'right-start' | 'left-start' | 'bottom-start' | 'top-start'>('right-start');
 
-const startDrag = (event: MouseEvent) => {
-    isDragging.value = true;
-    dragOffsetX.value = event.clientX - popupLeft.value;
-    dragOffsetY.value = event.clientY - popupTop.value;
-    // prevent text selection
-    document.body.style.userSelect = 'none';
+// 根据步骤的 highlight 选择器解析 DOM 锚点；highlight 为空时锚到输出编辑器作为 fallback
+const resolveDemoAnchor = (selector: string | null): HTMLElement | null => {
+    if (typeof window === 'undefined') return null;
+    const fallback = '.editor-panel-output';
+    const sel = selector || fallback;
+    try {
+        const el = document.querySelector<HTMLElement>(sel);
+        if (el) return el;
+    } catch (e) {
+        // ignore invalid selector
+    }
+    // 最后兜底：锚到工具容器
+    return document.querySelector<HTMLElement>('.json-tool-container') || document.body;
 };
 
-const onMouseMove = (event: MouseEvent) => {
-    if (!isDragging.value) return;
-    popupLeft.value = event.clientX - dragOffsetX.value;
-    popupTop.value = event.clientY - dragOffsetY.value;
-    // clamp to viewport
-    const maxLeft = window.innerWidth - DEMO_POPUP_WIDTH - 16;
-    const maxTop = window.innerHeight - 120;
-    if (popupLeft.value < 8) popupLeft.value = 8;
-    if (popupTop.value < 8) popupTop.value = 8;
-    if (popupLeft.value > maxLeft) popupLeft.value = maxLeft;
-    if (popupTop.value > maxTop) popupTop.value = maxTop;
+// 根据元素在视口中的位置选择一个不容易被遮挡的 placement
+const pickPlacementForEl = (el: HTMLElement): 'right-start' | 'left-start' | 'bottom-start' | 'top-start' => {
+    if (typeof window === 'undefined') return 'right-start';
+    const rect = el.getBoundingClientRect();
+    const POPOVER_WIDTH = 420;
+    const POPOVER_HEIGHT_EST = 260;
+    const rightSpace = window.innerWidth - rect.right;
+    const leftSpace = rect.left;
+    if (rightSpace >= POPOVER_WIDTH + 24) return 'right-start';
+    if (leftSpace >= POPOVER_WIDTH + 24) return 'left-start';
+    const bottomSpace = window.innerHeight - rect.bottom;
+    if (bottomSpace >= POPOVER_HEIGHT_EST + 24) return 'bottom-start';
+    return 'top-start';
 };
 
-const endDrag = () => {
-    if (isDragging.value) {
-        isDragging.value = false;
-        document.body.style.userSelect = '';
+// 更新 Popover 的锚点与 placement（仅负责定位，不做高亮）
+const updateDemoPopoverAnchor = (selector: string | null) => {
+    const el = resolveDemoAnchor(selector);
+    demoPopoverAnchor.value = el;
+    if (el) {
+        demoPopoverPlacement.value = pickPlacementForEl(el);
     }
 };
-
-onMounted(() => {
-    window.addEventListener('mousemove', onMouseMove);
-    window.addEventListener('mouseup', endDrag);
-});
-
-onBeforeUnmount(() => {
-    window.removeEventListener('mousemove', onMouseMove);
-    window.removeEventListener('mouseup', endDrag);
-});
 
 // 字段路径建议类型
 interface PathSuggestion {
@@ -3271,6 +3269,7 @@ const getEditorOptions = (
 
     // 折叠配置
     folding: true, // 启用代码折叠功能（这是基础配置，必须开启）
+    
     ...getLargeFileOptions(enableLargeFileFolding, lineCount),
 
     // 编辑器配置
@@ -4487,7 +4486,7 @@ const jumpToError = (error: monaco.editor.IMarker) => {
 };
 
 // 监听格式化设置的变化
-watch([indentSize, arrayNewLine, showIndentGuide, preserveNumberLiterals], () => {
+watch([indentSize, arrayNewLine, showIndentGuide], () => {
     // 如果编辑区域为空，不进行任何操作
     if (!inputEditor?.getValue()?.trim()) {
         selectedLevel.value = 0;
@@ -5426,6 +5425,80 @@ const getDefaultFoldLevel = (level: number) => {
     return 0;
 };
 
+// 数据转换专用哨兵前缀/后缀：用于在 YAML/TOML/XML/Go 输出中标记"应当以无引号原字面量形式出现的数字"
+const HPN_SENTINEL_PREFIX = '__HPN_START_7f3a9c__';
+const HPN_SENTINEL_SUFFIX = '__HPN_END_7f3a9c__';
+
+// 将 parseJson5 产出的 __highPrecisionNumber 包装对象递归还原：
+// - 数字字面量在 JS 安全表达范围内 → 还原为真实的 Number
+// - 超出安全整数范围或需要保留形态（如 1.10、1e3） → 用哨兵字符串占位
+const unwrapHighPrecisionForConvert = (data: any): any => {
+    const tryParseWrapper = (str: string): string | null => {
+        // 轻量检查，避免对无关字符串执行 JSON.parse
+        if (typeof str !== 'string' || str.length < 10 || str.indexOf('__highPrecisionNumber') === -1) {
+            return null;
+        }
+        try {
+            const parsed = JSON.parse(str);
+            if (parsed && typeof parsed === 'object' && parsed.__highPrecisionNumber && typeof parsed.originalString === 'string') {
+                return parsed.originalString;
+            }
+        } catch {
+            // 忽略
+        }
+        return null;
+    };
+
+    const walk = (node: any): any => {
+        if (node === null || node === undefined) return node;
+        if (typeof node === 'string') {
+            const literal = tryParseWrapper(node);
+            if (literal !== null) {
+                const num = Number(literal);
+                // 安全整数/有限浮点 且 字面量 toString 后能精确还原 → 直接用真实 Number
+                if (Number.isFinite(num)) {
+                    const isInteger = !/[.eE]/.test(literal);
+                    if (isInteger && Number.isSafeInteger(num) && String(num) === literal.replace(/^\+/, '')) {
+                        return num;
+                    }
+                    if (!isInteger && String(num) === literal) {
+                        return num;
+                    }
+                }
+                // 精度敏感（超大整数 / 需要保留末尾零或指数形态）→ 用哨兵占位
+                return HPN_SENTINEL_PREFIX + literal + HPN_SENTINEL_SUFFIX;
+            }
+            return node;
+        }
+        if (Array.isArray(node)) {
+            return node.map(walk);
+        }
+        if (typeof node === 'object') {
+            const result: Record<string, any> = {};
+            for (const key of Object.keys(node)) {
+                result[key] = walk(node[key]);
+            }
+            return result;
+        }
+        return node;
+    };
+    return walk(data);
+};
+
+// 将转换后的输出字符串里的哨兵（及其可能被库加的引号）统一还原为无引号的原始数字字面量
+const restoreHighPrecisionInOutput = (output: string): string => {
+    // 先匹配"被引号包裹的哨兵"：双引号 / 单引号 两种常见情况
+    const quotedPattern = new RegExp(
+        `([\"\'])${HPN_SENTINEL_PREFIX}([^\"\']*?)${HPN_SENTINEL_SUFFIX}\\1`,
+        'g'
+    );
+    let restored = output.replace(quotedPattern, (_m, _q, literal) => literal);
+    // 再匹配"未被引号包裹的哨兵"（例如 XML 文本节点内）
+    const rawPattern = new RegExp(`${HPN_SENTINEL_PREFIX}([^]*?)${HPN_SENTINEL_SUFFIX}`, 'g');
+    restored = restored.replace(rawPattern, (_m, literal) => literal);
+    return restored;
+};
+
 // 处理转换
 const handleConvert = (command: string) => {
     try {
@@ -5450,8 +5523,8 @@ const handleConvert = (command: string) => {
         // 否则 preprocessJSON 会用私有区占位符保护 \uXXXX，导致结果里出现 ... 这类占位符字符。
         let parsed;
         try {
-            const result = preprocessJSON(value, { preserveNumberLiterals: false, encodingMode: true });
-            parsed = result.data;
+            const result = preprocessJSON(value, { preserveNumberLiterals: true, encodingMode: true });
+            parsed = unwrapHighPrecisionForConvert(result.data);
         } catch (error) {
             showMessageError('请输入有效的 JSON 数据');
             return;
@@ -5483,6 +5556,9 @@ const handleConvert = (command: string) => {
             default:
                 throw new Error('不支持的转换类型');
         }
+
+        // 还原数字精度哨兵：把 __HPN_START_xxx__...__HPN_END_xxx__ 以及可能被库加上的引号替换为原始数字字面量
+        result = restoreHighPrecisionInOutput(result);
 
         if (outputEditor) {
             // 更新编辑器内容
@@ -5952,7 +6028,17 @@ class JsonPlusFormatter {
                     const token = match[0];
                     const nextChar = input[i + token.length] || '';
                     if (!isIdentifierChar(nextChar)) {
-                        if (token.includes('.') || token.includes('e') || token.includes('E')) {
+                        const isFloat = token.includes('.') || token.includes('e') || token.includes('E');
+                        let needsProtection = isFloat;
+                        if (!needsProtection) {
+                            // 纯整数：若超出 JS 安全整数范围则同样需要保护，避免精度丢失
+                            // 例如 7634073368949850917 这类 64-bit ID 会被 JSON.parse 四舍五入
+                            const numValue = Number(token);
+                            if (!Number.isFinite(numValue) || !Number.isSafeInteger(numValue)) {
+                                needsProtection = true;
+                            }
+                        }
+                        if (needsProtection) {
                             const payload = `{"__highPrecisionNumber":true,"originalString":"${token}"}`;
                             const wrapped = `"${payload.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`;
                             result += wrapped;
@@ -9742,6 +9828,32 @@ const startDemoMode = () => {
         }
     }
 
+    // 重置输入编辑器为 Array 示例数据（兼容"再试一次"场景：
+    // 上一轮演示可能已切到 Map 数据，这里必须强制恢复为初始 Array 示例）
+    if (inputEditor) {
+        try {
+            const demoJson = JSON.stringify(demoData.value, null, 2);
+            inputEditor.setValue(demoJson);
+            updateEditorHeight(inputEditor);
+        } catch (e) {
+            /* ignore */
+        }
+    }
+
+    // 同步清空上一轮残留的排序参数与结果预览，避免误导
+    sortRootPath.value = '';
+    sortFieldName.value = '';
+    if (outputEditor) {
+        try {
+            clearOutputFoldingInfo();
+            outputEditor.setValue('');
+            updateLineNumberWidth(outputEditor);
+            updateEditorHeight(outputEditor);
+        } catch (e) {
+            /* ignore */
+        }
+    }
+
     // 预先计算演示结果
     demoResults.value['id'] = performFieldSort(JSON.parse(JSON.stringify(demoData.value)), '', 'id');
     demoResults.value['education'] = performFieldSort(JSON.parse(JSON.stringify(demoData.value)), '[*].education', 'graduationYear');
@@ -9750,11 +9862,6 @@ const startDemoMode = () => {
     demoResults.value['map_value_score'] = performFieldSort(JSON.parse(JSON.stringify(demoMapData.value)), '', 'value.score');
 
     // 显示第一个教学弹窗
-    // 初始化弹窗位置（居中偏上）
-    if (typeof window !== 'undefined') {
-        popupLeft.value = Math.max(8, (window.innerWidth - DEMO_POPUP_WIDTH) / 2);
-        popupTop.value = 100;
-    }
     showDemoStep(0);
 };
 
@@ -9811,14 +9918,14 @@ const showDemoStep: (step: number) => void = (step: number) => {
     const steps = [
         {
             title: '📊 演示开始',
-            content: '已自动填入演示数据，现在可以拖动演示弹窗的位置，让我们学习如何使用字段排序功能',
-            highlight: '.json-input-container',
+            content: '已自动填入演示数据，接下来让我们学习如何使用字段排序功能',
+            highlight: '.editor-panel-input',
             buttons: [{ text: '开始学习', action: () => showDemoStep(1) }],
         },
         {
             title: '🔢 示例1：Array - 按 id 排序',
             content: '由于按照 id 字段排序的对象就是最外层数组的元素，所以排序范围就是整个 JSON 数据，因此排序范围可以留空，排序字段参数填入 id 即可',
-            highlight: '.sort-fields-button',
+            highlight: '.editor-panel-input',
             buttons: [
                 { text: '上一步', action: () => showDemoStep(0) },
                 { text: '设置参数', action: () => setAndNext('', 'id', 2) },
@@ -9827,7 +9934,7 @@ const showDemoStep: (step: number) => void = (step: number) => {
         {
             title: '🎯 执行排序',
             content: '参数设置完成，点击“执行排序”将会应用排序并进入结果查看步骤',
-            highlight: '.sort-fields-button',
+            highlight: '.editor-panel-input',
             buttons: [
                 { text: '上一步', action: () => showDemoStep(1) },
                 { text: '执行排序', action: () => execAndNext('', 'id', 3) },
@@ -9835,7 +9942,7 @@ const showDemoStep: (step: number) => void = (step: number) => {
         },
         {
             title: '✅ 排序完成',
-            content: '排序已完成，结果已写入预览区域，你可以返回上一步重新查看，或者进入下一个示例',
+            content: '排序已完成，结果已写入右侧预览区域，你可以返回上一步重新查看，或者进入下一个示例',
             highlight: null,
             buttons: [
                 { text: '上一步', action: () => showDemoStep(2) },
@@ -9844,8 +9951,10 @@ const showDemoStep: (step: number) => void = (step: number) => {
         },
         {
             title: '🔢 示例2：Array - 按毕业年份排序每个人的教育经历',
-            content: '当我们要对嵌套内部的数组排序时，需要指定排序范围：[*].education，表示每个人的教育经历，那么排序字段就是毕业年份： graduationYear',
-            highlight: '.sort-fields-button',
+            content:
+                '排序范围要指到"被排序的数组本身"：[*].education（每个人的 education 数组），字段填 graduationYear。' +
+                '别写成 [*].education.[*]，那指的是数组里的单个元素，不是数组，无法排序。',
+            highlight: '.editor-panel-input',
             buttons: [
                 { text: '上一步', action: () => showDemoStep(3) },
                 {
@@ -9857,7 +9966,7 @@ const showDemoStep: (step: number) => void = (step: number) => {
         {
             title: '🎯 执行排序',
             content: '参数设置完成，点击“执行排序”将会应用排序并进入结果查看步骤',
-            highlight: '.sort-fields-button',
+            highlight: '.editor-panel-input',
             buttons: [
                 { text: '上一步', action: () => showDemoStep(4) },
                 {
@@ -9868,7 +9977,7 @@ const showDemoStep: (step: number) => void = (step: number) => {
         },
         {
             title: '✅ 排序完成（Array - education）',
-            content: '排序已完成，结果已写入预览区域，你可以返回上一步重新设置，或者进入 Map 示例',
+            content: '排序已完成，结果已写入右侧预览区域，你可以返回上一步重新设置，或者进入 Map 示例',
             highlight: null,
             buttons: [
                 { text: '上一步', action: () => showDemoStep(5) },
@@ -9878,7 +9987,7 @@ const showDemoStep: (step: number) => void = (step: number) => {
         {
             title: '🔢 示例3：Map — 按 id 排序',
             content: '下面我们切换到 map 示例数据，示范如何对 map 按 id 排序，需要注意的是排序字段不需要输入 map 的 Key，直接输入 Value 内部的排序字段就行',
-            highlight: '.sort-fields-button',
+            highlight: '.editor-panel-input',
             buttons: [
                 { text: '上一步', action: () => showDemoStep(6) },
                 { text: '设置参数', action: () => setAndNext('', 'id', 8) },
@@ -9887,7 +9996,7 @@ const showDemoStep: (step: number) => void = (step: number) => {
         {
             title: '🎯 执行排序',
             content: '参数设置完成，点击“执行排序”将对 map 进行排序并进入结果查看步骤',
-            highlight: '.sort-fields-button',
+            highlight: '.editor-panel-input',
             buttons: [
                 { text: '上一步', action: () => showDemoStep(7) },
                 { text: '执行排序', action: () => execAndNextMap('', 'id', 9) },
@@ -9895,7 +10004,7 @@ const showDemoStep: (step: number) => void = (step: number) => {
         },
         {
             title: '✅ 排序完成（Map - id）',
-            content: 'Map 排序已完成，结果已写入预览区域，你可以返回上一步重新设置，或者进入下一个示例',
+            content: 'Map 排序已完成，结果已写入右侧预览区域，你可以返回上一步重新设置，或者进入下一个示例',
             highlight: null,
             buttons: [
                 { text: '上一步', action: () => showDemoStep(8) },
@@ -9905,7 +10014,7 @@ const showDemoStep: (step: number) => void = (step: number) => {
         {
             title: '🔢 示例4：Map — 按 value.score 排序',
             content: '同样可以按 map 内部字段排序，例如填写 value.score 来按 score 排序',
-            highlight: '.sort-fields-button',
+            highlight: '.editor-panel-input',
             buttons: [
                 { text: '上一步', action: () => showDemoStep(9) },
                 { text: '设置参数', action: () => setAndNext('', 'value.score', 11) },
@@ -9914,7 +10023,7 @@ const showDemoStep: (step: number) => void = (step: number) => {
         {
             title: '🎯 执行排序',
             content: '参数设置完成，点击“执行排序”将应用 map 内部字段排序并进入结果查看步骤',
-            highlight: '.sort-fields-button',
+            highlight: '.editor-panel-input',
             buttons: [
                 { text: '上一步', action: () => showDemoStep(10) },
                 {
@@ -9925,7 +10034,7 @@ const showDemoStep: (step: number) => void = (step: number) => {
         },
         {
             title: '✅ 排序完成（Map - value.score）',
-            content: '排序已完成，结果已写入预览区域，你已完成所有示例',
+            content: '排序已完成，结果已写入右侧预览区域，你已完成所有示例',
             highlight: null,
             buttons: [
                 { text: '再试一次', action: () => startDemoMode() },
@@ -9939,6 +10048,10 @@ const showDemoStep: (step: number) => void = (step: number) => {
     if (step < steps.length) {
         currentDemoStepData.value = steps[step];
         demoGuideVisible.value = true;
+        // 等 DOM/数据变化（如 loadDemoMapNoAdvance）就位后再解析锚点
+        nextTick(() => {
+            updateDemoPopoverAnchor(steps[step].highlight);
+        });
     }
     // 自动切换 demo 数据：当进入 Map 示例步时，加载 map 示例到输入编辑器并设置默认字段（不跳转）
     // 每个示例开始时清空当前参数（范围留空，字段未设置）
@@ -9969,6 +10082,7 @@ const endDemoMode = () => {
     isDemoMode.value = false;
     demoGuideVisible.value = false;
     currentDemoStepData.value = null;
+    demoPopoverAnchor.value = null;
 
     // 清空演示数据
     if (inputEditor) {
@@ -10026,8 +10140,46 @@ const executeFieldSort = () => {
     if (!ensureProcessingFeatureAvailable()) return;
     fieldSortDialogVisible.value = false;
 
+    // 根据目标解析"源编辑器"与"写回策略"
+    // - 'input'：普通模式，读 inputEditor，写 outputEditor
+    // - 'diff-left' / 'diff-right'：Diff 模式，源与目标为同一侧编辑器（就地替换）
+    const target = fieldSortTarget.value;
+    const sourceEditor = target === 'diff-left'
+        ? getDiffSideEditor('left')
+        : target === 'diff-right'
+            ? getDiffSideEditor('right')
+            : inputEditor;
+
+    if (!sourceEditor) {
+        showMessageError('没有可用的编辑器');
+        return;
+    }
+
+    // 统一的"写结果"函数：普通模式写到 outputEditor，Diff 模式就地写回源编辑器
+    const writeResult = (finalOutput: string) => {
+        if (target === 'input') {
+            if (shouldPrecomputeFoldingInfo()) {
+                precomputeFoldingInfo(finalOutput).catch(() => { /* 静默处理 */ });
+            }
+            outputEditor?.setValue(finalOutput);
+            if (outputEditor) {
+                const model = outputEditor.getModel();
+                if (model) {
+                    monaco.editor.setModelLanguage(model, 'json');
+                }
+                outputEditor.updateOptions(getEditorOptions(indentSize.value, true, 'json', true, getEditorLineCount(outputEditor)));
+                updateLineNumberWidth(outputEditor);
+                updateEditorHeight(outputEditor);
+            }
+        } else {
+            // Diff 模式：保留 undo 栈的方式写回对应侧
+            const side = target === 'diff-left' ? 'left' : 'right';
+            replaceEditorValuePreservingUndo(sourceEditor, finalOutput, `diff-field-sort-${side}`);
+        }
+    };
+
     try {
-        const value = inputEditor?.getValue() || '';
+        const value = sourceEditor.getValue() || '';
         let parsed;
         let originalString = value;
 
@@ -10068,15 +10220,7 @@ const executeFieldSort = () => {
             const formatted = formatter.format(parsed, escapeMap);
             const finalOutput = formatted.replace(/\\u([0-9a-fA-F]{4})/g, '\\u$1');
 
-            // 异步计算所有折叠区域的信息（不阻塞，立即返回）
-            if (shouldPrecomputeFoldingInfo()) {
-                precomputeFoldingInfo(finalOutput).catch(error => {
-                    // 静默处理错误，不影响主流程
-                });
-            }
-
-            outputEditor?.setValue(finalOutput);
-            updateEditorHeight(outputEditor);
+            writeResult(finalOutput);
 
             showMessageSuccess(`按字段 "${sortFieldName.value}" 对路径 "${rootPath}" 下的数组排序成功`);
             return;
@@ -10107,26 +10251,7 @@ const executeFieldSort = () => {
         const formatted = formatter.format(finalResult, escapeMap);
         const finalOutput = formatted.replace(/\\u([0-9a-fA-F]{4})/g, '\\u$1');
 
-        // 异步计算所有折叠区域的信息（不阻塞，立即返回）
-        if (shouldPrecomputeFoldingInfo()) {
-            precomputeFoldingInfo(finalOutput).catch(error => {
-                // 静默处理错误，不影响主流程
-            });
-        }
-
-        outputEditor?.setValue(finalOutput);
-
-        // 更新编辑器配置
-        if (outputEditor) {
-            const model = outputEditor.getModel();
-            if (model) {
-                monaco.editor.setModelLanguage(model, 'json');
-            }
-
-            outputEditor.updateOptions(getEditorOptions(indentSize.value, true, 'json', true, getEditorLineCount(outputEditor)));
-            updateLineNumberWidth(outputEditor);
-            updateEditorHeight(outputEditor);
-        }
+        writeResult(finalOutput);
 
         const rootDesc = sortRootPath.value.trim() ? `路径 "${sortRootPath.value}" 下的数据` : '根级数据';
         showMessageSuccess(`按字段 "${sortFieldName.value}" 对${rootDesc}排序成功`);
@@ -10178,6 +10303,7 @@ const applySort = () => {
         // 检查字段排序的参数
         if (sortMethod.value === 'field') {
             // 显示字段排序对话框
+            fieldSortTarget.value = 'input';
             sortRootPath.value = '';
             sortFieldName.value = '';
             fieldSortDialogVisible.value = true;
@@ -11828,21 +11954,15 @@ const transferToInput = (e: MouseEvent) => {
     position: relative;
 }
 
-.error-nav-bar {
-    position: absolute;
-    right: 18px;
-    z-index: 5;
-    display: flex;
+/* 错误导航：内联于编辑区域底部状态栏 */
+.error-nav-inline {
+    display: inline-flex;
     align-items: center;
-    gap: 8px;
-    padding: 4px 8px;
-    background: rgba(255, 255, 255, 0.76);
-    border: 1px solid rgba(235, 238, 245, 0.9);
-    border-top: none;
-    border-bottom-left-radius: 4px;
-    border-bottom-right-radius: 4px;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+    gap: 4px;
+    margin-left: auto;
+    padding-left: 8px;
     user-select: none;
+    line-height: 1;
 }
 
 .error-nav-icon {
@@ -11854,22 +11974,23 @@ const transferToInput = (e: MouseEvent) => {
 
 .error-warning-icon {
     color: #f56c6c;
+    font-size: 13px;
 }
 
 .error-nav-count {
-    font-size: 13px;
+    font-size: 12px;
     font-weight: 600;
     color: #f56c6c;
-    min-width: 18px;
+    min-width: 14px;
     text-align: left;
 }
 
 .error-nav-btn {
-    width: 24px;
-    height: 24px;
+    width: 18px;
+    height: 18px;
     padding: 0;
     border: 1px solid transparent;
-    border-radius: 6px;
+    border-radius: 4px;
     background: transparent;
     display: inline-flex;
     align-items: center;
@@ -11879,34 +12000,33 @@ const transferToInput = (e: MouseEvent) => {
 }
 
 .error-nav-btn:hover {
-    background: rgba(0, 0, 0, 0.04);
-    border-color: rgba(0, 0, 0, 0.06);
+    background: rgba(0, 0, 0, 0.05);
+    border-color: rgba(0, 0, 0, 0.08);
 }
 
 .error-nav-btn:active {
-    background: rgba(0, 0, 0, 0.08);
-    border-color: rgba(0, 0, 0, 0.1);
+    background: rgba(0, 0, 0, 0.1);
+    border-color: rgba(0, 0, 0, 0.12);
     transform: translateY(0.5px);
 }
 
 .error-nav-btn:focus-visible {
     outline: 2px solid rgba(245, 108, 108, 0.35);
-    outline-offset: 2px;
+    outline-offset: 1px;
 }
 
 .error-nav-arrow {
     color: #606266;
-    font-size: 16px;
+    font-size: 12px;
 }
 
 .error-nav-btn:hover .error-nav-arrow {
     color: #303133;
 }
 
-/* 让箭头视觉上更“粗/重”一点（主要对 stroke 图标生效） */
 .error-nav-arrow :deep(svg) {
-    width: 18px;
-    height: 18px;
+    width: 12px;
+    height: 12px;
 }
 .error-nav-arrow :deep(svg path),
 .error-nav-arrow :deep(svg polyline),
@@ -12704,43 +12824,28 @@ const transferToInput = (e: MouseEvent) => {
     font-size: 14px;
 }
 
-/* 演示模式样式 */
-.demo-overlay {
-    position: fixed;
-    top: 0;
-    left: 0;
-    width: 100vw;
-    height: 100vh;
-    background: rgba(0, 0, 0, 0.3);
-    z-index: 9999;
-    display: flex;
-    align-items: center;
-    justify-content: center;
+/* 演示模式样式 - Popover 贴边版本 */
+/* el-popover 会被 teleport 到 body，使用 popper-class 定位 */
+:global(.demo-guide-popover.el-popover) {
+    padding: 0 !important;
+    border-radius: 6px !important;
+    box-shadow: 0 6px 28px rgba(0, 0, 0, 0.18) !important;
+    border: 1px solid #dcdfe6 !important;
 }
 
-.demo-content {
-    position: relative;
-    max-width: 90vw;
-    max-height: 90vh;
-}
-
-.demo-guide-popup {
-    background: white;
-    border-radius: 2px;
-    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
-    width: 640px;
-    animation: demoPopup 0.3s ease-out;
+.demo-guide-inner {
+    animation: demoPopup 0.25s ease-out;
 }
 
 @keyframes demoPopup {
     from {
         opacity: 0;
-        transform: scale(0.9) translateY(-20px);
+        transform: scale(0.96);
     }
 
     to {
         opacity: 1;
-        transform: scale(1) translateY(0);
+        transform: scale(1);
     }
 }
 
@@ -12748,27 +12853,26 @@ const transferToInput = (e: MouseEvent) => {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 10px 24px;
+    padding: 10px 14px;
     border-bottom: 1px solid #f0f0f0;
-    margin-bottom: 12px;
 }
 
 .demo-guide-header h3 {
     margin: 0;
     color: #303133;
-    font-size: 18px;
+    font-size: 14px;
     font-weight: 600;
 }
 
 .demo-close-btn {
     background: none;
     border: none;
-    font-size: 24px;
+    font-size: 20px;
     color: #909399;
     cursor: pointer;
     padding: 0;
-    width: 32px;
-    height: 32px;
+    width: 24px;
+    height: 24px;
     border-radius: 50%;
     display: flex;
     align-items: center;
@@ -12776,41 +12880,85 @@ const transferToInput = (e: MouseEvent) => {
     transition: all 0.2s;
 }
 
-.demo-guide-header {
-    cursor: move;
-    user-select: none;
+.demo-close-btn:hover {
+    background: #f2f3f5;
+    color: #303133;
 }
 
 .demo-guide-content {
-    padding: 0 24px;
+    padding: 10px 14px 4px;
 }
 
 .demo-guide-content p {
-    margin: 0 0 20px 0;
+    margin: 0 0 10px 0;
     color: #606266;
-    font-size: 14px;
+    font-size: 13px;
     line-height: 1.6;
 }
 
-.demo-guide-footer {
-    padding: 0 24px 24px;
-    text-align: right;
+.demo-current-settings {
+    background: #f5f7fa;
+    border: 1px solid #ebeef5;
+    border-radius: 4px;
+    padding: 6px 10px;
+    font-size: 12px;
+    color: #606266;
 }
 
-.demo-guide-footer .el-button {
-    margin-left: 8px;
+.demo-current-settings strong {
+    display: block;
+    margin-bottom: 4px;
+    color: #303133;
+    font-weight: 600;
+}
+
+.demo-settings-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+}
+
+.demo-settings-list li {
+    display: flex;
+    align-items: center;
+    padding: 2px 0;
+    line-height: 1.7;
+}
+
+.demo-settings-label {
+    flex-shrink: 0;
+    color: #909399;
+    min-width: 68px;
+}
+
+.demo-current-settings code {
+    padding: 1px 5px;
+    border-radius: 3px;
+    font-family: 'Monaco', 'Menlo', monospace;
+    font-size: 12px;
+    color: #d73a49;
+}
+
+.demo-guide-footer {
+    padding: 8px 14px;
+    text-align: right;
+    border-top: 1px solid #f5f7fa;
+}
+
+.demo-guide-footer .el-button + .el-button {
+    margin-left: 6px;
 }
 
 .demo-step-indicator {
     display: flex;
     justify-content: center;
-    padding: 0 24px 20px;
-    gap: 8px;
+    padding: 0 14px 10px;
+    gap: 6px;
 }
 
 .step-dot {
-    width: 8px;
-    height: 8px;
+    width: 6px;
+    height: 6px;
     border-radius: 50%;
     background: #e4e7ed;
     transition: background-color 0.3s;
@@ -12820,35 +12968,6 @@ const transferToInput = (e: MouseEvent) => {
     background: #409eff;
 }
 
-/* 演示模式下的高亮效果 */
-.demo-highlight {
-    position: relative;
-    z-index: 10000;
-}
-
-.demo-highlight::before {
-    content: '';
-    position: absolute;
-    top: -4px;
-    left: -4px;
-    right: -4px;
-    bottom: -4px;
-    background: #409eff;
-    border-radius: 4px;
-    z-index: -1;
-    animation: highlightPulse 2s infinite;
-}
-
-@keyframes highlightPulse {
-    0%,
-    100% {
-        opacity: 0.3;
-    }
-
-    50% {
-        opacity: 0.8;
-    }
-}
 
 /* 当前设置区域样式，增加与按钮的间距 */
 .demo-current-settings {
