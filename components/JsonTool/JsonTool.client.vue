@@ -30,15 +30,15 @@
                         <el-button-group>
                             <el-button type="primary" @click="goToPrevDiff" :disabled="diffCount === 0">
                                 <el-icon><ArrowLeft /></el-icon>
-                                <span>Prev</span>
+                                <span>上一处</span>
                             </el-button>
                             <el-button type="primary" @click="goToNextDiff" :disabled="diffCount === 0">
-                                <span>Next</span>
+                                <span>下一处</span>
                                 <el-icon><ArrowRight /></el-icon>
                             </el-button>
                         </el-button-group>
                     </div>
-                    <el-button type="info" @click="exitDiffMode">Exit</el-button>
+                    <el-button type="info" @click="exitDiffMode">退出对比</el-button>
                 </div>
 
                 <!-- 普通模式工具栏 -->
@@ -49,48 +49,57 @@
                         </el-icon>
                     </el-button>
 
-                    <el-button-group>
-                        <el-button v-if="buttonVisibility.fetchJson" type="primary" @click="openFetchJsonDialog">获取JSON</el-button>
-                        <el-button v-if="buttonVisibility.format" type="primary" :disabled="!canUseProcessingFeatures" @click="formatJSON">格式化</el-button>
-                        <el-button v-if="buttonVisibility.compress" type="primary" :disabled="!canUseProcessingFeatures" @click="compressJSON">压缩</el-button>
-                        <el-button v-if="buttonVisibility.escape" type="primary" :disabled="!canUseProcessingFeatures" @click="compressAndEscapeJSON">转义</el-button>
-                        <el-button v-if="buttonVisibility.unescape" type="primary" :disabled="!canUseProcessingFeatures" @click="handleEscapeCommand('unescape')">去除转义</el-button>
-                        <el-button v-if="buttonVisibility.masking" type="primary" :disabled="!canUseProcessingFeatures" @click="openDataMaskingDialog">脱敏</el-button>
-                        <el-button v-if="buttonVisibility.sort" type="primary" :disabled="!canUseProcessingFeatures" @click="handleAdvancedCommand('sort')">排序</el-button>
-                        <el-button v-if="buttonVisibility.archive" type="primary" :disabled="!canUseProcessingFeatures" @click="handleSaveArchive">存档</el-button>
-                        <el-button v-if="buttonVisibility.diff" type="primary" @click="enterDiffMode">对比</el-button>
-                        <el-button v-if="buttonVisibility.share" type="primary" :disabled="!canUseProcessingFeatures" @click="openShareDialog">分享</el-button>
-                    </el-button-group>
+                    <!-- 演示模式下，除"设置"按钮外的所有功能暂时禁用，避免用户误操作打断引导流程 -->
+                    <div class="toolbar-actions" :class="{ 'demo-locked-area': isDemoMode }">
+                        <el-button-group>
+                            <el-button v-if="buttonVisibility.fetchJson" type="primary" @click="openFetchJsonDialog">获取JSON</el-button>
+                            <el-button v-if="buttonVisibility.format" type="primary" :disabled="!canUseProcessingFeatures" @click="formatJSON">格式化</el-button>
+                            <el-button v-if="buttonVisibility.compress" type="primary" :disabled="!canUseProcessingFeatures" @click="compressJSON">压缩</el-button>
+                            <el-button v-if="buttonVisibility.escape" type="primary" :disabled="!canUseProcessingFeatures" @click="compressAndEscapeJSON">转义</el-button>
+                            <el-button v-if="buttonVisibility.unescape" type="primary" :disabled="!canUseProcessingFeatures" @click="handleEscapeCommand('unescape')">去除转义</el-button>
+                            <el-button v-if="buttonVisibility.masking" type="primary" :disabled="!canUseProcessingFeatures" @click="openDataMaskingDialog">脱敏</el-button>
+                            <el-button v-if="buttonVisibility.sort" type="primary" :disabled="!canUseProcessingFeatures" @click="handleAdvancedCommand('sort')">排序</el-button>
+                            <el-button v-if="buttonVisibility.archive" type="primary" :disabled="!canUseProcessingFeatures" @click="handleSaveArchive">存档</el-button>
+                            <el-button v-if="buttonVisibility.diff" type="primary" @click="enterDiffMode">对比</el-button>
+                            <el-button v-if="buttonVisibility.share" type="primary" :disabled="!canUseProcessingFeatures" @click="openShareDialog">分享</el-button>
+                        </el-button-group>
 
-                    <el-dropdown v-if="buttonVisibility.dataConvert" trigger="click" @command="handleConvert">
-                        <el-button type="primary" :disabled="!canUseProcessingFeatures">
-                            数据转换
-                            <el-icon class="el-icon--right">
-                                <ArrowDown />
-                            </el-icon>
+                        <el-dropdown v-if="buttonVisibility.dataConvert" trigger="click" @command="handleConvert">
+                            <el-button type="primary" :disabled="!canUseProcessingFeatures">
+                                数据转换
+                                <el-icon class="el-icon--right">
+                                    <ArrowDown />
+                                </el-icon>
+                            </el-button>
+                            <template #dropdown>
+                                <el-dropdown-menu>
+                                    <el-dropdown-item command="yaml">JSON 转 YAML</el-dropdown-item>
+                                    <el-dropdown-item command="toml">JSON 转 TOML</el-dropdown-item>
+                                    <el-dropdown-item command="xml">JSON 转 XML</el-dropdown-item>
+                                    <el-dropdown-item command="go">JSON 转 Go 结构体</el-dropdown-item>
+                                    <el-dropdown-item command="cookie">Cookie 转 JSON</el-dropdown-item>
+                                </el-dropdown-menu>
+                            </template>
+                        </el-dropdown>
+
+                        <div v-if="buttonVisibility.collapse" class="collapse-control">
+                            <el-select v-model="selectedLevel" placeholder="层级" class="level-select" fit-input-width :disabled="maxLevel === 0 || !canUseCollapseFeature">
+                                <el-option v-if="maxLevel === 0" label="第0层" :value="0" :disabled="true" />
+                                <el-option
+                                    v-for="n in maxLevel"
+                                    :key="n"
+                                    :label="getFoldLevelOptionLabel(n)"
+                                    :value="n"
+                                    :disabled="isFoldLevelDisabled(n)"
+                                />
+                            </el-select>
+                            <el-button type="success" @click="handleLevelAction" :disabled="maxLevel === 0 || !canUseCollapseFeature || isSelectedFoldLevelDisabled">收缩</el-button>
+                        </div>
+
+                        <el-button v-if="buttonVisibility.fullscreen" :type="isFullscreen ? 'info' : 'warning'" class="fullscreen-btn" @click="toggleFullscreen">
+                            {{ isFullscreen ? '退出全屏' : '全屏' }}
                         </el-button>
-                        <template #dropdown>
-                            <el-dropdown-menu>
-                                <el-dropdown-item command="yaml">JSON 转 YAML</el-dropdown-item>
-                                <el-dropdown-item command="toml">JSON 转 TOML</el-dropdown-item>
-                                <el-dropdown-item command="xml">JSON 转 XML</el-dropdown-item>
-                                <el-dropdown-item command="go">JSON 转 Go 结构体</el-dropdown-item>
-                                <el-dropdown-item command="cookie">Cookie 转 JSON</el-dropdown-item>
-                            </el-dropdown-menu>
-                        </template>
-                    </el-dropdown>
-
-                    <div v-if="buttonVisibility.collapse" class="collapse-control">
-                        <el-select v-model="selectedLevel" placeholder="层级" class="level-select" fit-input-width :disabled="maxLevel === 0 || !canUseCollapseFeature">
-                            <el-option v-if="maxLevel === 0" label="第0层" :value="0" :disabled="true" />
-                            <el-option v-for="n in maxLevel" :key="n" :label="`第${n}层`" :value="n" />
-                        </el-select>
-                        <el-button type="success" @click="handleLevelAction" :disabled="maxLevel === 0 || !canUseCollapseFeature">收缩</el-button>
                     </div>
-
-                    <el-button v-if="buttonVisibility.fullscreen" :type="isFullscreen ? 'info' : 'warning'" class="fullscreen-btn" @click="toggleFullscreen">
-                        {{ isFullscreen ? '退出全屏' : '全屏' }}
-                    </el-button>
                 </div>
 
                 <!-- 右侧渐变遮罩和滚动按钮 -->
@@ -300,8 +309,13 @@
                 </div>
 
                 <!-- 添加可拖动分隔线 -->
-                <div class="resizer" @mousedown="startResize" @touchstart.passive="startResize">
-                    <el-button class="transfer-button" type="primary" circle @click.stop="transferToInput" aria-label="转移到输入">
+                <div
+                    class="resizer"
+                    :class="{ 'resizer-locked-during-demo': isDemoMode }"
+                    @mousedown="startResize"
+                    @touchstart.passive="startResize"
+                >
+                    <el-button class="transfer-button" type="primary" circle :disabled="isDemoMode" @click.stop="transferToInput" aria-label="转移到输入">
                         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-hidden="true" focusable="false">
                             <path d="M10 18L4 12L10 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
                             <path d="M4 12H20" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
@@ -735,7 +749,8 @@
                 <label class="form-label"> 排序字段 </label>
                 <el-autocomplete
                     v-model="sortFieldName"
-                    :fetch-suggestions="queryFieldPathsDisabled"
+                    :fetch-suggestions="queryFieldPathsFromScope"
+                    :trigger-on-focus="true"
                     placeholder="输入字段名，如：score 或 user.name"
                     clearable
                     @select="handleFieldPathSelect"
@@ -775,7 +790,7 @@
             <div class="demo-guide-inner">
                 <div class="demo-guide-header">
                     <h3>{{ currentDemoStepData.title }}</h3>
-                    <button class="demo-close-btn" @click="endDemoMode">×</button>
+                    <button class="demo-close-btn" @click="endDemoMode" aria-label="关闭演示">✕</button>
                 </div>
                 <div class="demo-guide-content">
                     <p>{{ currentDemoStepData.content }}</p>
@@ -846,6 +861,7 @@ const MAX_LINES = 5_000_000; // 300 万到 500 万行为仅展示模式，超过
 let isInitializing = true; // 标记是否正在初始化，避免初始化时触发保存
 const outputType = ref<'json' | 'yaml' | 'toml' | 'xml' | 'go' | 'text'>('json'); // 当前输出类型的状态
 const maxLevel = ref(0); // 最大层级
+const maxFoldableLevel = ref<number | null>(null); // 编辑器当前实际可折叠的最大层级
 const selectedLevel = ref<number>(0); // 当前选中的层级
 const isResizing = ref(false); // 是否正在调整宽度控制
 const leftPanelWidth = ref(50); // 面板宽度控制（实时值，用于布局）
@@ -866,6 +882,8 @@ const isOutputMaximized = ref(false); // 预览区域是否最大化
 
 // 切换编辑区域最大化状态
 const toggleInputMaximize = () => {
+    // 演示模式下禁用面板最大化（双击面板头），避免 Popover 锚点突变导致引导错位
+    if (isDemoMode.value) return;
     if (isInputMaximized.value) {
         // 从最大化恢复均分
         isInputMaximized.value = false;
@@ -886,6 +904,8 @@ const toggleInputMaximize = () => {
 
 // 切换预览区域最大化状态
 const toggleOutputMaximize = () => {
+    // 演示模式下禁用面板最大化（双击面板头），避免 Popover 锚点突变导致引导错位
+    if (isDemoMode.value) return;
     if (isOutputMaximized.value) {
         // 从最大化恢复均分
         isInputMaximized.value = false;
@@ -1561,7 +1581,10 @@ const createDiffEditor = () => {
         },
         fontSize: fontSize.value,
         lineHeight: 16,
-        wordWrap: wordWrap.value ? ('on' as const) : ('off' as const),
+        // 注意：设置对话框里的 switch 做了值反转（active=false, inactive=true），
+        // 所以 wordWrap.value === true 代表"用户要不换行"。
+        // 此处必须与 getEditorOptions / updateWordWrap 保持同一语义约定，
+        wordWrap: wordWrap.value ? ('off' as const) : ('on' as const),
         unicodeHighlight: {
             ambiguousCharacters: true,
             invisibleCharacters: true,
@@ -2655,6 +2678,22 @@ const demoMapData = ref(JSON.parse('{"B":{"id":102,"key":"task-B","value":{"scor
 // 演示 Popover 锚点与定位相关状态
 const demoPopoverAnchor = ref<HTMLElement | null>(null);
 const demoPopoverPlacement = ref<'right-start' | 'left-start' | 'bottom-start' | 'top-start'>('right-start');
+// 演示模式下当前被蓝色脉冲高亮的元素（非演示场景下不会启用高亮）
+const demoHighlightedEl = ref<HTMLElement | null>(null);
+
+// 演示模式切换时，同步把所有 Monaco 编辑器（输入 / 输出 / Diff 左右）切到 readOnly，
+// 防止用户在演示期间手改数据打乱引导流程。演示结束自动恢复可写。
+watch(isDemoMode, (on) => {
+    const readOnly = !!on;
+    try {
+        inputEditor?.updateOptions({ readOnly });
+        outputEditor?.updateOptions({ readOnly });
+        diffLeftEditor?.updateOptions({ readOnly });
+        diffRightEditor?.updateOptions({ readOnly });
+    } catch (e) {
+        /* 编辑器尚未初始化也无妨，静默忽略 */
+    }
+});
 
 // 根据步骤的 highlight 选择器解析 DOM 锚点；highlight 为空时锚到输出编辑器作为 fallback
 const resolveDemoAnchor = (selector: string | null): HTMLElement | null => {
@@ -2686,12 +2725,34 @@ const pickPlacementForEl = (el: HTMLElement): 'right-start' | 'left-start' | 'bo
     return 'top-start';
 };
 
-// 更新 Popover 的锚点与 placement（仅负责定位，不做高亮）
+// 为演示模式下的引导元素添加脉冲高亮；切换/结束时清理上一个
+const applyDemoHighlight = (el: HTMLElement | null) => {
+    if (demoHighlightedEl.value && demoHighlightedEl.value !== el) {
+        demoHighlightedEl.value.classList.remove('demo-highlight-target');
+    }
+    if (el) {
+        el.classList.add('demo-highlight-target');
+        demoHighlightedEl.value = el;
+        try {
+            el.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'nearest' });
+        } catch (e) {
+            /* ignore */
+        }
+    } else {
+        demoHighlightedEl.value = null;
+    }
+};
+
+// 更新 Popover 的锚点与 placement（演示模式下同时应用蓝色脉冲高亮）
 const updateDemoPopoverAnchor = (selector: string | null) => {
     const el = resolveDemoAnchor(selector);
     demoPopoverAnchor.value = el;
     if (el) {
         demoPopoverPlacement.value = pickPlacementForEl(el);
+    }
+    // 仅在演示模式下启用高亮描边，普通 Popover 使用场景保持简洁
+    if (isDemoMode.value) {
+        applyDemoHighlight(el);
     }
 };
 
@@ -3188,7 +3249,7 @@ const getEditorLineCount = (editor: monaco.editor.IStandaloneCodeEditor | null) 
 const getLargeFileOptions = (enableLargeFileFolding: boolean, lineCount: number) =>
     enableLargeFileFolding
         ? {
-              foldingMaximumRegions: 2500000, // 增加折叠区域上限（默认约5000），支持超大JSON文件
+              foldingMaximumRegions: 10000000, // 增加折叠区域上限（默认约5000），支持超大JSON文件
               largeFileOptimizations: lineCount > LARGE_FILE_OPTIMIZATION_LINE_THRESHOLD, // 超过 200 万行时启用大文件优化，优先保证可用性
           }
         : {};
@@ -3269,7 +3330,6 @@ const getEditorOptions = (
 
     // 折叠配置
     folding: true, // 启用代码折叠功能（这是基础配置，必须开启）
-    
     ...getLargeFileOptions(enableLargeFileFolding, lineCount),
 
     // 编辑器配置
@@ -3383,6 +3443,73 @@ const syncEditorLargeFileOptions = (editor: monaco.editor.IStandaloneCodeEditor 
     editor.updateOptions(getLargeFileOptions(enableLargeFileFolding, getEditorLineCount(editor)));
 };
 
+const isFoldLevelDisabled = (level: number): boolean => {
+    return maxFoldableLevel.value !== null && maxFoldableLevel.value > 0 && level > maxFoldableLevel.value;
+};
+
+const getFoldLevelOptionLabel = (level: number): string => {
+    if (isFoldLevelDisabled(level)) {
+        return `第${level}层`;
+    }
+    return `第${level}层`;
+};
+
+const isSelectedFoldLevelDisabled = computed(() => {
+    return selectedLevel.value > 0 && isFoldLevelDisabled(selectedLevel.value);
+});
+
+const analyzeFoldingRegionLevels = (regions: any) => {
+    const allRegions: Array<{ index: number; level: number }> = [];
+    const parentStack: number[] = [];
+    const levelCounts = new Map<number, number>();
+    let maxComputedLevel = 0;
+
+    for (let i = 0; i < regions.length; i++) {
+        const startLine = regions.getStartLineNumber(i);
+        while (parentStack.length > 0) {
+            const parentIdx = parentStack[parentStack.length - 1];
+            if (regions.getEndLineNumber(parentIdx) >= startLine) break;
+            parentStack.pop();
+        }
+        const level = parentStack.length + 1;
+        parentStack.push(i);
+        allRegions.push({ index: i, level });
+        levelCounts.set(level, (levelCounts.get(level) || 0) + 1);
+        maxComputedLevel = Math.max(maxComputedLevel, level);
+    }
+
+    return { allRegions, levelCounts, maxComputedLevel };
+};
+
+const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+
+const resolveMaxFoldableLevel = async (editor: monaco.editor.IStandaloneCodeEditor | null): Promise<number | null> => {
+    if (!editor) return null;
+    const model = editor.getModel();
+    if (!model || model.getLanguageId() !== 'json') return null;
+
+    for (let attempt = 0; attempt < 4; attempt++) {
+        const foldingModel = await getFoldingModelAsync(editor);
+        const regions = foldingModel?.regions;
+        if (regions && regions.length > 0) {
+            return analyzeFoldingRegionLevels(regions).maxComputedLevel;
+        }
+        await sleep(150 * (attempt + 1));
+    }
+
+    return 0;
+};
+
+const refreshMaxFoldableLevel = async (language: string = 'json') => {
+    if (!outputEditor || language !== 'json') {
+        maxFoldableLevel.value = null;
+        return;
+    }
+    const resolvedLevel = await resolveMaxFoldableLevel(outputEditor);
+    if (!outputEditor) return;
+    maxFoldableLevel.value = resolvedLevel;
+};
+
 // 更新输出编辑器配置（包括模型选项，确保缩进指南线正确显示）
 const updateOutputEditorConfig = (language: string = 'json', enableLargeFileFolding: boolean = false, customIndentSize?: number) => {
     if (!outputEditor) return;
@@ -3408,6 +3535,7 @@ const updateOutputEditorConfig = (language: string = 'json', enableLargeFileFold
 
     updateLineNumberWidth(outputEditor);
     updateEditorHeight(outputEditor);
+    refreshMaxFoldableLevel(language).catch(() => {});
 };
 
 let lastFocusedEditor: monaco.editor.IStandaloneCodeEditor | null = null;
@@ -5379,20 +5507,7 @@ const foldByIndentation = async (): Promise<{ firstCollapsedLine: number | null;
     const toCollapse: any[] = [];
     const toCollapseStartLines: number[] = [];
 
-    const allRegions: any[] = [];
-    const parentStack: number[] = [];
-
-    for (let i = 0; i < regions.length; i++) {
-        const startLine = regions.getStartLineNumber(i);
-        while (parentStack.length > 0) {
-            const parentIdx = parentStack[parentStack.length - 1];
-            if (regions.getEndLineNumber(parentIdx) >= startLine) break;
-            parentStack.pop();
-        }
-        const level = parentStack.length + 1;
-        parentStack.push(i);
-        allRegions.push({ index: i, level });
-    }
+    const { allRegions } = analyzeFoldingRegionLevels(regions);
 
     for (const { index, level } of allRegions) {
         const region = regions.toRegion(index);
@@ -5414,7 +5529,6 @@ const foldByIndentation = async (): Promise<{ firstCollapsedLine: number | null;
         foldingModel.toggleCollapseState(toCollapse);
     }
 
-    showMessageSuccess(`收缩到第 ${targetLevel} 层成功`);
     const firstCollapsedLine = toCollapseStartLines.length > 0 ? Math.min(...toCollapseStartLines) : null;
     return { firstCollapsedLine, collapsedCount: toCollapseStartLines.length };
 };
@@ -7689,6 +7803,17 @@ const handleLevelAction = () => {
 
             isFoldOperationLocked = true;
             try {
+                const resolvedMaxFoldableLevel = await resolveMaxFoldableLevel(outputEditor);
+                maxFoldableLevel.value = resolvedMaxFoldableLevel;
+                if (
+                    resolvedMaxFoldableLevel !== null &&
+                    resolvedMaxFoldableLevel > 0 &&
+                    selectedLevel.value > resolvedMaxFoldableLevel
+                ) {
+                    showMessageWarning(`当前内容最多只能收缩到第 ${resolvedMaxFoldableLevel} 层`);
+                    return;
+                }
+
                 // 仅当“本次实际发生折叠的位置”不在当前可视区时，自动滚动过去，
                 // 避免出现“折叠发生在很靠后位置但视图仍停留在顶部”的体验问题。
                 const getVisibleLineRange = (): { start: number; end: number } | null => {
@@ -7711,6 +7836,12 @@ const handleLevelAction = () => {
 
                 const beforeFoldVisible = getVisibleLineRange();
                 const foldResult = await foldByIndentation();
+                if (foldResult.collapsedCount === 0) {
+                    const fallbackMaxLevel = maxFoldableLevel.value && maxFoldableLevel.value > 0 ? `，当前最多可折叠到第 ${maxFoldableLevel.value} 层` : '';
+                    showMessageWarning(`第 ${selectedLevel.value} 层没有可用折叠区域${fallbackMaxLevel}`);
+                    return;
+                }
+                showMessageSuccess(`收缩到第 ${selectedLevel.value} 层成功`);
 
                 // 折叠完成后，启用折叠信息更新并立即刷新，然后重新计算
                 setTimeout(() => {
@@ -9334,9 +9465,118 @@ const queryRootPaths = (queryString: string, cb: (suggestions: PathSuggestion[])
     }
 };
 
-// 禁用字段智能提示的占位函数（始终不返回建议）
-const queryFieldPathsDisabled = (queryString: string, cb: (suggestions: PathSuggestion[]) => void) => {
-    cb([]);
+// 根据"排序范围"从输入 JSON 中收集可用于排序的字段名（作为 el-autocomplete 的建议列表）
+// 支持：
+//   1. 空范围：用整个输入 JSON 当作数据源
+//   2. 无 [*] 范围：直接 getValueByPath 取数组
+//   3. 含 [*] 范围（支持多层）：和 performFieldSort 同款分段递归，收集所有叶子数组元素的 key 并集
+const collectKeysFromScope = (data: any, scopePath: string): string[] => {
+    const keySet = new Set<string>();
+
+    // 工具函数：从一个数组里收集"元素一层 key"
+    //   - 元素是对象：把它的直接 key 全部加入集合
+    //   - 元素是数组/原始值：跳过（没有字段概念）
+    const harvestKeysFromArray = (arr: any[]) => {
+        for (const el of arr) {
+            if (el && typeof el === 'object' && !Array.isArray(el)) {
+                for (const k of Object.keys(el)) {
+                    keySet.add(k);
+                }
+            }
+        }
+    };
+
+    const path = (scopePath || '').trim();
+
+    if (!path) {
+        // 无范围：输入数据如果本身就是数组就直接收集；否则兜底对根对象收集一层 key
+        if (Array.isArray(data)) {
+            harvestKeysFromArray(data);
+        } else if (data && typeof data === 'object') {
+            for (const k of Object.keys(data)) keySet.add(k);
+        }
+    } else if (path.includes('[*]')) {
+        // 含 [*] 的路径：和 performFieldSort 一样按 [*] 切成多段后递归
+        const segments = path.split('[*]').map(s => s.replace(/^\./, ''));
+
+        const walk = (currentNode: any, segIndex: number): void => {
+            const seg = segments[segIndex];
+            const arr = seg === '' ? currentNode : getValueByPath(currentNode, seg);
+            if (!Array.isArray(arr)) return;
+
+            if (segIndex === segments.length - 1) {
+                // 叶子层：此数组就是"将被排序的数组"，收集它元素的 keys
+                harvestKeysFromArray(arr);
+                return;
+            }
+            for (const el of arr) {
+                if (el && typeof el === 'object') walk(el, segIndex + 1);
+            }
+        };
+
+        walk(data, 0);
+    } else {
+        // 无 [*] 但有路径：按路径取到数据
+        const target = getValueByPath(data, path);
+        if (Array.isArray(target)) {
+            harvestKeysFromArray(target);
+        } else if (target && typeof target === 'object') {
+            // 不是数组但是对象：退而求其次，列出它的一层 key 供参考
+            for (const k of Object.keys(target)) keySet.add(k);
+        }
+    }
+
+    return Array.from(keySet).sort((a, b) => a.localeCompare(b));
+};
+
+// 字段名智能提示：根据"排序范围"推断当前数据源能提供哪些字段
+const queryFieldPathsFromScope = (queryString: string, cb: (suggestions: PathSuggestion[]) => void) => {
+    try {
+        // 依据当前操作目标选择数据源：
+        //   - 普通模式：输入编辑器
+        //   - Diff 模式：按 fieldSortTarget 指向的那一侧
+        let sourceEditor: monaco.editor.IStandaloneCodeEditor | null | undefined = null;
+        const target = fieldSortTarget.value;
+        if (target === 'diff-left') sourceEditor = getDiffSideEditor('left');
+        else if (target === 'diff-right') sourceEditor = getDiffSideEditor('right');
+        else sourceEditor = inputEditor;
+
+        const raw = sourceEditor?.getValue?.() || '';
+        if (!raw.trim()) {
+            cb([]);
+            return;
+        }
+
+        let jsonObj: any;
+        try {
+            // 优先用 preprocessJSON 以兼容高精度数字等保护机制；失败退化到原生 JSON.parse
+            const result = preprocessJSON(raw, { preserveNumberLiterals: true });
+            jsonObj = result.data;
+        } catch {
+            try {
+                jsonObj = JSON.parse(raw);
+            } catch {
+                cb([]);
+                return;
+            }
+        }
+
+        const keys = collectKeysFromScope(jsonObj, sortRootPath.value);
+        if (keys.length === 0) {
+            cb([]);
+            return;
+        }
+
+        // 根据用户已输入的前缀过滤（不区分大小写）
+        const q = (queryString || '').toLowerCase();
+        const filtered = (q ? keys.filter(k => k.toLowerCase().includes(q)) : keys).map<PathSuggestion>(k => ({
+            value: k,
+            type: 'key',
+        }));
+        cb(filtered);
+    } catch {
+        cb([]);
+    }
 };
 
 // 获取下一级的key建议（基于当前输入内容）
@@ -9438,6 +9678,7 @@ const getTypeLabel = (type: string): string => {
         'array-wildcard': '数组通配符',
         'array-index': '数组索引',
         wildcard: '通配符',
+        key: '字段',
     };
     return typeMap[type] || type;
 };
@@ -10083,6 +10324,8 @@ const endDemoMode = () => {
     demoGuideVisible.value = false;
     currentDemoStepData.value = null;
     demoPopoverAnchor.value = null;
+    // 清理演示期间附加在 DOM 上的脉冲高亮类
+    applyDemoHighlight(null);
 
     // 清空演示数据
     if (inputEditor) {
@@ -10101,37 +10344,77 @@ const endDemoMode = () => {
 };
 
 // 执行字段排序的核心逻辑（提取为独立函数）
+// 支持：
+// 1) 根为数组或对象
+// 2) 任意层数的 [*]（如 CIS[*].items[*].items[*].items）
+// 3) [*] 之间可以有普通属性前缀（如 CIS、items），也可以直接以 [*] 开头
 const performFieldSort = (data: any, rootPath: string, fieldName: string) => {
-    let result = JSON.parse(JSON.stringify(data));
+    const result = JSON.parse(JSON.stringify(data));
+    const path = (rootPath || '').trim();
 
-    // 处理嵌套数组排序的情况
-    if (rootPath && rootPath.includes('[*]')) {
-        if (!Array.isArray(result)) {
-            throw new Error('根数据必须是数组才能使用 [*] 路径');
-        }
+    if (path && path.includes('[*]')) {
+        // 把路径按 [*] 拆成段：例如
+        //   "CIS[*].items[*].items[*].items" -> ["CIS", "items", "items", "items"]
+        //   "[*].items"                      -> ["",    "items"]
+        //   "a.b[*].c[*].d"                  -> ["a.b", "c", "d"]
+        // 约定：第一段是第一层 [*] 之前的前缀；后续每一段是下一层 [*] 之后的子路径；
+        //       最后一段指向"被排序的数组本身"的路径（相对上一层元素）。
+        const rawSegments = path.split('[*]');
+        // [*] 后的 "." 是可选的，这里清理每段开头的 "."
+        const segments = rawSegments.map(s => s.replace(/^\./, ''));
 
-        // 对每个数组元素进行排序
-        result.forEach(item => {
-            if (item && typeof item === 'object') {
-                // 提取 [*].path 中的 path 部分
-                const pathParts = rootPath.split('[*].');
-                if (pathParts.length === 2) {
-                    const subPath = pathParts[1];
-                    const subData = getValueByPath(item, subPath);
-                    if (Array.isArray(subData)) {
-                        // 对子数组进行排序
-                        const sortedSubData = sortJsonByField(subData, fieldName, sortOrder.value);
-                        // 设置排序后的数据回去
-                        setValueByPath(item, subPath, sortedSubData);
-                    }
+        // 递归下钻：
+        //   currentNode：当前节点
+        //   segIndex：   当前要应用的 segment 下标
+        // 语义：
+        //   - 最后一段（segIndex === segments.length - 1）：从 currentNode 取到该段指向的"数组"，就地排序
+        //   - 其它段：从 currentNode 取到该段指向的"数组"，对数组内每个元素递归处理下一段
+        const walk = (currentNode: any, segIndex: number): void => {
+            const seg = segments[segIndex];
+            // 解析出"当前层要操作的数组"
+            const arr = seg === '' ? currentNode : getValueByPath(currentNode, seg);
+            if (!Array.isArray(arr)) {
+                // 路径无效或该层不是数组，就静默跳过（不阻塞其它分支）
+                return;
+            }
+
+            if (segIndex === segments.length - 1) {
+                // 到达叶子层：对当前数组按字段排序，并写回
+                const sorted = sortJsonByField(arr, fieldName, sortOrder.value);
+                if (seg === '') {
+                    // 叶子就是 currentNode 本身（[*] 处于末尾且前无前缀），
+                    // 此时只能通过覆盖 currentNode 的 length + 重新赋值元素来就地改写
+                    arr.length = 0;
+                    arr.push(...sorted);
+                } else {
+                    setValueByPath(currentNode, seg, sorted);
+                }
+                return;
+            }
+
+            // 非叶子层：对数组每个元素继续向下走一层
+            for (const el of arr) {
+                if (el && typeof el === 'object') {
+                    walk(el, segIndex + 1);
                 }
             }
-        });
+        };
 
+        // 从根开始执行。根可以是数组或对象，由 segments[0] 决定入口位置。
+        walk(result, 0);
         return result;
     }
 
-    // 简单排序
+    // 无 [*]：对整个 result（或按 rootPath 取子数据）做普通排序
+    if (path) {
+        const target = getValueByPath(result, path);
+        if (!Array.isArray(target)) {
+            throw new Error(`路径 "${path}" 对应的数据不是数组，无法排序`);
+        }
+        const sorted = sortJsonByField(target, fieldName, sortOrder.value);
+        setValueByPath(result, path, sorted);
+        return result;
+    }
     return sortJsonByField(result, fieldName, sortOrder.value);
 };
 
@@ -10188,62 +10471,16 @@ const executeFieldSort = () => {
         originalString = result.originalString;
         const escapeMap = result.escapeMap;
 
-        // 处理嵌套数组排序的情况
-        if (sortRootPath.value.trim() && sortRootPath.value.trim().includes('[*]')) {
-            // 对于 [*].path 这样的路径，需要直接修改原始数据
-            const rootPath = sortRootPath.value.trim();
-            if (!Array.isArray(parsed)) {
-                showMessageError('根数据必须是数组才能使用 [*] 路径');
-                return;
-            }
+        // 统一通过 performFieldSort 处理所有场景（无 [*] / 单层 [*] / 多层 [*]，根为数组或对象）
+        const rootPathTrim = sortRootPath.value.trim();
+        const fieldTrim = sortFieldName.value.trim();
 
-            // 对每个数组元素进行排序
-            parsed.forEach(item => {
-                if (item && typeof item === 'object') {
-                    // 提取 [*].path 中的 path 部分
-                    const pathParts = rootPath.split('[*].');
-                    if (pathParts.length === 2) {
-                        const subPath = pathParts[1];
-                        const subData = getValueByPath(item, subPath);
-                        if (Array.isArray(subData)) {
-                            // 对子数组进行排序
-                            const sortedSubData = sortJsonByField(subData, sortFieldName.value.trim(), sortOrder.value);
-                            // 设置排序后的数据回去
-                            setValueByPath(item, subPath, sortedSubData);
-                        }
-                    }
-                }
-            });
-
-            // 格式化输出
-            const formatter = new JsonPlusFormatter(false, indentSize.value, arrayNewLine.value, preserveNumberLiterals.value);
-            const formatted = formatter.format(parsed, escapeMap);
-            const finalOutput = formatted.replace(/\\u([0-9a-fA-F]{4})/g, '\\u$1');
-
-            writeResult(finalOutput);
-
-            showMessageSuccess(`按字段 "${sortFieldName.value}" 对路径 "${rootPath}" 下的数组排序成功`);
+        let finalResult;
+        try {
+            finalResult = performFieldSort(parsed, rootPathTrim, fieldTrim);
+        } catch (e: any) {
+            showMessageError('排序失败: ' + e.message);
             return;
-        }
-
-        // 获取要排序的数据
-        let dataToSort = parsed;
-        if (sortRootPath.value.trim()) {
-            dataToSort = getValueByPath(parsed, sortRootPath.value.trim());
-            if (dataToSort === undefined) {
-                showMessageError(`找不到路径 "${sortRootPath.value}" 对应的数据`);
-                return;
-            }
-        }
-
-        // 执行排序
-        const sortedData = sortJsonByField(dataToSort, sortFieldName.value.trim(), sortOrder.value);
-
-        // 如果有根路径，需要将排序结果放回原位置
-        let finalResult = sortedData;
-        if (sortRootPath.value.trim()) {
-            finalResult = { ...parsed };
-            setValueByPath(finalResult, sortRootPath.value.trim(), sortedData);
         }
 
         // 格式化输出
@@ -10253,8 +10490,8 @@ const executeFieldSort = () => {
 
         writeResult(finalOutput);
 
-        const rootDesc = sortRootPath.value.trim() ? `路径 "${sortRootPath.value}" 下的数据` : '根级数据';
-        showMessageSuccess(`按字段 "${sortFieldName.value}" 对${rootDesc}排序成功`);
+        const rootDesc = rootPathTrim ? `路径 "${rootPathTrim}" 下的数据` : '根级数据';
+        showMessageSuccess(`按字段 "${fieldTrim}" 对${rootDesc}排序成功`);
     } catch (error: any) {
         showMessageError('排序失败: ' + error.message);
     }
@@ -11373,6 +11610,11 @@ const stopResize = (upEvent?: Event) => {
 
 // 分割线拖动实现
 const startResize = (e: MouseEvent | TouchEvent | PointerEvent) => {
+    // 演示模式下锁定分割线，防止 Popover 锚点抖动导致引导卡片位置乱跳
+    if (isDemoMode.value) {
+        e.preventDefault?.();
+        return;
+    }
     // 初始化容器引用
     if (!editorContainer) {
         editorContainer = document.querySelector('.editor-container') as HTMLElement;
@@ -11869,6 +12111,67 @@ const transferToInput = (e: MouseEvent) => {
     width: 4px;
     height: 40px;
     background-color: #c0c4cc;
+}
+
+/* 演示模式下锁定分割线：
+   - 改为 not-allowed 光标，暗示"此刻不可拖动"
+   - hover/active 不再变色（避免误导用户以为还能拖）
+   - 核心的拖动拦截在 startResize 函数里做，这里只做视觉反馈 */
+.resizer.resizer-locked-during-demo {
+    cursor: not-allowed;
+}
+.resizer.resizer-locked-during-demo:hover,
+.resizer.resizer-locked-during-demo:active {
+    background-color: #eef0f6;
+}
+.resizer.resizer-locked-during-demo::after {
+    background-color: #dcdfe6;
+}
+
+/* 演示模式下的通用锁定遮罩层：
+   - 阻断所有鼠标/触摸事件（按钮不可点、下拉不展开）
+   - 视觉上降亮度并移除交互反馈色
+   - 当前用于工具栏（除"设置"按钮外），将来如需锁定其它区域直接加该类即可 */
+.demo-locked-area {
+    pointer-events: none;
+    opacity: 0.55;
+    filter: grayscale(0.2);
+    user-select: none;
+    transition: opacity 0.2s, filter 0.2s;
+}
+
+/* 工具栏内部的"功能按钮分组"容器：
+   仅作为"演示期间整体禁用"的挂载点，必须对布局保持透明——
+   继承 .tool-bar 的 flex 方向/对齐，让内部按钮依然像原来一样单行排列。
+   注意：作为 .tool-bar 的直接子元素，它本身也需要和前面的"设置"按钮保持 10px 间距，
+   这正是原样式靠 `.tool-bar > .el-button-group` 的 margin-left 自然获得的效果。 */
+.tool-bar > .toolbar-actions {
+    display: flex;
+    align-items: center;
+    flex-wrap: nowrap;
+    gap: 0;
+    flex: 1 1 auto;
+    min-width: 0;
+    margin-left: 10px;
+}
+
+/* 由于在 .tool-bar 里新增了 .toolbar-actions 包裹层，
+   原本依赖 `.tool-bar > .el-button-group` 直接子选择器的间距规则失效，
+   这里对 .toolbar-actions 的直接子元素复刻同一套 margin，保持视觉一致。 */
+.tool-bar > .toolbar-actions > .el-button,
+.tool-bar > .toolbar-actions > .el-button-group,
+.tool-bar > .toolbar-actions > .el-dropdown,
+.tool-bar > .toolbar-actions > .collapse-control {
+    margin-left: 10px;
+    flex-shrink: 0;
+    white-space: nowrap;
+}
+
+.tool-bar > .toolbar-actions > .el-button:first-child,
+.tool-bar > .toolbar-actions > .el-button-group:first-child,
+.tool-bar > .toolbar-actions > .el-dropdown:first-child,
+.tool-bar > .toolbar-actions > .collapse-control:first-child {
+    margin-left: 0;
 }
 
 .panel-header {
@@ -12867,7 +13170,12 @@ const transferToInput = (e: MouseEvent) => {
 .demo-close-btn {
     background: none;
     border: none;
-    font-size: 20px;
+    /* 使用固定字号 + line-height:1 消除字符垂直基线偏移；
+       字体栈强制走系统无衬线，避免某些中文字体中 '✕' 被渲染得偏大偏斜 */
+    font-family: system-ui, -apple-system, 'Segoe UI', Arial, sans-serif;
+    font-size: 14px;
+    font-weight: 600;
+    line-height: 1;
     color: #909399;
     cursor: pointer;
     padding: 0;
@@ -12877,12 +13185,20 @@ const transferToInput = (e: MouseEvent) => {
     display: flex;
     align-items: center;
     justify-content: center;
-    transition: all 0.2s;
+    transition: background-color 0.2s, color 0.2s, transform 0.15s;
+    /* 消除按钮默认可能存在的 text-indent / vertical-align 偏移 */
+    text-align: center;
+    vertical-align: middle;
 }
 
 .demo-close-btn:hover {
     background: #f2f3f5;
     color: #303133;
+    transform: scale(1.08);
+}
+
+.demo-close-btn:active {
+    transform: scale(0.96);
 }
 
 .demo-guide-content {
@@ -12966,6 +13282,33 @@ const transferToInput = (e: MouseEvent) => {
 
 .step-dot.active {
     background: #409eff;
+}
+
+/* 演示模式下当前引导元素的脉冲高亮描边 */
+/* 通过 transform: scale 让元素主动从贴边位置微微缩进，留出 box-shadow 绘制空间，
+   避免在浏览器窗口边缘（编辑区左侧、预览区右侧）被视口裁切看不到 */
+.demo-highlight-target {
+    position: relative;
+    z-index: 2000;
+    border-radius: 4px;
+    transform: scale(0.994);
+    transform-origin: center center;
+    animation: demoPulse 1.8s ease-in-out infinite;
+    transition: box-shadow 0.2s, transform 0.2s;
+}
+
+@keyframes demoPulse {
+    0%,
+    100% {
+        box-shadow:
+            0 0 0 2px #409eff,
+            0 0 0 5px rgba(64, 158, 255, 0.3);
+    }
+    50% {
+        box-shadow:
+            0 0 0 2px #409eff,
+            0 0 0 8px rgba(64, 158, 255, 0.12);
+    }
 }
 
 

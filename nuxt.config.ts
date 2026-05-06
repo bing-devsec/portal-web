@@ -127,8 +127,10 @@ export default defineNuxtConfig({
           manualChunks: {
             // 将 md-editor-v3 单独打包
             'md-editor': ['md-editor-v3'],
-            // 将 JsonTool 组件单独打包（避免主包过大）
-            'json-tool': ['./components/JsonTool/JsonTool.client.vue'],
+            // 注意：JsonTool 这类含 Monaco ?worker 导入的组件不要放进 manualChunks，
+            // 否则 worker chunk 的产物路径会和强制分包冲突，导致生产环境 worker 请求
+            // 被路由兜底为 HTML（Uncaught SyntaxError: Unexpected token '<'）。
+            // Vite 默认的基于动态 import 的代码分割就足以让它单独成 chunk。
           },
         },
       },
