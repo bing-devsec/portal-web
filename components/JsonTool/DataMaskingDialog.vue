@@ -4,14 +4,19 @@
         <el-dialog
             v-model="dialogVisible"
             class="data-masking-dialog-wrapper"
-            title="数据脱敏"
             :close-on-click-modal="false"
-            :show-close="true"
+            :show-close="false"
             :align-center="false"
             top="12vh"
             width="850px"
             @close="handleDialogClose"
         >
+            <template #header>
+                <div class="dialog-header">
+                    <span class="dialog-title">数据脱敏</span>
+                    <button class="dialog-close-btn" @click="dialogVisible = false" aria-label="关闭脱敏弹窗">✕</button>
+                </div>
+            </template>
             <div class="data-masking-dialog">
                 <!-- 使用说明 -->
                 <el-alert type="info" :closable="false" style="margin-bottom: 20px">
@@ -2726,6 +2731,52 @@ watch(
     flex-direction: column;
     margin-top: 0 !important;
     margin-bottom: 0 !important;
+}
+
+.dialog-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    width: 100%;
+    gap: 16px;
+}
+
+.dialog-title {
+    font-size: 18px;
+    font-weight: 600;
+    color: #303133;
+    line-height: 1.5;
+}
+
+.dialog-close-btn {
+    background: none;
+    border: none;
+    font-family: system-ui, -apple-system, 'Segoe UI', Arial, sans-serif;
+    font-size: 14px;
+    font-weight: 600;
+    line-height: 1;
+    color: #909399;
+    cursor: pointer;
+    padding: 0;
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background-color 0.2s, color 0.2s, transform 0.15s;
+    text-align: center;
+    vertical-align: middle;
+}
+
+.dialog-close-btn:hover {
+    background: #f2f3f5;
+    color: #303133;
+    transform: scale(1.08);
+}
+
+.dialog-close-btn:active {
+    transform: scale(0.96);
 }
 
 .data-masking-dialog {

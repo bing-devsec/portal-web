@@ -390,7 +390,21 @@
         />
 
         <!-- 设置弹窗 -->
-        <el-dialog v-model="settingsDialogVisible" class="settings-dialog-wrapper" :close-on-click-modal="false" :align-center="false" top="12vh" width="850px">
+        <el-dialog
+            v-model="settingsDialogVisible"
+            class="settings-dialog-wrapper"
+            :close-on-click-modal="false"
+            :show-close="false"
+            :align-center="false"
+            top="12vh"
+            width="850px"
+        >
+            <template #header>
+                <div class="dialog-header-with-close">
+                    <span class="dialog-title-with-close">设置</span>
+                    <button class="demo-close-btn" @click="settingsDialogVisible = false" aria-label="关闭设置弹窗">✕</button>
+                </div>
+            </template>
             <div class="settings-dialog-content">
                 <el-collapse v-model="settingsCollapseActiveNames" accordion>
                     <!-- 设置 -->
@@ -713,7 +727,13 @@
         </el-dialog>
 
         <!-- 字段排序对话框 -->
-        <el-dialog v-model="fieldSortDialogVisible" title="按字段值排序" width="600px" :close-on-click-modal="false">
+        <el-dialog v-model="fieldSortDialogVisible" width="600px" :close-on-click-modal="false" :show-close="false">
+            <template #header>
+                <div class="dialog-header-with-close">
+                    <span class="dialog-title-with-close">按字段值排序</span>
+                    <button class="demo-close-btn" @click="fieldSortDialogVisible = false" aria-label="关闭按字段值排序弹窗">✕</button>
+                </div>
+            </template>
             <div class="form-item">
                 <div class="form-item-row">
                     <div class="form-value-quote--compact" style="width: 100%">
@@ -12663,6 +12683,21 @@ const transferToInput = (e: MouseEvent) => {
 }
 
 /* 设置对话框样式 */
+.dialog-header-with-close {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    width: 100%;
+    gap: 16px;
+}
+
+.dialog-title-with-close {
+    font-size: 18px;
+    font-weight: 600;
+    color: #303133;
+    line-height: 1.5;
+}
+
 .settings-dialog-wrapper :deep(.el-dialog) {
     max-height: calc(100vh - 12vh);
     display: flex;

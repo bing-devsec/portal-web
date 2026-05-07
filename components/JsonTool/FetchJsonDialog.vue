@@ -5,7 +5,7 @@
             v-model="dialogVisible"
             class="fetch-json-main-dialog"
             :close-on-click-modal="false"
-            :show-close="true"
+            :show-close="false"
             :align-center="false"
             top="12vh"
             width="850px"
@@ -14,10 +14,13 @@
             <template #header>
                 <div class="dialog-header">
                     <span class="dialog-title">获取JSON数据</span>
-                    <el-radio-group v-model="fetchJsonMode" class="fetch-mode-group" size="small">
-                        <el-radio-button value="url">表单输入</el-radio-button>
-                        <el-radio-button value="curl">命令导入</el-radio-button>
-                    </el-radio-group>
+                    <div class="dialog-header-actions">
+                        <el-radio-group v-model="fetchJsonMode" class="fetch-mode-group" size="small">
+                            <el-radio-button value="url">表单输入</el-radio-button>
+                            <el-radio-button value="curl">命令导入</el-radio-button>
+                        </el-radio-group>
+                        <button class="dialog-close-btn" @click="dialogVisible = false" aria-label="关闭获取JSON弹窗">✕</button>
+                    </div>
                 </div>
             </template>
             <div class="fetch-json-dialog">
@@ -1562,12 +1565,16 @@ onUnmounted(() => {
         flex-direction: column;
         align-items: flex-start;
         gap: 12px;
-        padding-right: 0;
+    }
+
+    .dialog-header-actions {
+        width: 100%;
+        justify-content: space-between;
     }
 
     .fetch-mode-group {
         margin-left: 0;
-        width: 100%;
+        flex: 1;
     }
 
     .form-label-row {
@@ -1636,7 +1643,7 @@ onUnmounted(() => {
     align-items: center;
     justify-content: space-between;
     width: 100%;
-    padding-right: 80px;
+    gap: 16px;
 }
 
 .dialog-title {
@@ -1644,6 +1651,44 @@ onUnmounted(() => {
     font-weight: 600;
     color: #303133;
     line-height: 1.5;
+}
+
+.dialog-header-actions {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-left: auto;
+}
+
+.dialog-close-btn {
+    background: none;
+    border: none;
+    font-family: system-ui, -apple-system, 'Segoe UI', Arial, sans-serif;
+    font-size: 14px;
+    font-weight: 600;
+    line-height: 1;
+    color: #909399;
+    cursor: pointer;
+    padding: 0;
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background-color 0.2s, color 0.2s, transform 0.15s;
+    text-align: center;
+    vertical-align: middle;
+}
+
+.dialog-close-btn:hover {
+    background: #f2f3f5;
+    color: #303133;
+    transform: scale(1.08);
+}
+
+.dialog-close-btn:active {
+    transform: scale(0.96);
 }
 
 .fetch-json-dialog {
