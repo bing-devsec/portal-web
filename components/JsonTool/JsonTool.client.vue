@@ -725,8 +725,9 @@
             </div>
 
             <div class="form-item">
-                <label class="form-label">排序范围</label>
+                <label class="form-label" for="sort-root-path-input">排序范围</label>
                 <el-autocomplete
+                    id="sort-root-path-input"
                     v-model="sortRootPath"
                     :fetch-suggestions="queryRootPaths"
                     placeholder="留空对整个数据排序，或输入路径如：[*].items"
@@ -746,8 +747,9 @@
             </div>
 
             <div class="form-item">
-                <label class="form-label"> 排序字段 </label>
+                <label class="form-label" for="sort-field-name-input"> 排序字段 </label>
                 <el-autocomplete
+                    id="sort-field-name-input"
                     v-model="sortFieldName"
                     :fetch-suggestions="queryFieldPathsFromScope"
                     :trigger-on-focus="true"

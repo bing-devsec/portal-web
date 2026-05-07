@@ -132,14 +132,14 @@
 
                     <div class="form-item">
                         <div class="form-label-row">
-                            <label class="form-label">客户端证书（可选）</label>
+                            <span class="form-label">客户端证书（可选）</span>
                             <el-button size="small" type="primary" plain @click="showCertUpload = !showCertUpload">
                                 {{ showCertUpload ? '隐藏证书配置' : '添加证书配置' }}
                             </el-button>
                         </div>
                         <div v-if="showCertUpload" class="cert-upload">
                             <div class="cert-item">
-                                <label class="cert-label">证书文件（.pem）：</label>
+                                <span class="cert-label">证书文件（.pem）：</span>
                                 <el-upload :auto-upload="false" :show-file-list="false" :on-change="handleCertUpload" accept=".pem,.crt">
                                     <el-button size="small" type="primary">上传证书</el-button>
                                 </el-upload>
@@ -147,7 +147,7 @@
                                 <el-button v-if="fetchJsonCert" size="small" type="danger" @click="clearCert" class="cert-clear-btn"> 清除 </el-button>
                             </div>
                             <div class="cert-item">
-                                <label class="cert-label">私钥文件（.pem）：</label>
+                                <span class="cert-label">私钥文件（.pem）：</span>
                                 <el-upload :auto-upload="false" :show-file-list="false" :on-change="handleKeyUpload" accept=".pem,.key">
                                     <el-button size="small" type="primary">上传私钥</el-button>
                                 </el-upload>
