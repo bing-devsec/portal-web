@@ -883,6 +883,7 @@ const MAX_LINES = 5_000_000; // 300 万到 500 万行为仅展示模式，超过
 let isInitializing = true; // 标记是否正在初始化，避免初始化时触发保存
 const outputType = ref<'json' | 'yaml' | 'toml' | 'xml' | 'go' | 'text'>('json'); // 当前输出类型的状态
 const maxLevel = ref(0); // 最大层级
+const inputContentLanguage = ref<EditorContentLanguage>('json');
 const maxFoldableLevel = ref<number | null>(null); // 编辑器当前实际可折叠的最大层级
 const selectedLevel = ref<number>(0); // 当前选中的层级
 const isResizing = ref(false); // 是否正在调整宽度控制
@@ -3306,6 +3307,14 @@ const ensureCollapseFeatureAvailable = () => {
 
 const shouldPrecomputeFoldingInfo = () => canUseCollapseFeature.value;
 
+type EditorContentLanguage = 'json' | 'yaml' | 'toml' | 'xml' | 'html' | 'css' | 'plaintext';
+
+const nonJsonIndentationFoldingLanguages = new Set<EditorContentLanguage>(['yaml', 'toml', 'xml', 'html', 'css', 'plaintext']);
+
+const getFoldingStrategyForLanguage = (language: string) => {
+    return nonJsonIndentationFoldingLanguages.has(language as EditorContentLanguage) ? ('indentation' as const) : ('auto' as const);
+};
+
 // 获取编辑器配置
 const getEditorOptions = (
     size: number,
@@ -3352,6 +3361,7 @@ const getEditorOptions = (
 
     // 折叠配置
     folding: true, // 启用代码折叠功能（这是基础配置，必须开启）
+    foldingStrategy: getFoldingStrategyForLanguage(language),
     ...getLargeFileOptions(enableLargeFileFolding, lineCount),
 
     // 编辑器配置
@@ -3530,6 +3540,73 @@ const refreshMaxFoldableLevel = async (language: string = 'json') => {
     const resolvedLevel = await resolveMaxFoldableLevel(outputEditor);
     if (!outputEditor) return;
     maxFoldableLevel.value = resolvedLevel;
+};
+
+const detectInputLanguage = (value: string): EditorContentLanguage => {
+    const trimmed = value.trim();
+    if (!trimmed) return 'json';
+
+    const sample = trimmed.slice(0, 20000);
+    const sampleLines = sample.split('\n').slice(0, 80);
+    const joinedSample = sampleLines.join('\n');
+
+    if (sample.startsWith('<?xml') || (/^<[^!][^>]*>/.test(sample) && /<\/[\w:-]+>/.test(sample) && !/<html[\s>]/i.test(sample))) {
+        return 'xml';
+    }
+
+    if (/<!doctype\s+html/i.test(sample) || /<(html|head|body|div|span|script|style|main|section|article|template)[\s>]/i.test(sample)) {
+        return 'html';
+    }
+
+    if ((/@[a-z-]+\b/i.test(sample) || /[.#]?[a-zA-Z][^{\n]*\{/.test(sample)) && /[a-z-]+\s*:\s*[^;\n{}]+;/.test(sample)) {
+        return 'css';
+    }
+
+    const looksLikeJson = /^[\[{]/.test(trimmed) || /^(true|false|null|-?\d)/.test(trimmed);
+    if (looksLikeJson) {
+        return 'json';
+    }
+
+    if (sampleLines.some(line => /^\s*(\[\[?[^\]\n]+\]?\]|[A-Za-z0-9_.-]+\s*=\s*.+)$/.test(line.trim()))) {
+        return 'toml';
+    }
+
+    if (sampleLines.some(line => /^\s*-\s+/.test(line)) || sampleLines.some(line => /^\s*['"]?[A-Za-z0-9_.-]+['"]?\s*:\s*/.test(line))) {
+        return 'yaml';
+    }
+
+    if (joinedSample.includes('<') && joinedSample.includes('>')) {
+        return 'xml';
+    }
+
+    return 'plaintext';
+};
+
+const updateInputEditorConfig = (language?: EditorContentLanguage) => {
+    if (!inputEditor) return;
+
+    const resolvedLanguage = language ?? detectInputLanguage(inputEditor.getValue() || '');
+    inputContentLanguage.value = resolvedLanguage;
+
+    const model = inputEditor.getModel();
+    if (model) {
+        monaco.editor.setModelLanguage(model, resolvedLanguage);
+        monaco.editor.setTheme(resolvedLanguage === 'toml' ? 'toml-theme' : 'vs');
+        model.updateOptions({
+            tabSize: indentSize.value,
+            indentSize: indentSize.value,
+            insertSpaces: true,
+        });
+
+        if (resolvedLanguage !== 'json') {
+            monaco.editor.setModelMarkers(model, 'json', []);
+            inputEditorErrors.value = [];
+        }
+    }
+
+    inputEditor.updateOptions(getEditorOptions(indentSize.value, false, resolvedLanguage, true, getEditorLineCount(inputEditor)));
+    updateLineNumberWidth(inputEditor);
+    updateEditorHeight(inputEditor);
 };
 
 // 更新输出编辑器配置（包括模型选项，确保缩进指南线正确显示）
@@ -4778,6 +4855,68 @@ const initializeMonacoEnvironment = () => {
         },
     });
 
+    // 注册 HTML 语言高亮（复用标签/属性规则）
+    monaco.languages.register({ id: 'html' });
+    monaco.languages.setMonarchTokensProvider('html', {
+        tokenizer: {
+            root: [
+                [/<!--/, 'comment', '@comment'],
+                [/<\!DOCTYPE/, 'metatag', '@doctype'],
+                [/<\/?[\w:-]+/, 'tag', '@tag'],
+                [/[^<]+/, ''],
+            ],
+            comment: [
+                [/-->/, 'comment', '@pop'],
+                [/[^-]+/, 'comment'],
+                [/-/, 'comment'],
+            ],
+            doctype: [
+                [/>/, 'metatag', '@pop'],
+                [/[^>]+/, 'metatag'],
+            ],
+            tag: [
+                [/\s+/, 'white'],
+                [/[\w:-]+(?=\s*=)/, 'attribute.name'],
+                [/=/, 'delimiter'],
+                [/"[^"]*"/, 'attribute.value'],
+                [/'[^']*'/, 'attribute.value'],
+                [/\/?>/, 'tag', '@pop'],
+            ],
+        },
+    });
+
+    // 注册 CSS 语言高亮（Monarch tokenizer）
+    monaco.languages.register({ id: 'css' });
+    monaco.languages.setMonarchTokensProvider('css', {
+        tokenizer: {
+            root: [
+                [/\s+/, 'white'],
+                [/\/\*/, 'comment', '@comment'],
+                [/@[a-z-]+/i, 'keyword'],
+                [/[.#]?[a-zA-Z_][\w-]*(?=\s*[\{,])/, 'tag'],
+                [/\{/, 'delimiter.bracket', '@rulebody'],
+            ],
+            comment: [
+                [/\*\//, 'comment', '@pop'],
+                [/[^*]+/, 'comment'],
+                [/\*/, 'comment'],
+            ],
+            rulebody: [
+                [/\s+/, 'white'],
+                [/\/\*/, 'comment', '@comment'],
+                [/[a-z-]+(?=\s*:)/i, 'attribute.name'],
+                [/:/, 'delimiter'],
+                [/"[^"]*"/, 'string'],
+                [/'[^']*'/, 'string'],
+                [/#{0,1}[0-9a-fA-F]{3,8}\b/, 'number.hex'],
+                [/-?\d+(\.\d+)?(px|em|rem|%|vh|vw|s|ms|deg)?\b/, 'number'],
+                [/[a-z-]+\(/i, 'keyword'],
+                [/;/, 'delimiter'],
+                [/\}/, 'delimiter.bracket', '@pop'],
+            ],
+        },
+    });
+
     // 注册 TOML 语言高亮（Monarch tokenizer）
     monaco.languages.register({ id: 'toml' });
     monaco.languages.setMonarchTokensProvider('toml', {
@@ -4835,7 +4974,7 @@ const initializeMonacoEnvironment = () => {
 const createInputEditor = () => {
     if (!inputEditorContainer.value) return;
 
-    const inputOptions = getEditorOptions(indentSize.value, false, 'json', true, 1);
+    const inputOptions = getEditorOptions(indentSize.value, false, inputContentLanguage.value, true, 1);
     inputEditor = monaco.editor.create(inputEditorContainer.value, inputOptions);
     currentInputLineCount.value = getEditorLineCount(inputEditor);
 
@@ -4942,6 +5081,7 @@ const configureInputEditor: () => void = () => {
 
     // 初始化时不加载数据，保持空白
     inputEditor.setValue('');
+    updateInputEditorConfig('json');
     maxLevel.value = 0;
     selectedLevel.value = 0;
 
@@ -5067,6 +5207,11 @@ const configureInputEditor: () => void = () => {
         const lineCount = getEditorLineCount(inputEditor);
         const oldLineCount = prevInputLineCount;
         currentInputLineCount.value = lineCount;
+        const value = inputEditor?.getValue() || '';
+        const detectedLanguage = detectInputLanguage(value);
+        if (detectedLanguage !== inputContentLanguage.value) {
+            updateInputEditorConfig(detectedLanguage);
+        }
 
         const isFullReplace = e.changes.some(change => {
             const replacedLines = change.range.endLineNumber - change.range.startLineNumber + 1;
@@ -5083,10 +5228,14 @@ const configureInputEditor: () => void = () => {
 
         // 使用防抖更新行号宽度，避免频繁调用
         debouncedUpdateLineNumberWidth(inputEditor);
-
-        const value = inputEditor?.getValue() || '';
         if (value.trim()) {
             const cleanedContent = value.replace(/[\u0000-\u0008\u000B-\u000C\u000E-\u0019]+/g, '');
+
+            if (detectedLanguage !== 'json') {
+                maxLevel.value = 0;
+                selectedLevel.value = 0;
+                return;
+            }
 
             // 优先使用 Monaco model 的行数统计，避免重复扫描超大字符串
             if (lineCount > MAX_LINES) {
@@ -8011,12 +8160,12 @@ const handleDataMaskingApply = (maskedJson: string) => {
                 inputEditor.pushUndoStop();
 
                 // 更新编辑器配置
-                monaco.editor.setModelLanguage(model, 'json');
                 // 使用用户设置的缩进大小
                 model.updateOptions({ tabSize: indentSize.value, indentSize: indentSize.value, insertSpaces: true });
             }
             // 同时更新编辑器选项
             inputEditor.updateOptions({ tabSize: indentSize.value, indentSize: indentSize.value } as any);
+            updateInputEditorConfig('json');
 
             // 更新行号和高度
             updateLineNumberWidth(inputEditor);
@@ -8333,12 +8482,12 @@ const handleLoadSharedJson = (jsonData: string) => {
             // 更新编辑器配置
             const model = inputEditor.getModel();
             if (model) {
-                monaco.editor.setModelLanguage(model, 'json');
                 // 使用用户设置的缩进大小
                 model.updateOptions({ tabSize: indentSize.value, indentSize: indentSize.value, insertSpaces: true });
             }
             // 同时更新编辑器选项
             inputEditor.updateOptions({ tabSize: indentSize.value, indentSize: indentSize.value } as any);
+            updateInputEditorConfig('json');
 
             // 更新行号和高度
             updateLineNumberWidth(inputEditor);
@@ -8921,7 +9070,6 @@ const loadSharedDataFromUrl = async () => {
                     // 更新编辑器配置，确保使用2空格缩进
                     const model = inputEditor.getModel();
                     if (model) {
-                        monaco.editor.setModelLanguage(model, 'json');
                         model.updateOptions({
                             tabSize: indentSize.value,
                             indentSize: indentSize.value,
@@ -8930,6 +9078,7 @@ const loadSharedDataFromUrl = async () => {
                     }
                     // 同时更新编辑器选项
                     inputEditor.updateOptions({ tabSize: indentSize.value, indentSize: indentSize.value } as any);
+                    updateInputEditorConfig('json');
 
                     // 更新行号和高度
                     updateLineNumberWidth(inputEditor);
@@ -11135,7 +11284,7 @@ const clearInput = (showToast: boolean = true) => {
                 // 延迟后再设置回JSON语言
                 setTimeout(() => {
                     if (model && !model.isDisposed()) {
-                        monaco.editor.setModelLanguage(model, 'json');
+                        updateInputEditorConfig('json');
                     }
                 }, 100);
             }
