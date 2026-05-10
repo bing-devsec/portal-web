@@ -3601,10 +3601,14 @@ const updateInputEditorConfig = (language?: EditorContentLanguage) => {
         if (resolvedLanguage !== 'json') {
             monaco.editor.setModelMarkers(model, 'json', []);
             inputEditorErrors.value = [];
+            currentErrorIndex.value = -1;
+        } else {
+            configureJsonSchemaSupport();
         }
     }
 
     inputEditor.updateOptions(getEditorOptions(indentSize.value, false, resolvedLanguage, true, getEditorLineCount(inputEditor)));
+    refreshInputEditorErrors();
     updateLineNumberWidth(inputEditor);
     updateEditorHeight(inputEditor);
 };
@@ -4640,6 +4644,7 @@ watch(stickyScroll, value => {
 // 监听是否启用语法检查
 watch(enableDiagnostics, () => {
     configureJsonSchemaSupport();
+    refreshInputEditorErrors();
 });
 
 watch(enableDiagnostics, value => {
@@ -4666,7 +4671,7 @@ let inputMarkersListener: monaco.IDisposable | null = null;
 
 const refreshInputEditorErrors = () => {
     const model = inputEditor?.getModel();
-    if (!model || !enableDiagnostics.value) {
+    if (!model || !enableDiagnostics.value || model.getLanguageId() !== 'json') {
         inputEditorErrors.value = [];
         currentErrorIndex.value = -1;
         return;
@@ -5038,10 +5043,13 @@ const createOutputEditor = () => {
 // 配置JSON Schema支持
 const configureJsonSchemaSupport = () => {
     const model = inputEditor?.getModel();
+    const isJsonModel = model?.getLanguageId() === 'json';
 
     // 关闭语法检查时，需要手动清除已有的 markers，否则红色波浪线不会消失
-    if (!enableDiagnostics.value && model) {
+    if ((!enableDiagnostics.value || !isJsonModel) && model) {
         monaco.editor.setModelMarkers(model, 'json', []);
+        inputEditorErrors.value = [];
+        currentErrorIndex.value = -1;
     }
 
     // 配置JSON语言服务，提供更好的自动补全
@@ -5059,7 +5067,7 @@ const configureJsonSchemaSupport = () => {
     });
 
     // 开启语法检查时，强制语言服务重新验证，清除之前关闭时遗留的 markers
-    if (enableDiagnostics.value && model) {
+    if (enableDiagnostics.value && model && isJsonModel) {
         const currentValue = model.getValue();
         model.setValue(''); // 强制触发重新验证
         model.setValue(currentValue);
