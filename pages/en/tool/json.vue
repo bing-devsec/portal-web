@@ -1,23 +1,21 @@
 <template>
     <div class="json-tool-page" :style="firstScreenStyle">
-        <!-- SSR 渲染的 SEO 头部，爬虫直接可见 -->
         <header ref="heroRef" class="seo-hero">
-            <h1 class="seo-h1">JSON 在线格式化工具 - 免费支持 JSON 压缩、Diff 对比、转 YAML / Go 结构体</h1>
+            <h1 class="seo-h1">JSON Formatter Online - Free JSON Minifier, Diff &amp; Converter to YAML / Go</h1>
             <p class="seo-lead">
-                免费在线 JSON 工具，支持
-                <strong>JSON 格式化</strong>、<strong>压缩</strong>、<strong>转义 / 去除转义</strong>、<strong>排序</strong>，
-                <strong>JSON 转 YAML / TOML / XML / Go 结构体</strong>，
-                以及 <strong>Diff 对比</strong>、<strong>脱敏</strong>、<strong>存档</strong>等功能。
-                核心处理均在浏览器本地完成（获取 JSON 和分享功能除外）。
+                Free online JSON tool that supports
+                <strong>format</strong>, <strong>minify</strong>, <strong>escape / unescape</strong>, <strong>sort</strong>,
+                conversion to <strong>YAML / TOML / XML / Go struct</strong>,
+                plus <strong>diff</strong>, <strong>masking</strong>, and <strong>archive</strong>.
+                Core processing runs entirely in your browser (except for Fetch and Share).
             </p>
         </header>
 
-        <!-- 编辑器主体（client-only，不影响 SEO） -->
         <div class="editor-shell">
             <client-only>
-                <AsyncJsonTool locale="zh" />
+                <AsyncJsonTool locale="en" />
                 <template #fallback>
-                    <div class="editor-skeleton" aria-label="编辑器加载中">
+                    <div class="editor-skeleton" aria-label="Loading editor">
                         <div class="skeleton-toolbar"></div>
                         <div class="skeleton-body"></div>
                     </div>
@@ -25,8 +23,7 @@
             </client-only>
         </div>
 
-        <!-- SSR 渲染的 SEO 内容（特性、教程、FAQ） -->
-        <JsonToolSeoContent locale="zh" />
+        <JsonToolSeoContent locale="en" />
     </div>
 </template>
 
@@ -84,14 +81,14 @@ onBeforeUnmount(() => {
 
 const config = useRuntimeConfig();
 const siteUrl = config.public.siteUrl || 'https://liubing.xyz';
-const pageUrl = `${siteUrl}/tool/json`;
-const enUrl = `${siteUrl}/en/tool/json`;
+const zhUrl = `${siteUrl}/tool/json`;
+const pageUrl = `${siteUrl}/en/tool/json`;
 
-const title = '免费 JSON 在线工具 - 格式化、校验、压缩、转 YAML/XML/Go | 冰冰同学';
+const title = 'Free JSON Tool Online - Format, Validate, Convert to YAML/XML/Go | liubing.xyz';
 const description =
-    '免费在线 JSON 工具，支持 JSON 格式化、压缩、校验、排序，JSON 转 YAML/TOML/XML/Go 结构体，以及 Diff 对比、脱敏。核心处理均在浏览器本地完成（分享功能除外）。支持超大文件（58 万行 / 14 层嵌套）流畅折叠。';
+    'Free online JSON formatter, validator, beautifier, minifier. Convert JSON to YAML, TOML, XML, Go struct, plus diff and masking. Core processing runs entirely in your browser (except for the Share feature). Handles huge JSON files (580K+ lines, 14 levels nesting).';
 const keywords =
-    'JSON 格式化,JSON 在线工具,JSON 校验,JSON 美化,JSON 压缩,JSON 排序,JSON 转 YAML,JSON 转 TOML,JSON 转 XML,JSON 转 Go 结构体,JSON Diff,JSON 脱敏,免费 JSON 工具';
+    'json formatter, json validator, json beautifier, json minifier, json sort, json to yaml, json to toml, json to xml, json to go struct, json diff, free online json tool';
 
 useSeoMeta({
     title,
@@ -101,9 +98,9 @@ useSeoMeta({
     ogDescription: description,
     ogType: 'website',
     ogUrl: pageUrl,
-    ogLocale: 'zh_CN',
-    ogLocaleAlternate: ['en_US'],
-    ogSiteName: '冰冰同学的技术博客',
+    ogLocale: 'en_US',
+    ogLocaleAlternate: ['zh_CN'],
+    ogSiteName: 'liubing.xyz',
     twitterCard: 'summary_large_image',
     twitterTitle: title,
     twitterDescription: description,
@@ -111,29 +108,28 @@ useSeoMeta({
 });
 
 useHead({
-    htmlAttrs: { lang: 'zh-CN' },
+    htmlAttrs: { lang: 'en-US' },
     link: [
         { rel: 'canonical', href: pageUrl },
-        { rel: 'alternate', hreflang: 'zh-CN', href: pageUrl },
-        { rel: 'alternate', hreflang: 'en-US', href: enUrl },
-        { rel: 'alternate', hreflang: 'x-default', href: pageUrl },
+        { rel: 'alternate', hreflang: 'zh-CN', href: zhUrl },
+        { rel: 'alternate', hreflang: 'en-US', href: pageUrl },
+        { rel: 'alternate', hreflang: 'x-default', href: zhUrl },
     ],
     meta: [
         { name: 'applicable-device', content: 'pc,mobile' },
-        { 'http-equiv': 'Cache-Control', content: 'no-transform' },
     ],
     script: [
         {
             type: 'application/ld+json',
-            innerHTML: JSON.stringify(generateJsonToolStructuredData(siteUrl, 'zh')),
+            innerHTML: JSON.stringify(generateJsonToolStructuredData(siteUrl, 'en')),
         },
         {
             type: 'application/ld+json',
-            innerHTML: JSON.stringify(generateJsonToolFaqStructuredData('zh')),
+            innerHTML: JSON.stringify(generateJsonToolFaqStructuredData('en')),
         },
         {
             type: 'application/ld+json',
-            innerHTML: JSON.stringify(generateJsonToolBreadcrumb(siteUrl, 'zh')),
+            innerHTML: JSON.stringify(generateJsonToolBreadcrumb(siteUrl, 'en')),
         },
     ],
 });
@@ -174,7 +170,6 @@ useHead({
 
 .editor-shell {
     width: 100%;
-    /* 首屏 = 视口高 - 顶部导航 - SEO Hero（lead + h1）；min 兜底防止小屏塌陷 */
     height: calc(100dvh - var(--reserved-h, 160px));
     min-height: 480px;
 }

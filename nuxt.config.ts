@@ -24,8 +24,17 @@ export default defineNuxtConfig({
           content:
             "C语言编程,Go语言教程,后端开发实战,网络安全,数据库设计与优化,微服务,系统架构设计,运维",
         },
-        { name: "robots", content: "index,follow" },
+        { name: "robots", content: "index,follow,max-image-preview:large,max-snippet:-1" },
+        // 百度站长平台验证（在 https://ziyuan.baidu.com 验证站点后填入对应 code）
         { name: "baidu-site-verification", content: "" },
+        // Google Search Console 验证（在 https://search.google.com/search-console 验证站点后填入对应 code）
+        { name: "google-site-verification", content: "" },
+        // 360 / 神马 / 必应（如需要可填）
+        { name: "360-site-verification", content: "" },
+        { name: "msvalidate.01", content: "" },
+        // 百度禁止转码，保持原样显示
+        { "http-equiv": "Cache-Control", content: "no-transform" },
+        { name: "applicable-device", content: "pc,mobile" },
         {
           name: "mobile-agent",
           content: "format=html5; url=https://www.liubing.xyz",
@@ -82,7 +91,30 @@ export default defineNuxtConfig({
         siteUrl: 'https://liubing.xyz',
         cacheMaxAgeSeconds: 6 * 60 * 60,
         autoLastmod: true,
-        xsl: true,
+        xsl: '/__sitemap__/style.xsl',
+        // 显式注册工具页的双语 URL + hreflang 交叉引用，利于 Google 多语言收录
+        urls: [
+          {
+            loc: '/tool/json',
+            changefreq: 'weekly',
+            priority: 0.9,
+            alternatives: [
+              { hreflang: 'zh-CN', href: 'https://liubing.xyz/tool/json' },
+              { hreflang: 'en-US', href: 'https://liubing.xyz/en/tool/json' },
+              { hreflang: 'x-default', href: 'https://liubing.xyz/tool/json' },
+            ],
+          },
+          {
+            loc: '/en/tool/json',
+            changefreq: 'weekly',
+            priority: 0.9,
+            alternatives: [
+              { hreflang: 'zh-CN', href: 'https://liubing.xyz/tool/json' },
+              { hreflang: 'en-US', href: 'https://liubing.xyz/en/tool/json' },
+              { hreflang: 'x-default', href: 'https://liubing.xyz/tool/json' },
+            ],
+          },
+        ],
         robots: [
           {
             UserAgent: "*",

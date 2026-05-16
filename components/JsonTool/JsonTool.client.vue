@@ -6,8 +6,8 @@
                 <WarningFilled />
             </el-icon>
             <div class="warning-text">
-                <p>当前屏幕尺寸过小，无法提供良好的使用体验</p>
-                <p>请使用屏幕宽度大于 900px 的设备访问此工具</p>
+                <p>{{ settingsTxt.screenWarn1 }}</p>
+                <p>{{ settingsTxt.screenWarn2 }}</p>
             </div>
         </div>
 
@@ -30,15 +30,15 @@
                         <el-button-group>
                             <el-button type="primary" @click="goToPrevDiff" :disabled="diffCount === 0">
                                 <el-icon><ArrowLeft /></el-icon>
-                                <span>上一处</span>
+                                <span>{{ settingsTxt.diffPrev }}</span>
                             </el-button>
                             <el-button type="primary" @click="goToNextDiff" :disabled="diffCount === 0">
-                                <span>下一处</span>
+                                <span>{{ settingsTxt.diffNext }}</span>
                                 <el-icon><ArrowRight /></el-icon>
                             </el-button>
                         </el-button-group>
                     </div>
-                    <el-button type="info" @click="exitDiffMode">退出对比</el-button>
+                    <el-button type="info" @click="exitDiffMode">{{ settingsTxt.diffExit }}</el-button>
                 </div>
 
                 <!-- 普通模式工具栏 -->
@@ -52,39 +52,46 @@
                     <!-- 演示模式下，除"设置"按钮外的所有功能暂时禁用，避免用户误操作打断引导流程 -->
                     <div class="toolbar-actions" :class="{ 'demo-locked-area': isDemoMode }">
                         <el-button-group>
-                            <el-button v-if="buttonVisibility.fetchJson" type="primary" @click="openFetchJsonDialog">获取JSON</el-button>
-                            <el-button v-if="buttonVisibility.format" type="primary" :disabled="!canUseProcessingFeatures" @click="formatJSON">格式化</el-button>
-                            <el-button v-if="buttonVisibility.compress" type="primary" :disabled="!canUseProcessingFeatures" @click="compressJSON">压缩</el-button>
-                            <el-button v-if="buttonVisibility.escape" type="primary" :disabled="!canUseProcessingFeatures" @click="compressAndEscapeJSON">转义</el-button>
-                            <el-button v-if="buttonVisibility.unescape" type="primary" :disabled="!canUseProcessingFeatures" @click="handleEscapeCommand('unescape')">去除转义</el-button>
-                            <el-button v-if="buttonVisibility.masking" type="primary" :disabled="!canUseProcessingFeatures" @click="openDataMaskingDialog">脱敏</el-button>
-                            <el-button v-if="buttonVisibility.sort" type="primary" :disabled="!canUseProcessingFeatures" @click="handleAdvancedCommand('sort')">排序</el-button>
-                            <el-button v-if="buttonVisibility.archive" type="primary" :disabled="!canUseProcessingFeatures" @click="handleSaveArchive">存档</el-button>
-                            <el-button v-if="buttonVisibility.diff" type="primary" @click="enterDiffMode">对比</el-button>
-                            <el-button v-if="buttonVisibility.share" type="primary" :disabled="!canUseProcessingFeatures" @click="openShareDialog">分享</el-button>
+                            <el-button v-if="buttonVisibility.fetchJson" type="primary" @click="openFetchJsonDialog">{{ settingsTxt.toolFetchJson }}</el-button>
+                            <el-button v-if="buttonVisibility.format" type="primary" :disabled="!canUseProcessingFeatures" @click="formatJSON">{{ settingsTxt.toolFormat }}</el-button>
+                            <el-button v-if="buttonVisibility.compress" type="primary" :disabled="!canUseProcessingFeatures" @click="compressJSON">{{ settingsTxt.toolCompress }}</el-button>
+                            <el-button v-if="buttonVisibility.escape" type="primary" :disabled="!canUseProcessingFeatures" @click="compressAndEscapeJSON">{{ settingsTxt.toolEscape }}</el-button>
+                            <el-button v-if="buttonVisibility.unescape" type="primary" :disabled="!canUseProcessingFeatures" @click="handleEscapeCommand('unescape')">{{ settingsTxt.toolUnescape }}</el-button>
+                            <el-button v-if="buttonVisibility.masking" type="primary" :disabled="!canUseProcessingFeatures" @click="openDataMaskingDialog">{{ settingsTxt.toolMasking }}</el-button>
+                            <el-button v-if="buttonVisibility.sort" type="primary" :disabled="!canUseProcessingFeatures" @click="handleAdvancedCommand('sort')">{{ settingsTxt.toolSort }}</el-button>
+                            <el-button v-if="buttonVisibility.archive" type="primary" :disabled="!canUseProcessingFeatures" @click="handleSaveArchive">{{ settingsTxt.toolArchive }}</el-button>
+                            <el-button v-if="buttonVisibility.diff" type="primary" @click="enterDiffMode">{{ settingsTxt.toolDiff }}</el-button>
+                            <el-button v-if="buttonVisibility.share" type="primary" :disabled="!canUseProcessingFeatures" @click="openShareDialog">{{ settingsTxt.toolShare }}</el-button>
                         </el-button-group>
 
                         <el-dropdown v-if="buttonVisibility.dataConvert" trigger="click" @command="handleConvert">
                             <el-button type="primary" :disabled="!canUseProcessingFeatures">
-                                数据转换
+                                {{ settingsTxt.toolDataConvert }}
                                 <el-icon class="el-icon--right">
                                     <ArrowDown />
                                 </el-icon>
                             </el-button>
                             <template #dropdown>
                                 <el-dropdown-menu>
-                                    <el-dropdown-item command="yaml">JSON 转 YAML</el-dropdown-item>
-                                    <el-dropdown-item command="toml">JSON 转 TOML</el-dropdown-item>
-                                    <el-dropdown-item command="xml">JSON 转 XML</el-dropdown-item>
-                                    <el-dropdown-item command="go">JSON 转 Go 结构体</el-dropdown-item>
-                                    <el-dropdown-item command="cookie">Cookie 转 JSON</el-dropdown-item>
+                                    <el-dropdown-item command="yaml">{{ settingsTxt.convertYaml }}</el-dropdown-item>
+                                    <el-dropdown-item command="toml">{{ settingsTxt.convertToml }}</el-dropdown-item>
+                                    <el-dropdown-item command="xml">{{ settingsTxt.convertXml }}</el-dropdown-item>
+                                    <el-dropdown-item command="go">{{ settingsTxt.convertGo }}</el-dropdown-item>
+                                    <el-dropdown-item command="cookie">{{ settingsTxt.convertCookie }}</el-dropdown-item>
                                 </el-dropdown-menu>
                             </template>
                         </el-dropdown>
 
                         <div v-if="buttonVisibility.collapse" class="collapse-control">
-                            <el-select v-model="selectedLevel" placeholder="层级" class="level-select" fit-input-width :disabled="maxLevel === 0 || !canUseCollapseFeature">
-                                <el-option v-if="maxLevel === 0" label="第0层" :value="0" :disabled="true" />
+                            <el-select
+                                v-model="selectedLevel"
+                                fit-input-width
+                                :placeholder="settingsTxt.levelPlaceholder"
+                                class="level-select"
+                                popper-class="level-select-dropdown"
+                                :disabled="maxLevel === 0 || !canUseCollapseFeature"
+                            >
+                                <el-option v-if="maxLevel === 0" :label="settingsTxt.levelLabel(0)" :value="0" :disabled="true" />
                                 <el-option
                                     v-for="n in maxLevel"
                                     :key="n"
@@ -93,11 +100,11 @@
                                     :disabled="isFoldLevelDisabled(n)"
                                 />
                             </el-select>
-                            <el-button type="success" @click="handleLevelAction" :disabled="maxLevel === 0 || !canUseCollapseFeature || isSelectedFoldLevelDisabled">收缩</el-button>
+                            <el-button type="success" @click="handleLevelAction" :disabled="maxLevel === 0 || !canUseCollapseFeature || isSelectedFoldLevelDisabled">{{ settingsTxt.collapse }}</el-button>
                         </div>
 
                         <el-button v-if="buttonVisibility.fullscreen" :type="isFullscreen ? 'info' : 'warning'" class="fullscreen-btn" @click="toggleFullscreen">
-                            {{ isFullscreen ? '退出全屏' : '全屏' }}
+                            {{ isFullscreen ? settingsTxt.exitFullscreen : settingsTxt.enterFullscreen }}
                         </el-button>
                     </div>
                 </div>
@@ -116,24 +123,24 @@
                     <div class="diff-cell diff-cell-left diff-header-cell">
                         <div class="panel-actions diff-panel-actions">
                             <el-button @click="diffFormatJSON('left')" size="small" type="primary" plain>
-                                <span>格式化</span>
+                                <span>{{ settingsTxt.diffPanelFormat }}</span>
                             </el-button>
                             <el-button @click="diffSortJSON('left')" size="small" type="primary" plain>
-                                <span>排序</span>
+                                <span>{{ settingsTxt.diffPanelSort }}</span>
                             </el-button>
                             <el-button @click="diffCopy('left')" size="small" type="success" plain>
-                                <span>复制</span>
+                                <span>{{ settingsTxt.diffPanelCopy }}</span>
                             </el-button>
                             <el-button @click="diffClear('left')" size="small" type="danger" plain>
-                                <span>清空</span>
+                                <span>{{ settingsTxt.diffPanelClear }}</span>
                             </el-button>
                             <el-upload class="upload-json" accept=".json" :auto-upload="false" :show-file-list="false" :on-change="diffHandleUpload('left')">
                                 <el-button size="small" type="info" plain>
-                                    <span>上传</span>
+                                    <span>{{ settingsTxt.diffPanelUpload }}</span>
                                 </el-button>
                             </el-upload>
                             <el-button @click="diffDownload('left')" size="small" type="info" plain>
-                                <span>下载</span>
+                                <span>{{ settingsTxt.diffPanelDownload }}</span>
                             </el-button>
                         </div>
                     </div>
@@ -141,24 +148,24 @@
                     <div class="diff-cell diff-cell-right diff-header-cell">
                         <div class="panel-actions diff-panel-actions">
                             <el-button @click="diffFormatJSON('right')" size="small" type="primary" plain>
-                                <span>格式化</span>
+                                <span>{{ settingsTxt.diffPanelFormat }}</span>
                             </el-button>
                             <el-button @click="diffSortJSON('right')" size="small" type="primary" plain>
-                                <span>排序</span>
+                                <span>{{ settingsTxt.diffPanelSort }}</span>
                             </el-button>
                             <el-button @click="diffCopy('right')" size="small" type="success" plain>
-                                <span>复制</span>
+                                <span>{{ settingsTxt.diffPanelCopy }}</span>
                             </el-button>
                             <el-button @click="diffClear('right')" size="small" type="danger" plain>
-                                <span>清空</span>
+                                <span>{{ settingsTxt.diffPanelClear }}</span>
                             </el-button>
                             <el-upload class="upload-json" accept=".json" :auto-upload="false" :show-file-list="false" :on-change="diffHandleUpload('right')">
                                 <el-button size="small" type="info" plain>
-                                    <span>上传</span>
+                                    <span>{{ settingsTxt.diffPanelUpload }}</span>
                                 </el-button>
                             </el-upload>
                             <el-button @click="diffDownload('right')" size="small" type="info" plain>
-                                <span>下载</span>
+                                <span>{{ settingsTxt.diffPanelDownload }}</span>
                             </el-button>
                         </div>
                     </div>
@@ -177,8 +184,8 @@
                             :class="{ 'is-active': btn.changeIndex === activeDiffIndex }"
                             :style="{ top: btn.top + 'px' }"
                         >
-                            <button class="diff-sync-btn diff-sync-btn-left" @click="handleDiffSync(btn.changeIndex, 'left')" title="右 → 左">←</button>
-                            <button class="diff-sync-btn diff-sync-btn-right" @click="handleDiffSync(btn.changeIndex, 'right')" title="左 → 右">→</button>
+                            <button class="diff-sync-btn diff-sync-btn-left" @click="handleDiffSync(btn.changeIndex, 'left')" :title="settingsTxt.diffSyncTitleLeft">←</button>
+                            <button class="diff-sync-btn diff-sync-btn-right" @click="handleDiffSync(btn.changeIndex, 'right')" :title="settingsTxt.diffSyncTitleRight">→</button>
                         </div>
                     </div>
                     <div class="diff-cell diff-cell-right diff-editor-host">
@@ -210,7 +217,7 @@
                         :style="{ width: archiveSidebarWidth + 'px' }"
                     >
                         <div class="archive-sidebar-header" @dblclick="toggleArchiveSidebar">
-                            <span class="archive-sidebar-title">存档</span>
+                            <span class="archive-sidebar-title">{{ settingsTxt.archiveTitle }}</span>
                         </div>
                         <div class="archive-list" v-if="archives.length" ref="archiveListRef" @dragover="onArchiveListDragOver" @drop="onArchiveListDrop">
                             <template v-for="(item, idx) in archives" :key="item.id">
@@ -238,7 +245,7 @@
                                         <el-icon class="archive-action-icon" @click.stop="handleRenameArchive(item)">
                                             <Edit />
                                         </el-icon>
-                                        <el-icon class="archive-action-icon" @click.stop="handleRefreshArchive(item)" title="更新存档内容">
+                                        <el-icon class="archive-action-icon" @click.stop="handleRefreshArchive(item)" :title="settingsTxt.archiveRefreshTip">
                                             <Refresh />
                                         </el-icon>
                                         <el-icon class="archive-action-icon" @click.stop="handleDeleteArchive(item)">
@@ -249,7 +256,7 @@
                             </template>
                             <div v-if="dropIndicatorIndex === archives.length" class="archive-drop-indicator"></div>
                         </div>
-                        <div v-else-if="archiveSidebarWidth > calculateArchiveMinWidth()" class="archive-empty">暂无存档</div>
+                        <div v-else-if="archiveSidebarWidth > calculateArchiveMinWidth()" class="archive-empty">{{ settingsTxt.archiveEmpty }}</div>
                     </div>
                     <!-- 分割线 -->
                     <div class="archive-resizer" @mousedown="startArchiveResize" @touchstart.passive="startArchiveResize"></div>
@@ -258,7 +265,7 @@
                 <div class="editor-panel editor-panel-input" :style="{ width: `${leftPanelWidth}%` }">
                     <div class="panel-header" @dblclick="toggleInputMaximize">
                         <div class="panel-title">
-                            <span>编辑区域</span>
+                            <span>{{ settingsTxt.panelEditor }}</span>
                         </div>
                         <div
                             class="panel-actions"
@@ -269,14 +276,14 @@
                                 <el-icon>
                                     <Delete />
                                 </el-icon>
-                                <span>清空</span>
+                                <span>{{ settingsTxt.panelClear }}</span>
                             </el-button>
                             <el-upload class="upload-json" accept=".json" :auto-upload="false" :show-file-list="false" :on-change="handleFileUpload">
                                 <el-button size="small" type="primary" plain>
                                     <el-icon>
                                         <Upload />
                                     </el-icon>
-                                    <span>上传</span>
+                                    <span>{{ settingsTxt.panelUpload }}</span>
                                 </el-button>
                             </el-upload>
                         </div>
@@ -287,20 +294,20 @@
                                 <el-icon class="loading-icon">
                                     <Loading />
                                 </el-icon>
-                                <span>加载编辑器中...</span>
+                                <span>{{ settingsTxt.editorLoading }}</span>
                             </div>
                             <div ref="inputEditorContainer" class="monaco-editor-instance"></div>
                         </div>
                         <!-- 编辑区域状态栏 -->
                         <div class="editor-status-bar" v-if="inputEditorStatus || inputEditorErrors.length > 0">
                             <span v-if="inputEditorStatus" class="status-text">{{ inputEditorStatus }}</span>
-                            <div v-if="inputEditorErrors.length > 0" class="error-nav-inline" role="group" aria-label="错误导航">
+                            <div v-if="inputEditorErrors.length > 0" class="error-nav-inline" role="group" :aria-label="settingsTxt.errorNavGroup">
                                 <el-icon class="error-nav-icon error-warning-icon"><WarningFilled /></el-icon>
                                 <span class="error-nav-count">{{ inputEditorErrors.length }}</span>
-                                <button type="button" class="error-nav-btn" @click="goToPrevError" aria-label="上一个错误" title="上一个错误">
+                                <button type="button" class="error-nav-btn" @click="goToPrevError" :aria-label="settingsTxt.errorNavPrev" :title="settingsTxt.errorNavPrev">
                                     <el-icon class="error-nav-icon error-nav-arrow"><ArrowUp /></el-icon>
                                 </button>
-                                <button type="button" class="error-nav-btn" @click="goToNextError" aria-label="下一个错误" title="下一个错误">
+                                <button type="button" class="error-nav-btn" @click="goToNextError" :aria-label="settingsTxt.errorNavNext" :title="settingsTxt.errorNavNext">
                                     <el-icon class="error-nav-icon error-nav-arrow"><ArrowDown /></el-icon>
                                 </button>
                             </div>
@@ -315,7 +322,7 @@
                     @mousedown="startResize"
                     @touchstart.passive="startResize"
                 >
-                    <el-button class="transfer-button" type="primary" circle :disabled="isDemoMode" @click.stop="transferToInput" aria-label="转移到输入">
+                    <el-button class="transfer-button" type="primary" circle :disabled="isDemoMode" @click.stop="transferToInput" :aria-label="settingsTxt.transferToInput">
                         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-hidden="true" focusable="false">
                             <path d="M10 18L4 12L10 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
                             <path d="M4 12H20" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
@@ -326,7 +333,7 @@
                 <div class="editor-panel editor-panel-output" :style="{ width: `${100 - leftPanelWidth}%` }">
                     <div class="panel-header" @dblclick="toggleOutputMaximize">
                         <div class="panel-title">
-                            <span>预览区域</span>
+                            <span>{{ settingsTxt.panelPreview }}</span>
                         </div>
                         <div
                             class="panel-actions"
@@ -337,13 +344,13 @@
                                 <el-icon>
                                     <CopyDocument />
                                 </el-icon>
-                                <span>复制</span>
+                                <span>{{ settingsTxt.panelCopy }}</span>
                             </el-button>
                             <el-button @click="downloadOutput" size="small" type="info" plain>
                                 <el-icon>
                                     <Download />
                                 </el-icon>
-                                <span>下载</span>
+                                <span>{{ settingsTxt.panelDownload }}</span>
                             </el-button>
                         </div>
                     </div>
@@ -353,7 +360,7 @@
                                 <el-icon class="loading-icon">
                                     <Loading />
                                 </el-icon>
-                                <span>加载编辑器中...</span>
+                                <span>{{ settingsTxt.editorLoading }}</span>
                             </div>
                             <div ref="outputEditorContainer" class="monaco-editor-instance"></div>
                         </div>
@@ -369,13 +376,13 @@
         </div>
 
         <!-- 获取JSON数据对话框 -->
-        <FetchJsonDialog v-model="fetchJsonDialogVisible" :indent-size="2" :input-editor="inputEditor" @json-loaded="handleFetchJsonLoaded" />
+        <FetchJsonDialog v-model="fetchJsonDialogVisible" :indent-size="2" :input-editor="inputEditor" :locale="props.locale" @json-loaded="handleFetchJsonLoaded" />
 
         <!-- 分享对话框 -->
-        <ShareDialog v-model="shareDialogVisible" :json-data="getInputEditorValue()" @loadSharedJson="handleLoadSharedJson" />
+        <ShareDialog v-model="shareDialogVisible" :json-data="getInputEditorValue()" :locale="props.locale" @loadSharedJson="handleLoadSharedJson" />
 
         <!-- 数据脱敏对话框 -->
-        <DataMaskingDialog v-model="dataMaskingDialogVisible" :json-data="getInputEditorValue()" @apply="handleDataMaskingApply" />
+        <DataMaskingDialog v-model="dataMaskingDialogVisible" :json-data="getInputEditorValue()" :locale="props.locale" @apply="handleDataMaskingApply" />
 
         <!-- 存档名称输入对话框 -->
         <ArchiveNameDialog
@@ -401,8 +408,8 @@
         >
             <template #header>
                 <div class="dialog-header-with-close">
-                    <span class="dialog-title-with-close">设置</span>
-                    <button class="demo-close-btn" @click="settingsDialogVisible = false" aria-label="关闭设置弹窗">✕</button>
+                    <span class="dialog-title-with-close">{{ settingsTxt.dialogTitle }}</span>
+                    <button class="demo-close-btn" @click="settingsDialogVisible = false" :aria-label="settingsTxt.closeAria">✕</button>
                 </div>
             </template>
             <div class="settings-dialog-content">
@@ -414,46 +421,46 @@
                                 <el-icon class="column-title-icon">
                                     <Setting />
                                 </el-icon>
-                                <span>通用设置</span>
+                                <span>{{ settingsTxt.sectionGeneral }}</span>
                             </div>
                         </template>
                         <div class="settings-collapse-content">
                             <template v-if="!isDiffMode">
                                 <!-- 菜单栏功能设置 -->
                                 <div class="settings-subsection">
-                                    <div class="settings-subsection-title">菜单栏功能设置</div>
+                                    <div class="settings-subsection-title">{{ settingsTxt.menuVisibilityTitle }}</div>
                                     <div class="button-visibility-list">
                                         <!-- 第一行：数据获取与基础处理 -->
                                         <div class="button-visibility-item" style="grid-column: 1; grid-row: 1">
-                                            <el-checkbox v-model="buttonVisibility.fetchJson">获取JSON</el-checkbox>
+                                            <el-checkbox v-model="buttonVisibility.fetchJson">{{ settingsTxt.btnFetchJson }}</el-checkbox>
                                         </div>
                                         <div class="button-visibility-item" style="grid-column: 2; grid-row: 1">
-                                            <el-checkbox v-model="buttonVisibility.compress">压缩</el-checkbox>
+                                            <el-checkbox v-model="buttonVisibility.compress">{{ settingsTxt.btnCompress }}</el-checkbox>
                                         </div>
                                         <div class="button-visibility-item" style="grid-column: 3; grid-row: 1">
-                                            <el-checkbox v-model="buttonVisibility.escape">转义</el-checkbox>
+                                            <el-checkbox v-model="buttonVisibility.escape">{{ settingsTxt.btnEscape }}</el-checkbox>
                                         </div>
                                         <div class="button-visibility-item" style="grid-column: 4; grid-row: 1">
-                                            <el-checkbox v-model="buttonVisibility.unescape">去除转义</el-checkbox>
+                                            <el-checkbox v-model="buttonVisibility.unescape">{{ settingsTxt.btnUnescape }}</el-checkbox>
                                         </div>
                                         <div class="button-visibility-item" style="grid-column: 5; grid-row: 1">
-                                            <el-checkbox v-model="buttonVisibility.dataConvert">数据转换</el-checkbox>
+                                            <el-checkbox v-model="buttonVisibility.dataConvert">{{ settingsTxt.btnDataConvert }}</el-checkbox>
                                         </div>
                                         <!-- 第二行：数据处理与管理 -->
                                         <div class="button-visibility-item" style="grid-column: 1; grid-row: 2">
-                                            <el-checkbox v-model="buttonVisibility.masking">脱敏</el-checkbox>
+                                            <el-checkbox v-model="buttonVisibility.masking">{{ settingsTxt.btnMasking }}</el-checkbox>
                                         </div>
                                         <div class="button-visibility-item" style="grid-column: 2; grid-row: 2">
-                                            <el-checkbox v-model="buttonVisibility.sort">排序</el-checkbox>
+                                            <el-checkbox v-model="buttonVisibility.sort">{{ settingsTxt.btnSort }}</el-checkbox>
                                         </div>
                                         <div class="button-visibility-item" style="grid-column: 3; grid-row: 2">
-                                            <el-checkbox v-model="buttonVisibility.archive">存档</el-checkbox>
+                                            <el-checkbox v-model="buttonVisibility.archive">{{ settingsTxt.btnArchive }}</el-checkbox>
                                         </div>
                                         <div class="button-visibility-item" style="grid-column: 4; grid-row: 2">
-                                            <el-checkbox v-model="buttonVisibility.diff">对比</el-checkbox>
+                                            <el-checkbox v-model="buttonVisibility.diff">{{ settingsTxt.btnDiff }}</el-checkbox>
                                         </div>
                                         <div class="button-visibility-item" style="grid-column: 5; grid-row: 2">
-                                            <el-checkbox v-model="buttonVisibility.share">分享</el-checkbox>
+                                            <el-checkbox v-model="buttonVisibility.share">{{ settingsTxt.btnShare }}</el-checkbox>
                                         </div>
                                     </div>
                                 </div>
@@ -462,7 +469,7 @@
 
                                 <!-- 字体大小设置 -->
                                 <div class="settings-subsection">
-                                    <div class="settings-subsection-title">字体大小设置</div>
+                                    <div class="settings-subsection-title">{{ settingsTxt.fontSizeTitle }}</div>
                                     <div class="settings-item">
                                         <div class="font-size-control">
                                             <el-slider
@@ -482,7 +489,7 @@
                             </template>
 
                             <div class="settings-subsection">
-                                <div class="settings-subsection-title">缩进空格</div>
+                                <div class="settings-subsection-title">{{ settingsTxt.indentTitle }}</div>
                                 <div class="settings-item">
                                     <el-radio-group v-model="indentSize" class="settings-radio-group">
                                         <el-radio :value="2" border>2</el-radio>
@@ -496,9 +503,9 @@
                             <!-- 字符串换行设置 -->
                             <div class="settings-subsection">
                                 <div class="settings-subsection-title">
-                                    <span class="settings-subsection-title-label">换行显示</span>
+                                    <span class="settings-subsection-title-label">{{ settingsTxt.wordWrapTitle }}</span>
                                     <span class="settings-subsection-title-desc">
-                                        {{ wordWrap ? '超长字符串、超长数字等在一行显示' : '超长字符串、超长数字等换行显示' }}
+                                        {{ wordWrap ? settingsTxt.wordWrapDescOn : settingsTxt.wordWrapDescOff }}
                                     </span>
                                 </div>
                                 <div class="settings-item">
@@ -506,8 +513,8 @@
                                         v-model="wordWrap"
                                         :inactive-value="true"
                                         :active-value="false"
-                                        inactive-text="不换行"
-                                        active-text="换行"
+                                        :inactive-text="settingsTxt.wordWrapOff"
+                                        :active-text="settingsTxt.wordWrapOn"
                                         size="default"
                                         @change="updateWordWrap"
                                     />
@@ -520,16 +527,16 @@
                                 <!-- 默认全屏设置 -->
                                 <div class="settings-subsection">
                                     <div class="settings-subsection-title">
-                                        <span class="settings-subsection-title-label">是否默认全屏</span>
-                                        <span class="settings-subsection-title-desc">开启后页面将在加载时自动进入全屏编辑模式</span>
+                                        <span class="settings-subsection-title-label">{{ settingsTxt.fullscreenTitle }}</span>
+                                        <span class="settings-subsection-title-desc">{{ settingsTxt.fullscreenDesc }}</span>
                                     </div>
                                     <div class="settings-item">
                                         <el-switch
                                             v-model="defaultFullscreen"
                                             :inactive-value="false"
                                             :active-value="true"
-                                            inactive-text="非全屏"
-                                            active-text="全屏"
+                                            :inactive-text="settingsTxt.fullscreenOff"
+                                            :active-text="settingsTxt.fullscreenOn"
                                             size="default"
                                         />
                                     </div>
@@ -541,11 +548,11 @@
                             <!-- 语法检查设置 -->
                             <div class="settings-subsection">
                                 <div class="settings-subsection-title">
-                                    <span class="settings-subsection-title-label">语法检查</span>
-                                    <span class="settings-subsection-title-desc">关闭后编辑区域将不再显示红色波浪线报错提示，但语法高亮仍生效</span>
+                                    <span class="settings-subsection-title-label">{{ settingsTxt.diagnosticsTitle }}</span>
+                                    <span class="settings-subsection-title-desc">{{ settingsTxt.diagnosticsDesc }}</span>
                                 </div>
                                 <div class="settings-item">
-                                    <el-switch v-model="enableDiagnostics" :disabled="isDisplayOnlyMode" active-text="启用" inactive-text="禁用" size="default" />
+                                    <el-switch v-model="enableDiagnostics" :disabled="isDisplayOnlyMode" :active-text="settingsTxt.diagnosticsOn" :inactive-text="settingsTxt.diagnosticsOff" size="default" />
                                 </div>
                             </div>
 
@@ -555,11 +562,11 @@
                                 <!-- 粘性滚动设置 -->
                                 <div class="settings-subsection">
                                     <div class="settings-subsection-title">
-                                        <span class="settings-subsection-title-label">粘性滚动设置</span>
-                                        <span class="settings-subsection-title-desc">开启后编辑器顶部将显示当前光标位置的层级路径，方便查看大JSON时快速了解上级结构</span>
+                                        <span class="settings-subsection-title-label">{{ settingsTxt.stickyScrollTitle }}</span>
+                                        <span class="settings-subsection-title-desc">{{ settingsTxt.stickyScrollDesc }}</span>
                                     </div>
                                     <div class="settings-item">
-                                        <el-switch v-model="stickyScroll" :disabled="isDisplayOnlyMode" active-text="启用" inactive-text="禁用" size="default" @change="updateStickyScroll" />
+                                        <el-switch v-model="stickyScroll" :disabled="isDisplayOnlyMode" :active-text="settingsTxt.stickyScrollOn" :inactive-text="settingsTxt.stickyScrollOff" size="default" @change="updateStickyScroll" />
                                     </div>
                                 </div>
                             </template>
@@ -570,11 +577,11 @@
                                 <!-- 同步滚动设置 -->
                                 <div class="settings-subsection">
                                     <div class="settings-subsection-title">
-                                        <span class="settings-subsection-title-label">同步滚动设置</span>
-                                        <span class="settings-subsection-title-desc">开启后编辑区域和预览区域将同步滚动，便于对照查看原始数据和输出结果</span>
+                                        <span class="settings-subsection-title-label">{{ settingsTxt.syncScrollTitle }}</span>
+                                        <span class="settings-subsection-title-desc">{{ settingsTxt.syncScrollDesc }}</span>
                                     </div>
                                     <div class="settings-item">
-                                        <el-switch v-model="syncScrollEnabled" active-text="启用" inactive-text="禁用" size="default" />
+                                        <el-switch v-model="syncScrollEnabled" :active-text="settingsTxt.syncScrollOn" :inactive-text="settingsTxt.syncScrollOff" size="default" />
                                     </div>
                                 </div>
                             </template>
@@ -585,11 +592,11 @@
                                 <!-- 缩略图设置 -->
                                 <div class="settings-subsection">
                                     <div class="settings-subsection-title">
-                                        <span class="settings-subsection-title-label">缩略图设置</span>
-                                        <span class="settings-subsection-title-desc">开启后在编辑器右侧显示代码缩略图，可快速定位和浏览大文件内容</span>
+                                        <span class="settings-subsection-title-label">{{ settingsTxt.minimapTitle }}</span>
+                                        <span class="settings-subsection-title-desc">{{ settingsTxt.minimapDesc }}</span>
                                     </div>
                                     <div class="settings-item">
-                                        <el-switch v-model="showMinimap" active-text="显示" inactive-text="隐藏" size="default" @change="updateMinimap" />
+                                        <el-switch v-model="showMinimap" :active-text="settingsTxt.minimapOn" :inactive-text="settingsTxt.minimapOff" size="default" @change="updateMinimap" />
                                     </div>
                                 </div>
                             </template>
@@ -600,11 +607,11 @@
                                 <!-- 缩进指南设置 -->
                                 <div class="settings-subsection">
                                     <div class="settings-subsection-title">
-                                        <span class="settings-subsection-title-label">缩进指南线设置</span>
-                                        <span class="settings-subsection-title-desc">开启后将显示垂直参考线，帮助直观识别代码的嵌套层级结构</span>
+                                        <span class="settings-subsection-title-label">{{ settingsTxt.indentGuideTitle }}</span>
+                                        <span class="settings-subsection-title-desc">{{ settingsTxt.indentGuideDesc }}</span>
                                     </div>
                                     <div class="settings-item">
-                                        <el-switch v-model="showIndentGuide" active-text="显示" inactive-text="隐藏" size="default" @change="updateIndentGuides" />
+                                        <el-switch v-model="showIndentGuide" :active-text="settingsTxt.indentGuideOn" :inactive-text="settingsTxt.indentGuideOff" size="default" @change="updateIndentGuides" />
                                     </div>
                                 </div>
                             </template>
@@ -618,26 +625,26 @@
                                 <el-icon class="column-title-icon">
                                     <Document />
                                 </el-icon>
-                                <span>格式化设置</span>
+                                <span>{{ settingsTxt.sectionFormat }}</span>
                             </div>
                         </template>
                         <div class="settings-collapse-content">
                             <div class="settings-item">
                                 <div class="settings-item-header">
-                                    <span class="settings-label">编码设置</span>
-                                    <span v-if="encodingMode" class="settings-description">识别并解码Unicode和Hex编码（Base64和URL编解码先双击字符串，再菜单右键选择）</span>
+                                    <span class="settings-label">{{ settingsTxt.encodingLabel }}</span>
+                                    <span v-if="encodingMode" class="settings-description">{{ settingsTxt.encodingDescOn }}</span>
                                 </div>
-                                <el-switch v-model="encodingMode" active-text="解码" inactive-text="不解码" size="default" />
+                                <el-switch v-model="encodingMode" :active-text="settingsTxt.encodingOn" :inactive-text="settingsTxt.encodingOff" size="default" />
                             </div>
 
                             <el-divider style="margin: 12px 0" />
 
                             <div class="settings-item">
                                 <div class="settings-item-header">
-                                    <span class="settings-label">数组样式</span>
-                                    <span class="settings-description">紧凑仅对<strong>简单类型数组</strong>（数组内部元素均为：字符串、数字、布尔值和null）生效，<strong>复杂类型数组</strong>仍换行</span>
+                                    <span class="settings-label">{{ settingsTxt.arrayStyleLabel }}</span>
+                                    <span class="settings-description">{{ settingsTxt.arrayStyleDescPrefix }}<strong>{{ settingsTxt.arrayStyleDescSimple }}</strong>{{ settingsTxt.arrayStyleDescMid }}<strong>{{ settingsTxt.arrayStyleDescComplex }}</strong>{{ settingsTxt.arrayStyleDescSuffix }}</span>
                                 </div>
-                                <el-switch v-model="arrayNewLine" active-text="换行" inactive-text="紧凑" size="default" />
+                                <el-switch v-model="arrayNewLine" :active-text="settingsTxt.arrayStyleOn" :inactive-text="settingsTxt.arrayStyleOff" size="default" />
                             </div>
                         </div>
                     </el-collapse-item>
@@ -649,15 +656,15 @@
                                 <el-icon class="column-title-icon">
                                     <Refresh />
                                 </el-icon>
-                                <span>去除转义设置</span>
+                                <span>{{ settingsTxt.sectionUnescape }}</span>
                             </div>
                         </template>
                         <div class="settings-collapse-content">
                             <div class="settings-item">
                                 <div class="settings-item-header">
-                                    <span class="settings-label">处理模式</span>
+                                    <span class="settings-label">{{ settingsTxt.unescapeModeLabel }}</span>
                                 </div>
-                                <el-switch v-model="recursiveUnescape" active-text="递归去除" inactive-text="仅外层" size="default" />
+                                <el-switch v-model="recursiveUnescape" :active-text="settingsTxt.unescapeRecursive" :inactive-text="settingsTxt.unescapeShallow" size="default" />
                             </div>
                         </div>
                     </el-collapse-item>
@@ -669,18 +676,18 @@
                                 <el-icon class="column-title-icon">
                                     <Sort />
                                 </el-icon>
-                                <span>排序设置</span>
+                                <span>{{ settingsTxt.sectionSort }}</span>
                             </div>
                         </template>
                         <div class="settings-collapse-content">
                             <div class="settings-item">
                                 <div class="settings-item-header">
-                                    <span class="settings-label">排序方式</span>
+                                    <span class="settings-label">{{ settingsTxt.sortMethodLabel }}</span>
                                 </div>
                                 <el-radio-group v-model="sortMethod" class="settings-radio-group">
-                                    <el-radio value="dictionary" border>按字典序</el-radio>
-                                    <el-radio value="length" border>按Key长度</el-radio>
-                                    <el-radio value="field" border>按字段值</el-radio>
+                                    <el-radio value="dictionary" border>{{ settingsTxt.sortMethodDictionary }}</el-radio>
+                                    <el-radio value="length" border>{{ settingsTxt.sortMethodLength }}</el-radio>
+                                    <el-radio value="field" border>{{ settingsTxt.sortMethodField }}</el-radio>
                                 </el-radio-group>
                             </div>
 
@@ -688,11 +695,11 @@
 
                             <div class="settings-item">
                                 <div class="settings-item-header">
-                                    <span class="settings-label">排序方向</span>
+                                    <span class="settings-label">{{ settingsTxt.sortOrderLabel }}</span>
                                 </div>
                                 <el-radio-group v-model="sortOrder" class="settings-radio-group">
-                                    <el-radio value="asc" border>正序（升序）</el-radio>
-                                    <el-radio value="desc" border>倒序（降序）</el-radio>
+                                    <el-radio value="asc" border>{{ settingsTxt.sortOrderAsc }}</el-radio>
+                                    <el-radio value="desc" border>{{ settingsTxt.sortOrderDesc }}</el-radio>
                                 </el-radio-group>
                             </div>
                         </div>
@@ -705,15 +712,15 @@
                                 <el-icon class="column-title-icon">
                                     <Edit />
                                 </el-icon>
-                                <span>存档设置</span>
+                                <span>{{ settingsTxt.sectionArchive }}</span>
                             </div>
                         </template>
                         <div class="settings-collapse-content">
                             <div class="settings-item">
                                 <div class="settings-item-header">
-                                    <span class="settings-label">存档名称</span>
+                                    <span class="settings-label">{{ settingsTxt.archiveNameLabel }}</span>
                                 </div>
-                                <el-switch v-model="customArchiveName" active-text="自定义名称" inactive-text="自动编号" size="default" />
+                                <el-switch v-model="customArchiveName" :active-text="settingsTxt.archiveNameCustom" :inactive-text="settingsTxt.archiveNameAuto" size="default" />
                             </div>
                         </div>
                     </el-collapse-item>
@@ -721,7 +728,7 @@
             </div>
             <template #footer>
                 <div class="dialog-footer">
-                    <el-button @click="settingsDialogVisible = false">关闭</el-button>
+                    <el-button @click="settingsDialogVisible = false">{{ settingsTxt.btnClose }}</el-button>
                 </div>
             </template>
         </el-dialog>
@@ -730,27 +737,27 @@
         <el-dialog v-model="fieldSortDialogVisible" width="600px" :close-on-click-modal="false" :show-close="false">
             <template #header>
                 <div class="dialog-header-with-close">
-                    <span class="dialog-title-with-close">按字段值排序</span>
-                    <button class="demo-close-btn" @click="fieldSortDialogVisible = false" aria-label="关闭按字段值排序弹窗">✕</button>
+                    <span class="dialog-title-with-close">{{ settingsTxt.fieldSortTitle }}</span>
+                    <button class="demo-close-btn" @click="fieldSortDialogVisible = false" :aria-label="settingsTxt.fieldSortCloseAria">✕</button>
                 </div>
             </template>
             <div class="form-item">
                 <div class="form-item-row">
                     <div class="form-value-quote--compact" style="width: 100%">
                         <span class="form-compact-line"
-                            >排序方向：<span class="form-value-text">{{ sortOrder === 'asc' ? '正序（升序）' : '倒序（降序）' }}</span></span
+                            >{{ settingsTxt.demoDirectionLabel }}<span class="form-value-text">{{ sortOrder === 'asc' ? settingsTxt.sortOrderAsc : settingsTxt.sortOrderDesc }}</span></span
                         >
                     </div>
                 </div>
             </div>
 
             <div class="form-item">
-                <label class="form-label" for="sort-root-path-input">排序范围</label>
+                <label class="form-label" for="sort-root-path-input">{{ settingsTxt.fieldSortRootPathLabel }}</label>
                 <el-autocomplete
                     id="sort-root-path-input"
                     v-model="sortRootPath"
                     :fetch-suggestions="queryRootPaths"
-                    placeholder="留空对整个数据排序，或输入路径如：[*].items"
+                    :placeholder="settingsTxt.fieldSortRootPathPlaceholder"
                     clearable
                     @select="handleRootPathSelect"
                     @input="handleRootPathInput"
@@ -763,17 +770,17 @@
                         </div>
                     </template>
                 </el-autocomplete>
-                <div class="form-hint">指定要排序的数据范围，留空表示对整个数据排序</div>
+                <div class="form-hint">{{ settingsTxt.fieldSortRootPathHint }}</div>
             </div>
 
             <div class="form-item">
-                <label class="form-label" for="sort-field-name-input"> 排序字段 </label>
+                <label class="form-label" for="sort-field-name-input">{{ settingsTxt.fieldSortFieldLabel }}</label>
                 <el-autocomplete
                     id="sort-field-name-input"
                     v-model="sortFieldName"
                     :fetch-suggestions="queryFieldPathsFromScope"
                     :trigger-on-focus="true"
-                    placeholder="输入字段名，如：score 或 user.name"
+                    :placeholder="settingsTxt.fieldSortFieldPlaceholder"
                     clearable
                     @select="handleFieldPathSelect"
                     @input="handleFieldPathInput"
@@ -786,13 +793,13 @@
                         </div>
                     </template>
                 </el-autocomplete>
-                <div class="form-hint">选择用于排序的字段名，支持点号分隔的嵌套字段，如 user.profile.age</div>
+                <div class="form-hint">{{ settingsTxt.fieldSortFieldHint }}</div>
             </div>
 
             <template #footer>
-                <el-button @click="fieldSortDialogVisible = false">取消</el-button>
-                <el-button type="warning" @click="showFieldSortDemo">演示示例</el-button>
-                <el-button type="primary" @click="executeFieldSort"> 开始排序 </el-button>
+                <el-button @click="fieldSortDialogVisible = false">{{ settingsTxt.btnCancel }}</el-button>
+                <el-button type="warning" @click="showFieldSortDemo">{{ settingsTxt.btnDemoExample }}</el-button>
+                <el-button type="primary" @click="executeFieldSort">{{ settingsTxt.btnStartSort }}</el-button>
             </template>
         </el-dialog>
 
@@ -812,24 +819,24 @@
             <div class="demo-guide-inner">
                 <div class="demo-guide-header">
                     <h3>{{ currentDemoStepData.title }}</h3>
-                    <button class="demo-close-btn" @click="endDemoMode" aria-label="关闭演示">✕</button>
+                    <button class="demo-close-btn" @click="endDemoMode" :aria-label="settingsTxt.demoCloseAria">✕</button>
                 </div>
                 <div class="demo-guide-content">
                     <p>{{ currentDemoStepData.content }}</p>
                     <div class="demo-current-settings">
-                        <strong>当前设置：</strong>
+                        <strong>{{ settingsTxt.demoCurrentSettings }}</strong>
                         <ul class="demo-settings-list">
                             <li>
-                                <span class="demo-settings-label">排序方向：</span>
-                                <code>{{ sortOrder === 'asc' ? '正序（升序）' : '倒序（降序）' }}</code>
+                                <span class="demo-settings-label">{{ settingsTxt.demoDirectionLabel }}</span>
+                                <code>{{ sortOrder === 'asc' ? settingsTxt.sortOrderAsc : settingsTxt.sortOrderDesc }}</code>
                             </li>
                             <li>
-                                <span class="demo-settings-label">排序范围：</span>
-                                <code>{{ sortRootPath || '(留空)' }}</code>
+                                <span class="demo-settings-label">{{ settingsTxt.demoRootPathLabel }}</span>
+                                <code>{{ sortRootPath || settingsTxt.demoEmptyValue }}</code>
                             </li>
                             <li>
-                                <span class="demo-settings-label">排序字段：</span>
-                                <code>{{ sortFieldName || '(未设置)' }}</code>
+                                <span class="demo-settings-label">{{ settingsTxt.demoFieldLabel }}</span>
+                                <code>{{ sortFieldName || settingsTxt.demoUnsetValue }}</code>
                             </li>
                         </ul>
                     </div>
@@ -873,6 +880,596 @@ import { create } from 'xmlbuilder2';
 import { Base64 } from 'js-base64';
 import { diffChars, type Change as DiffChange } from 'diff';
 import { histogramDiff, type Region as HistogramRegion } from 'histogram-diff';
+
+const props = defineProps<{
+    locale?: 'zh' | 'en';
+}>();
+
+const SETTINGS_TXT_ZH = {
+    screenWarn1: '当前屏幕尺寸过小，无法提供良好的使用体验',
+    screenWarn2: '请使用屏幕宽度大于 900px 的设备访问此工具',
+    diffPrev: '上一处',
+    diffNext: '下一处',
+    diffExit: '退出对比',
+    toolFetchJson: '获取JSON',
+    toolFormat: '格式化',
+    toolCompress: '压缩',
+    toolEscape: '转义',
+    toolUnescape: '去除转义',
+    toolMasking: '脱敏',
+    toolSort: '排序',
+    toolArchive: '存档',
+    toolDiff: '对比',
+    toolShare: '分享',
+    toolDataConvert: '数据转换',
+    convertYaml: 'JSON 转 YAML',
+    convertToml: 'JSON 转 TOML',
+    convertXml: 'JSON 转 XML',
+    convertGo: 'JSON 转 Go 结构体',
+    convertCookie: 'Cookie 转 JSON',
+    levelPlaceholder: '层级',
+    levelLabel: (n: number) => `第${n}层`,
+    collapse: '收缩',
+    enterFullscreen: '全屏',
+    exitFullscreen: '退出全屏',
+    diffPanelFormat: '格式化',
+    diffPanelSort: '排序',
+    diffPanelCopy: '复制',
+    diffPanelClear: '清空',
+    diffPanelUpload: '上传',
+    diffPanelDownload: '下载',
+    diffSyncTitleLeft: '右 → 左',
+    diffSyncTitleRight: '左 → 右',
+    panelEditor: '编辑区域',
+    panelPreview: '预览区域',
+    panelClear: '清空',
+    panelUpload: '上传',
+    panelCopy: '复制',
+    panelDownload: '下载',
+    editorLoading: '加载编辑器中...',
+    errorNavGroup: '错误导航',
+    errorNavPrev: '上一个错误',
+    errorNavNext: '下一个错误',
+    transferToInput: '转移到输入',
+    archiveTitle: '存档',
+    archiveEmpty: '暂无存档',
+    archiveRefreshTip: '更新存档内容',
+
+    dialogTitle: '设置',
+    closeAria: '关闭设置弹窗',
+    btnClose: '关闭',
+    sectionGeneral: '通用设置',
+    sectionFormat: '格式化设置',
+    sectionUnescape: '去除转义设置',
+    sectionSort: '排序设置',
+    sectionArchive: '存档设置',
+    menuVisibilityTitle: '菜单栏功能设置',
+    btnFetchJson: '获取JSON',
+    btnCompress: '压缩',
+    btnEscape: '转义',
+    btnUnescape: '去除转义',
+    btnDataConvert: '数据转换',
+    btnMasking: '脱敏',
+    btnSort: '排序',
+    btnArchive: '存档',
+    btnDiff: '对比',
+    btnShare: '分享',
+    fontSizeTitle: '字体大小设置',
+    indentTitle: '缩进空格',
+    wordWrapTitle: '换行显示',
+    wordWrapDescOn: '超长字符串、超长数字等在一行显示',
+    wordWrapDescOff: '超长字符串、超长数字等换行显示',
+    wordWrapOn: '换行',
+    wordWrapOff: '不换行',
+    fullscreenTitle: '是否默认全屏',
+    fullscreenDesc: '开启后页面将在加载时自动进入全屏编辑模式',
+    fullscreenOn: '全屏',
+    fullscreenOff: '非全屏',
+    diagnosticsTitle: '语法检查',
+    diagnosticsDesc: '关闭后编辑区域将不再显示红色波浪线报错提示，但语法高亮仍生效',
+    diagnosticsOn: '启用',
+    diagnosticsOff: '禁用',
+    stickyScrollTitle: '粘性滚动设置',
+    stickyScrollDesc: '开启后编辑器顶部将显示当前光标位置的层级路径，方便查看大JSON时快速了解上级结构',
+    stickyScrollOn: '启用',
+    stickyScrollOff: '禁用',
+    syncScrollTitle: '同步滚动设置',
+    syncScrollDesc: '开启后编辑区域和预览区域将同步滚动，便于对照查看原始数据和输出结果',
+    syncScrollOn: '启用',
+    syncScrollOff: '禁用',
+    minimapTitle: '缩略图设置',
+    minimapDesc: '开启后在编辑器右侧显示代码缩略图，可快速定位和浏览大文件内容',
+    minimapOn: '显示',
+    minimapOff: '隐藏',
+    indentGuideTitle: '缩进指南线设置',
+    indentGuideDesc: '开启后将显示垂直参考线，帮助直观识别代码的嵌套层级结构',
+    indentGuideOn: '显示',
+    indentGuideOff: '隐藏',
+    encodingLabel: '编码设置',
+    encodingDescOn: '识别并解码Unicode和Hex编码（Base64和URL编解码先双击字符串，再菜单右键选择）',
+    encodingOn: '解码',
+    encodingOff: '不解码',
+    arrayStyleLabel: '数组样式',
+    arrayStyleDescPrefix: '紧凑仅对',
+    arrayStyleDescSimple: '简单类型数组',
+    arrayStyleDescMid: '（数组内部元素均为：字符串、数字、布尔值和null）生效，',
+    arrayStyleDescComplex: '复杂类型数组',
+    arrayStyleDescSuffix: '仍换行',
+    arrayStyleOn: '换行',
+    arrayStyleOff: '紧凑',
+    unescapeModeLabel: '处理模式',
+    unescapeRecursive: '递归去除',
+    unescapeShallow: '仅外层',
+    sortMethodLabel: '排序方式',
+    sortMethodDictionary: '按字典序',
+    sortMethodLength: '按Key长度',
+    sortMethodField: '按字段值',
+    sortOrderLabel: '排序方向',
+    sortOrderAsc: '正序（升序）',
+    sortOrderDesc: '倒序（降序）',
+    fieldSortTitle: '按字段值排序',
+    fieldSortCloseAria: '关闭按字段值排序弹窗',
+    fieldSortRootPathLabel: '排序范围',
+    fieldSortRootPathPlaceholder: '留空对整个数据排序，或输入路径如：[*].items',
+    fieldSortRootPathHint: '指定要排序的数据范围，留空表示对整个数据排序',
+    fieldSortFieldLabel: '排序字段',
+    fieldSortFieldPlaceholder: '输入字段名，如：score 或 user.name',
+    fieldSortFieldHint: '选择用于排序的字段名，支持点号分隔的嵌套字段，如 user.profile.age',
+    btnCancel: '取消',
+    btnDemoExample: '演示示例',
+    btnStartSort: '开始排序',
+    demoCloseAria: '关闭演示',
+    demoCurrentSettings: '当前设置：',
+    demoDirectionLabel: '排序方向：',
+    demoRootPathLabel: '排序范围：',
+    demoFieldLabel: '排序字段：',
+    demoEmptyValue: '(留空)',
+    demoUnsetValue: '(未设置)',
+    sortTypeExact: '精确匹配',
+    sortTypeArrayWildcard: '数组通配符',
+    sortTypeArrayIndex: '数组索引',
+    sortTypeWildcard: '通配符',
+    sortTypeKey: '字段',
+    msgNoSortableContent: '没有可排序的内容',
+    msgSortSuccess: '排序成功',
+    msgSortFail: (err: string) => `排序失败: ${err}`,
+    msgNoAvailableEditor: '没有可用的编辑器',
+    msgFieldSortPathNotArray: (path: string) => `路径 "${path}" 对应的数据不是数组，无法排序`,
+    msgFieldSortSuccess: (field: string, rootDesc: string) => `按字段 "${field}" 对${rootDesc}排序成功`,
+    fieldSortPathData: (path: string) => `路径 "${path}" 下的数据`,
+    fieldSortRootData: '根级数据',
+    msgSortDataRequired: '请先输入数据',
+    msgSortFormatSuccess: (formatType: string) => `${formatType}排序成功`,
+    sortFormatJson: 'JSON',
+    sortFormatTextLines: '文本行',
+    demoStartTitle: '📊 演示开始',
+    demoStartContent: '已自动填入演示数据，接下来让我们学习如何使用字段排序功能',
+    demoStartButton: '开始学习',
+    demoArrayIdTitle: '🔢 示例1：Array - 按 id 排序',
+    demoArrayIdContent: '由于按照 id 字段排序的对象就是最外层数组的元素，所以排序范围就是整个 JSON 数据，因此排序范围可以留空，排序字段参数填入 id 即可',
+    demoExecuteTitle: '🎯 执行排序',
+    demoExecuteContent: '参数设置完成，点击“执行排序”将会应用排序并进入结果查看步骤',
+    demoSortDoneTitle: '✅ 排序完成',
+    demoSortDoneContent: '排序已完成，结果已写入右侧预览区域，你可以返回上一步重新查看，或者进入下一个示例',
+    demoArrayEducationTitle: '🔢 示例2：Array - 按毕业年份排序每个人的教育经历',
+    demoArrayEducationContent: '排序范围要指到"被排序的数组本身"：[*].education（每个人的 education 数组），字段填 graduationYear。别写成 [*].education.[*]，那指的是数组里的单个元素，不是数组，无法排序。',
+    demoSortDoneEducationTitle: '✅ 排序完成（Array - education）',
+    demoSortDoneEducationContent: '排序已完成，结果已写入右侧预览区域，你可以返回上一步重新设置，或者进入 Map 示例',
+    demoMapIdTitle: '🔢 示例3：Map — 按 id 排序',
+    demoMapIdContent: '下面我们切换到 map 示例数据，示范如何对 map 按 id 排序，需要注意的是排序字段不需要输入 map 的 Key，直接输入 Value 内部的排序字段就行',
+    demoMapExecuteContent: '参数设置完成，点击“执行排序”将对 map 进行排序并进入结果查看步骤',
+    demoMapIdDoneTitle: '✅ 排序完成（Map - id）',
+    demoMapIdDoneContent: 'Map 排序已完成，结果已写入右侧预览区域，你可以返回上一步重新设置，或者进入下一个示例',
+    demoMapScoreTitle: '🔢 示例4：Map — 按 value.score 排序',
+    demoMapScoreContent: '同样可以按 map 内部字段排序，例如填写 value.score 来按 score 排序',
+    demoMapScoreExecuteContent: '参数设置完成，点击“执行排序”将应用 map 内部字段排序并进入结果查看步骤',
+    demoMapScoreDoneTitle: '✅ 排序完成（Map - value.score）',
+    demoMapScoreDoneContent: '排序已完成，结果已写入右侧预览区域，你已完成所有示例',
+    demoPrev: '上一步',
+    demoSetParams: '设置参数',
+    demoExecuteSort: '执行排序',
+    demoNextExample: '下一个示例',
+    demoTryAgain: '再试一次',
+    demoEnd: '结束演示',
+    archiveNameLabel: '存档名称',
+    archiveNameCustom: '自定义名称',
+    archiveNameAuto: '自动编号',
+    msgInputJsonRequired: '请先输入 JSON 数据',
+    msgInputContentRequired: '请先输入内容',
+    msgInvalidJson: '请输入有效的 JSON 数据',
+    msgFormatSuccess: '格式化成功',
+    msgFormatSuccessWithTime: (ms: string) => `格式化成功，耗时 ${ms}ms`,
+    msgFormatFail: (err: string) => `格式化失败: ${err}`,
+    msgCompressSuccess: '压缩成功',
+    msgCompressFail: (err: string) => `压缩失败: ${err}`,
+    msgEscapeSuccess: '转义成功',
+    msgEscapeFail: (err: string) => `压缩并转义失败: ${err}`,
+    msgEscapeIllegalRejected: '检测到非法转义序列，为避免数据损坏，已拒绝压缩并转义操作',
+    msgUnescapeSuccess: '去除转义成功',
+    msgUnescapeShallowSuccess: '去除转义成功（仅外层）',
+    msgUnescapeDoubleSuccess: '去除双重转义成功',
+    msgUnescapeConservative: '已进行保守的转义去除处理（仅处理\\\\和\\"，非法转义保持原样）',
+    msgUnescapeNotDetected: '未检测到标准JSON转义, 内容保持不变',
+    msgUnescapeFail: (err: string) => `去除转义失败: ${err}`,
+    msgUnescapeIllegalRejected: '检测到非法转义序列，为避免数据损坏，已拒绝去除转义操作',
+    msgEditorNotInit: '编辑器未初始化，请稍候再试',
+    msgArchiveNoContent: '当前没有可存档的内容',
+    msgArchiveCountReached: (max: number) => `存档数量已达到上限（${max}个），请先删除部分存档`,
+    msgArchiveTooLarge: (mb: number) => `存档失败：单个存档大小不能超过 30MB（当前 ${mb}MB）`,
+    msgArchiveNameEmpty: '存档名称不能为空',
+    msgArchiveSavedWithSize: (info: string) => `已保存到本标签页存档，${info}`,
+    msgArchiveLoadFail: (err: string) => `存档加载失败：${err}`,
+    msgArchiveSaveFail: (err: string) => `存档保存失败：${err}`,
+    msgArchiveStorageError: '浏览器存储异常',
+    msgArchiveNotFound: '未找到对应的存档',
+    msgArchiveLoaded: (name: string) => `已加载存档：${name}`,
+    msgArchiveRefreshNoContent: '当前编辑区域内容为空，无法更新存档',
+    msgArchiveRefreshTooLarge: (mb: number) => `更新存档失败：单个存档大小不能超过 30MB（当前 ${mb}MB）`,
+    msgArchiveRefreshSuccess: (info: string) => `已更新本标签页存档，${info}`,
+    msgArchiveUpdateFail: (err: string) => `更新存档失败: ${err}`,
+    msgArchiveDeletedWithSize: (info: string) => `已删除本标签页存档，${info}`,
+    msgArchiveRenameSuccess: '重命名成功',
+    msgConvertCookieSuccess: 'Cookie 转换成功',
+    msgConvertSuccess: (lang: string) => `转换为 ${lang} 语言结构体成功`,
+    msgConvertFail: (err: string) => `转换失败: ${err}`,
+    msgConvertUnsupported: '不支持的转换类型',
+    msgMaskingInvalidJson: 'JSON 数据格式不正确，请先格式化 JSON 数据',
+    msgMaskingApplyFail: (err: string) => `应用脱敏结果失败: ${err}`,
+    msgProcessingDisplayOnly: '当前 JSON 超过 300 万行，已进入仅展示模式，只支持查看和滚动',
+    msgCollapseRestricted: '当前 JSON 超过 100 万行，层级收缩功能不可用',
+    msgJsonLevelTooDeep: 'JSON层级超过99层, 拒绝处理此JSON数据',
+    msgCollapseBusy: '请等待当前折叠操作完成',
+    msgCollapseMaxLevel: (level: number) => `当前内容最多只能收缩到第 ${level} 层`,
+    msgCollapseNoRegion: (level: number, maxLevel: number | null) => `第 ${level} 层没有可用折叠区域${maxLevel ? `，当前最多可折叠到第 ${maxLevel} 层` : ''}`,
+    msgCollapseSuccess: (level: number) => `收缩到第 ${level} 层成功`,
+    msgCollapseFail: (err: string) => `操作失败: ${err}`,
+    msgTransferUnsupportedType: '当前内容类型不支持转移到编辑区域',
+    msgTransferOutputEmpty: '预览区域内容为空, 无需转移',
+    msgTransferSuccess: '内容已成功转移到编辑区域',
+    msgTransferFail: (err: string) => `转移内容失败: ${err}`,
+    msgSharedDataEmpty: '分享数据为空',
+    msgSharedJsonInvalid: (err: string) => `JSON格式不正确: ${err}`,
+    msgSharedLoadFail: (err: string) => `加载分享数据失败: ${err}`,
+    msgSharedLoaded: '已加载分享数据',
+    msgSharedLoadedWithDesc: (desc: string) => `已加载分享数据：${desc}`,
+    msgSharedDataFormatInvalid: '分享数据格式不正确',
+    msgSharedLoadFallback: '加载分享数据失败',
+    promptSharePasswordIncorrect: '密码不正确，请重新输入',
+    promptSharePasswordRequired: '此分享链接需要密码才能访问',
+    promptSharePasswordTitle: '输入密码',
+    promptSharePasswordPlaceholder: '请输入访问密码',
+    btnConfirm: '确定',
+    msgUnknownError: '未知错误',
+    archiveUsedSize: (size: string) => `已使用 ${size}`,
+    dialogSaveArchive: '保存存档',
+    dialogRenameArchive: '重命名存档',
+    placeholderArchiveName: '请输入存档名称',
+};
+
+type SettingsTxt = typeof SETTINGS_TXT_ZH;
+
+const SETTINGS_TXT_EN: SettingsTxt = {
+    screenWarn1: 'Screen too small for a comfortable experience',
+    screenWarn2: 'Please use a device with a screen wider than 900px',
+    diffPrev: 'Previous',
+    diffNext: 'Next',
+    diffExit: 'Exit Diff',
+    toolFetchJson: 'Fetch JSON',
+    toolFormat: 'Format',
+    toolCompress: 'Minify',
+    toolEscape: 'Escape',
+    toolUnescape: 'Unescape',
+    toolMasking: 'Mask',
+    toolSort: 'Sort',
+    toolArchive: 'Snapshot',
+    toolDiff: 'Diff',
+    toolShare: 'Share',
+    toolDataConvert: 'Convert',
+    convertYaml: 'JSON → YAML',
+    convertToml: 'JSON → TOML',
+    convertXml: 'JSON → XML',
+    convertGo: 'JSON → Go struct',
+    convertCookie: 'Cookie → JSON',
+    levelPlaceholder: 'Level',
+    levelLabel: (n: number) => `Level ${n}`,
+    collapse: 'Fold',
+    enterFullscreen: 'Fullscreen',
+    exitFullscreen: 'Exit Fullscreen',
+    diffPanelFormat: 'Format',
+    diffPanelSort: 'Sort',
+    diffPanelCopy: 'Copy',
+    diffPanelClear: 'Clear',
+    diffPanelUpload: 'Upload',
+    diffPanelDownload: 'Download',
+    diffSyncTitleLeft: 'Right → Left',
+    diffSyncTitleRight: 'Left → Right',
+    panelEditor: 'Editor',
+    panelPreview: 'Preview',
+    panelClear: 'Clear',
+    panelUpload: 'Upload',
+    panelCopy: 'Copy',
+    panelDownload: 'Download',
+    editorLoading: 'Loading editor...',
+    errorNavGroup: 'Error navigation',
+    errorNavPrev: 'Previous error',
+    errorNavNext: 'Next error',
+    transferToInput: 'Transfer to editor',
+    archiveTitle: 'Snapshots',
+    archiveEmpty: 'No snapshots yet',
+    archiveRefreshTip: 'Refresh snapshot content',
+
+    dialogTitle: 'Settings',
+    closeAria: 'Close settings dialog',
+    btnClose: 'Close',
+    sectionGeneral: 'General',
+    sectionFormat: 'Formatting',
+    sectionUnescape: 'Unescape',
+    sectionSort: 'Sorting',
+    sectionArchive: 'Snapshot',
+    menuVisibilityTitle: 'Toolbar Buttons',
+    btnFetchJson: 'Fetch JSON',
+    btnCompress: 'Minify',
+    btnEscape: 'Escape',
+    btnUnescape: 'Unescape',
+    btnDataConvert: 'Convert',
+    btnMasking: 'Mask',
+    btnSort: 'Sort',
+    btnArchive: 'Snapshot',
+    btnDiff: 'Diff',
+    btnShare: 'Share',
+    fontSizeTitle: 'Font Size',
+    indentTitle: 'Indent Size',
+    wordWrapTitle: 'Word Wrap',
+    wordWrapDescOn: 'Long strings and numbers stay on a single line',
+    wordWrapDescOff: 'Long strings and numbers wrap to the next line',
+    wordWrapOn: 'Wrap',
+    wordWrapOff: 'No wrap',
+    fullscreenTitle: 'Default Fullscreen',
+    fullscreenDesc: 'When enabled, the page enters fullscreen edit mode on load',
+    fullscreenOn: 'Fullscreen',
+    fullscreenOff: 'Windowed',
+    diagnosticsTitle: 'Syntax Validation',
+    diagnosticsDesc: 'When disabled, the editor stops showing red squiggly error lines (syntax highlighting still works)',
+    diagnosticsOn: 'On',
+    diagnosticsOff: 'Off',
+    stickyScrollTitle: 'Sticky Scroll',
+    stickyScrollDesc: 'Pin the current ancestor path at the top of the editor — handy for navigating large JSON',
+    stickyScrollOn: 'On',
+    stickyScrollOff: 'Off',
+    syncScrollTitle: 'Sync Scroll',
+    syncScrollDesc: 'Scroll the Editor and Preview panes together for side-by-side comparison',
+    syncScrollOn: 'On',
+    syncScrollOff: 'Off',
+    minimapTitle: 'Minimap',
+    minimapDesc: 'Show a code minimap on the right side of the editor for quick navigation in large files',
+    minimapOn: 'Show',
+    minimapOff: 'Hide',
+    indentGuideTitle: 'Indent Guides',
+    indentGuideDesc: 'Show vertical reference lines to visualize nesting levels',
+    indentGuideOn: 'Show',
+    indentGuideOff: 'Hide',
+    encodingLabel: 'Encoding',
+    encodingDescOn: 'Decode \\uXXXX / \\xHH escapes. Base64 / URL: select text, then right-click.',
+    encodingOn: 'Decode',
+    encodingOff: 'Raw',
+    arrayStyleLabel: 'Array Style',
+    arrayStyleDescPrefix: 'Compact mode applies only to ',
+    arrayStyleDescSimple: 'arrays of primitives',
+    arrayStyleDescMid: ' (string / number / boolean / null); ',
+    arrayStyleDescComplex: 'arrays of objects',
+    arrayStyleDescSuffix: ' still wrap.',
+    arrayStyleOn: 'Newline',
+    arrayStyleOff: 'Compact',
+    unescapeModeLabel: 'Mode',
+    unescapeRecursive: 'Recursive',
+    unescapeShallow: 'Top-level only',
+    sortMethodLabel: 'Sort By',
+    sortMethodDictionary: 'Alphabetical',
+    sortMethodLength: 'Key length',
+    sortMethodField: 'Field value',
+    sortOrderLabel: 'Direction',
+    sortOrderAsc: 'Ascending',
+    sortOrderDesc: 'Descending',
+    fieldSortTitle: 'Sort by Field Value',
+    fieldSortCloseAria: 'Close field sort dialog',
+    fieldSortRootPathLabel: 'Sort scope',
+    fieldSortRootPathPlaceholder: 'Leave empty to sort the whole data, or enter a path such as [*].items',
+    fieldSortRootPathHint: 'Choose the data range to sort. Leave empty to sort the whole data.',
+    fieldSortFieldLabel: 'Sort field',
+    fieldSortFieldPlaceholder: 'Enter a field name, such as score or user.name',
+    fieldSortFieldHint: 'Choose the field used for sorting. Nested dot paths are supported, such as user.profile.age.',
+    btnCancel: 'Cancel',
+    btnDemoExample: 'Demo',
+    btnStartSort: 'Start Sorting',
+    demoCloseAria: 'Close demo',
+    demoCurrentSettings: 'Current settings:',
+    demoDirectionLabel: 'Direction:',
+    demoRootPathLabel: 'Sort scope:',
+    demoFieldLabel: 'Sort field:',
+    demoEmptyValue: '(empty)',
+    demoUnsetValue: '(not set)',
+    sortTypeExact: 'Exact match',
+    sortTypeArrayWildcard: 'Array wildcard',
+    sortTypeArrayIndex: 'Array index',
+    sortTypeWildcard: 'Wildcard',
+    sortTypeKey: 'Field',
+    msgNoSortableContent: 'No sortable content',
+    msgSortSuccess: 'Sorted successfully',
+    msgSortFail: (err: string) => `Sort failed: ${err}`,
+    msgNoAvailableEditor: 'No available editor',
+    msgFieldSortPathNotArray: (path: string) => `The data at path "${path}" is not an array and cannot be sorted`,
+    msgFieldSortSuccess: (field: string, rootDesc: string) => `Sorted ${rootDesc} by field "${field}" successfully`,
+    fieldSortPathData: (path: string) => `data at path "${path}"`,
+    fieldSortRootData: 'root data',
+    msgSortDataRequired: 'Please enter data first',
+    msgSortFormatSuccess: (formatType: string) => `${formatType} sorted successfully`,
+    sortFormatJson: 'JSON',
+    sortFormatTextLines: 'text lines',
+    demoStartTitle: '📊 Demo Start',
+    demoStartContent: 'Demo data has been loaded. Next, learn how to use field-based sorting.',
+    demoStartButton: 'Start',
+    demoArrayIdTitle: '🔢 Example 1: Array - sort by id',
+    demoArrayIdContent: 'The objects sorted by the id field are elements of the top-level array, so the sort scope is the whole JSON data. Leave the sort scope empty and enter id as the sort field.',
+    demoExecuteTitle: '🎯 Execute Sort',
+    demoExecuteContent: 'The parameters are ready. Click "Execute Sort" to apply sorting and move to the result step.',
+    demoSortDoneTitle: '✅ Sorting Complete',
+    demoSortDoneContent: 'Sorting is complete and the result has been written to the preview pane. You can go back to review it or continue to the next example.',
+    demoArrayEducationTitle: '🔢 Example 2: Array - sort each person’s education by graduation year',
+    demoArrayEducationContent: 'The sort scope should point to the array being sorted: [*].education (each person’s education array), and the field should be graduationYear. Do not use [*].education.[*], because that points to a single array item rather than the array itself.',
+    demoSortDoneEducationTitle: '✅ Sorting Complete (Array - education)',
+    demoSortDoneEducationContent: 'Sorting is complete and the result has been written to the preview pane. You can go back to adjust the settings or continue to the Map example.',
+    demoMapIdTitle: '🔢 Example 3: Map — sort by id',
+    demoMapIdContent: 'Now switch to map demo data to show how to sort a map by id. Note that the sort field should not be the map key; enter the field inside each value directly.',
+    demoMapExecuteContent: 'The parameters are ready. Click "Execute Sort" to sort the map and move to the result step.',
+    demoMapIdDoneTitle: '✅ Sorting Complete (Map - id)',
+    demoMapIdDoneContent: 'Map sorting is complete and the result has been written to the preview pane. You can go back to adjust the settings or continue to the next example.',
+    demoMapScoreTitle: '🔢 Example 4: Map — sort by value.score',
+    demoMapScoreContent: 'You can also sort by a field inside each map value, such as value.score to sort by score.',
+    demoMapScoreExecuteContent: 'The parameters are ready. Click "Execute Sort" to apply field sorting inside the map and move to the result step.',
+    demoMapScoreDoneTitle: '✅ Sorting Complete (Map - value.score)',
+    demoMapScoreDoneContent: 'Sorting is complete and the result has been written to the preview pane. You have completed all examples.',
+    demoPrev: 'Previous',
+    demoSetParams: 'Set Parameters',
+    demoExecuteSort: 'Execute Sort',
+    demoNextExample: 'Next Example',
+    demoTryAgain: 'Try Again',
+    demoEnd: 'End Demo',
+    archiveNameLabel: 'Snapshot Name',
+    archiveNameCustom: 'Custom name',
+    archiveNameAuto: 'Auto-numbered',
+    msgInputJsonRequired: 'Please enter JSON data first',
+    msgInputContentRequired: 'Please enter some content first',
+    msgInvalidJson: 'Please enter valid JSON data',
+    msgFormatSuccess: 'Formatted successfully',
+    msgFormatSuccessWithTime: (ms: string) => `Formatted successfully in ${ms}ms`,
+    msgFormatFail: (err: string) => `Format failed: ${err}`,
+    msgCompressSuccess: 'Minified successfully',
+    msgCompressFail: (err: string) => `Minify failed: ${err}`,
+    msgEscapeSuccess: 'Escaped successfully',
+    msgEscapeFail: (err: string) => `Minify & escape failed: ${err}`,
+    msgEscapeIllegalRejected: 'Illegal escape sequences detected — minify & escape was rejected to avoid data corruption',
+    msgUnescapeSuccess: 'Unescaped successfully',
+    msgUnescapeShallowSuccess: 'Unescaped successfully (outer layer only)',
+    msgUnescapeDoubleSuccess: 'Double-unescaped successfully',
+    msgUnescapeConservative: 'Conservative unescape applied (only \\\\ and \\" handled; illegal escapes left untouched)',
+    msgUnescapeNotDetected: 'No standard JSON escapes detected — content unchanged',
+    msgUnescapeFail: (err: string) => `Unescape failed: ${err}`,
+    msgUnescapeIllegalRejected: 'Illegal escape sequences detected — unescape was rejected to avoid data corruption',
+    msgEditorNotInit: 'Editor not initialized, please try again',
+    msgArchiveNoContent: 'Nothing to snapshot',
+    msgArchiveCountReached: (max: number) => `Snapshot limit reached (${max}). Please delete some first`,
+    msgArchiveTooLarge: (mb: number) => `Snapshot failed: a single snapshot cannot exceed 30MB (current ${mb}MB)`,
+    msgArchiveNameEmpty: 'Snapshot name cannot be empty',
+    msgArchiveSavedWithSize: (info: string) => `Saved to this tab's snapshots, ${info}`,
+    msgArchiveLoadFail: (err: string) => `Failed to load snapshots: ${err}`,
+    msgArchiveSaveFail: (err: string) => `Failed to save snapshot: ${err}`,
+    msgArchiveStorageError: 'Browser storage error',
+    msgArchiveNotFound: 'Snapshot not found',
+    msgArchiveLoaded: (name: string) => `Snapshot loaded: ${name}`,
+    msgArchiveRefreshNoContent: 'Editor is empty — cannot update snapshot',
+    msgArchiveRefreshTooLarge: (mb: number) => `Update failed: a single snapshot cannot exceed 30MB (current ${mb}MB)`,
+    msgArchiveRefreshSuccess: (info: string) => `Snapshot updated, ${info}`,
+    msgArchiveUpdateFail: (err: string) => `Update snapshot failed: ${err}`,
+    msgArchiveDeletedWithSize: (info: string) => `Snapshot deleted, ${info}`,
+    msgArchiveRenameSuccess: 'Renamed successfully',
+    msgConvertCookieSuccess: 'Cookie converted successfully',
+    msgConvertSuccess: (lang: string) => `Converted to ${lang} successfully`,
+    msgConvertFail: (err: string) => `Conversion failed: ${err}`,
+    msgConvertUnsupported: 'Unsupported conversion type',
+    msgMaskingInvalidJson: 'Invalid JSON data. Please format the JSON first',
+    msgMaskingApplyFail: (err: string) => `Failed to apply masked result: ${err}`,
+    msgProcessingDisplayOnly: 'Current JSON exceeds 3 million lines and has entered display-only mode. Only viewing and scrolling are supported',
+    msgCollapseRestricted: 'Current JSON exceeds 1 million lines. Fold by level is unavailable',
+    msgJsonLevelTooDeep: 'JSON nesting exceeds 99 levels. This JSON data was rejected',
+    msgCollapseBusy: 'Please wait for the current folding operation to finish',
+    msgCollapseMaxLevel: (level: number) => `This content can only be folded up to Level ${level}`,
+    msgCollapseNoRegion: (level: number, maxLevel: number | null) => `No foldable regions at Level ${level}${maxLevel ? `. Current content can be folded up to Level ${maxLevel}` : ''}`,
+    msgCollapseSuccess: (level: number) => `Folded to Level ${level} successfully`,
+    msgCollapseFail: (err: string) => `Fold operation failed: ${err}`,
+    msgTransferUnsupportedType: 'The current content type cannot be transferred to the editor',
+    msgTransferOutputEmpty: 'The preview pane is empty. No transfer needed',
+    msgTransferSuccess: 'Content transferred to the editor successfully',
+    msgTransferFail: (err: string) => `Failed to transfer content: ${err}`,
+    msgSharedDataEmpty: 'Shared data is empty',
+    msgSharedJsonInvalid: (err: string) => `Invalid JSON format: ${err}`,
+    msgSharedLoadFail: (err: string) => `Failed to load shared data: ${err}`,
+    msgSharedLoaded: 'Shared data loaded',
+    msgSharedLoadedWithDesc: (desc: string) => `Shared data loaded: ${desc}`,
+    msgSharedDataFormatInvalid: 'Invalid shared data format',
+    msgSharedLoadFallback: 'Failed to load shared data',
+    promptSharePasswordIncorrect: 'Incorrect password, please try again',
+    promptSharePasswordRequired: 'This share link requires a password',
+    promptSharePasswordTitle: 'Enter Password',
+    promptSharePasswordPlaceholder: 'Enter access password',
+    btnConfirm: 'OK',
+    msgUnknownError: 'Unknown error',
+    archiveUsedSize: (size: string) => `Used ${size}`,
+    dialogSaveArchive: 'Save Snapshot',
+    dialogRenameArchive: 'Rename Snapshot',
+    placeholderArchiveName: 'Enter a snapshot name',
+};
+
+const settingsTxt = computed<SettingsTxt>(() => (props.locale === 'en' ? SETTINGS_TXT_EN : SETTINGS_TXT_ZH));
+
+const SHARE_API_ERROR_EN: Record<string, string> = {
+    '无法验证客户端身份，请刷新页面后重试': 'Unable to verify client identity. Please refresh the page and try again',
+    '分享ID不能为空': 'Share ID cannot be empty',
+    '分享ID格式不正确': 'Invalid share ID format',
+    '分享链接不存在或已过期': 'Share link does not exist or has expired',
+    '分享链接已过期': 'Share link has expired',
+    '密码不正确': 'Incorrect password',
+    '密码长度不能超过30位': 'Password cannot exceed 30 characters',
+    '密码包含不被允许的字符': 'Password contains unsupported characters',
+    '分享名称不能为空': 'Share name cannot be empty',
+    '分享名称长度不能超过10个字符': 'Share name cannot exceed 10 characters',
+    '分享名称只能包含中英文、数字和常见连字符（-、_、.）': 'Share name can only contain Chinese/English letters, numbers, and common separators (-, _, .)',
+    '分享名称已存在，请使用其他名称': 'Share name already exists. Please use another name',
+    '请求过于频繁，请稍后再试（每分钟最多3次）': 'Too many requests. Please try again later (up to 3 shares per minute)',
+    'JSON数据不能为空': 'JSON data cannot be empty',
+    'JSON格式不正确': 'Invalid JSON format',
+    '过期时间必须大于0': 'Expiration must be greater than 0',
+    '分享链接不存在': 'Share link does not exist',
+    '无权限删除该分享（需创建者身份或正确密码）': 'No permission to delete this share (creator identity or correct password required)',
+    '分享链接已删除': 'Share link deleted',
+    '不支持的请求方法': 'Unsupported request method',
+    '服务器错误': 'Server error',
+};
+
+const localizeShareApiError = (message?: string, fallback?: string): string => {
+    if (!message) return fallback || settingsTxt.value.msgSharedLoadFallback;
+    if (props.locale !== 'en') return message;
+
+    if (SHARE_API_ERROR_EN[message]) {
+        return SHARE_API_ERROR_EN[message];
+    }
+
+    let match = message.match(/^JSON数据过大（(.+?) MB，最大 (.+?) MB）$/);
+    if (match) {
+        return `JSON data is too large (${match[1]} MB; max ${match[2]} MB)`;
+    }
+
+    match = message.match(/^系统用户数量已达到上限（(.+?) 个），暂时无法创建新用户，请稍后再试$/);
+    if (match) {
+        return `The system user limit has been reached (${match[1]} users). New users cannot be created right now. Please try again later`;
+    }
+
+    match = message.match(/^您创建的分享数量已达到上限（(.+?) 个，最大 (.+?) 个），请先删除一些分享或等待过期$/);
+    if (match) {
+        return `You have reached the share limit (${match[1]} of ${match[2]}). Please delete some shares or wait for them to expire`;
+    }
+
+    match = message.match(/^您的存储空间不足（已使用 (.+?)，最大 (.+?)），请先删除一些分享或等待过期$/);
+    if (match) {
+        return `Not enough storage space (used ${match[1]}, max ${match[2]}). Please delete some shares or wait for them to expire`;
+    }
+
+    match = message.match(/^过期时间不能超过(.+?)天$/);
+    if (match) {
+        return `Expiration cannot exceed ${match[1]} days`;
+    }
+
+    return message;
+};
 
 
 // ==================== 常量与全局状态 ====================
@@ -2527,7 +3124,7 @@ const diffSortJSON = (side: 'left' | 'right') => {
     if (!editor) return;
     const value = editor.getValue();
     if (!value.trim()) {
-        showMessageError('没有可排序的内容');
+        showMessageError(settingsTxt.value.msgNoSortableContent);
         return;
     }
     // Diff 模式下的"按字段值排序"需要配合字段排序对话框收集根路径与字段名，
@@ -2542,12 +3139,12 @@ const diffSortJSON = (side: 'left' | 'right') => {
     try {
         const result = preprocessJSON(value, { preserveNumberLiterals: true });
         const sorted = sortJsonObject(result.data, sortMethod.value, sortOrder.value, '');
-        const formatter = new JsonPlusFormatter(false, indentSize.value, arrayNewLine.value, preserveNumberLiterals.value);
+        const formatter = new JsonPlusFormatter(false, indentSize.value, true, preserveNumberLiterals.value);
         const formatted = formatter.format(sorted, result.escapeMap);
         replaceEditorValuePreservingUndo(editor, formatted, `diff-sort-${side}`);
-        showMessageSuccess('排序成功');
+        showMessageSuccess(settingsTxt.value.msgSortSuccess);
     } catch (error: any) {
-        showMessageError('排序失败: ' + error.message);
+        showMessageError(settingsTxt.value.msgSortFail(error.message));
     }
 };
 
@@ -2650,7 +3247,7 @@ const loadArchives = async () => {
         archives.value = Array.isArray(record?.archives) ? record!.archives : [];
     } catch (e: any) {
         archives.value = [];
-        showMessageError(`存档加载失败：${e?.message ?? String(e)}`);
+        showMessageError(settingsTxt.value.msgArchiveLoadFail(e?.message ?? String(e)));
     }
 };
 
@@ -2674,7 +3271,7 @@ const saveArchives = async (): Promise<boolean> => {
         await idbPut(IDB_STORE_ARCHIVES, record);
         return true;
     } catch (error: any) {
-        showMessageError(`存档保存失败：${error?.message ?? '浏览器存储异常'}`);
+        showMessageError(settingsTxt.value.msgArchiveSaveFail(error?.message ?? settingsTxt.value.msgArchiveStorageError));
         return false;
     }
 };
@@ -3278,11 +3875,11 @@ const getLargeFileOptions = (enableLargeFileFolding: boolean, lineCount: number)
         : {};
 
 const showProcessingRestrictedMessage = () => {
-    showMessageWarning('当前 JSON 超过 300 万行，已进入仅展示模式，只支持查看和滚动');
+    showMessageWarning(settingsTxt.value.msgProcessingDisplayOnly);
 };
 
 const showCollapseRestrictedMessage = () => {
-    showMessageWarning('当前 JSON 超过 100 万行，层级收缩功能不可用');
+    showMessageWarning(settingsTxt.value.msgCollapseRestricted);
 };
 
 const ensureProcessingFeatureAvailable = () => {
@@ -3481,9 +4078,9 @@ const isFoldLevelDisabled = (level: number): boolean => {
 
 const getFoldLevelOptionLabel = (level: number): string => {
     if (isFoldLevelDisabled(level)) {
-        return `第${level}层`;
+        return settingsTxt.value.levelLabel(level);
     }
-    return `第${level}层`;
+    return settingsTxt.value.levelLabel(level);
 };
 
 const isSelectedFoldLevelDisabled = computed(() => {
@@ -4420,7 +5017,7 @@ const formatFileSize = (bytes: number): string => {
 const getArchivesTotalSizeInfo = (): string => {
     const totalSize = archives.value.reduce((sum, archive) => sum + archive.size, 0);
     const formattedUsedSize = formatFileSize(totalSize);
-    return `已使用 ${formattedUsedSize}`;
+    return settingsTxt.value.archiveUsedSize(formattedUsedSize);
 };
 
 // 更新编辑器状态栏信息
@@ -5271,7 +5868,7 @@ const configureInputEditor: () => void = () => {
                 const { data: parsed } = preprocessJSON(cleanedContent);
                 const level = calculateMaxLevel(parsed);
                 if (level > 99) {
-                    showMessageError('JSON层级超过99层, 拒绝处理此JSON数据');
+                    showMessageError(settingsTxt.value.msgJsonLevelTooDeep);
                     maxLevel.value = 0;
                     selectedLevel.value = 0;
                     setTimeout(() => {
@@ -5699,7 +6296,7 @@ const checkJsonDepth = (content: string): { isValid: boolean; error?: string } =
         if (level > 99) {
             return {
                 isValid: false,
-                error: 'JSON层级超过99层, 拒绝处理此JSON数据',
+                error: settingsTxt.value.msgJsonLevelTooDeep,
             };
         }
     } catch (e) {
@@ -5844,7 +6441,7 @@ const handleConvert = (command: string) => {
     try {
         const value = inputEditor?.getValue() || '';
         if (!value.trim()) {
-            showMessageError('请先输入内容');
+            showMessageError(settingsTxt.value.msgInputContentRequired);
             return;
         }
 
@@ -5854,7 +6451,7 @@ const handleConvert = (command: string) => {
             outputEditor?.setValue(jsonStr);
             updateLineNumberWidth(outputEditor);
             updateEditorHeight(outputEditor);
-            showMessageSuccess('Cookie 转换成功');
+            showMessageSuccess(settingsTxt.value.msgConvertCookieSuccess);
             return;
         }
 
@@ -5866,7 +6463,7 @@ const handleConvert = (command: string) => {
             const result = preprocessJSON(value, { preserveNumberLiterals: true, encodingMode: true });
             parsed = unwrapHighPrecisionForConvert(result.data);
         } catch (error) {
-            showMessageError('请输入有效的 JSON 数据');
+            showMessageError(settingsTxt.value.msgInvalidJson);
             return;
         }
 
@@ -5894,7 +6491,7 @@ const handleConvert = (command: string) => {
                 result = convertToGo(parsed);
                 break;
             default:
-                throw new Error('不支持的转换类型');
+                throw new Error(settingsTxt.value.msgConvertUnsupported);
         }
 
         // 还原数字精度哨兵：把 __HPN_START_xxx__...__HPN_END_xxx__ 以及可能被库加上的引号替换为原始数字字面量
@@ -5910,10 +6507,10 @@ const handleConvert = (command: string) => {
             const enableLargeFile = editorLanguage === 'json';
             updateOutputEditorConfig(editorLanguage, enableLargeFile, goIndentSize);
 
-            showMessageSuccess(`转换为 ${command.toUpperCase()} 语言结构体成功`);
+            showMessageSuccess(settingsTxt.value.msgConvertSuccess(command.toUpperCase()));
         }
     } catch (error: any) {
-        showMessageError('转换失败: ' + error.message);
+        showMessageError(settingsTxt.value.msgConvertFail(error.message));
     }
 };
 
@@ -6992,7 +7589,7 @@ const formatJSON = () => {
         const value = inputEditor?.getValue() || '';
 
         if (!value.trim()) {
-            showMessageError('请先输入 JSON 数据');
+            showMessageError(settingsTxt.value.msgInputJsonRequired);
             return;
         }
 
@@ -7026,12 +7623,12 @@ const formatJSON = () => {
 
         const elapsed = performance.now() - startTime;
         if (startLineCount > 300000) {
-            showMessageSuccess(`格式化成功，耗时 ${elapsed.toFixed(0)}ms`);
+            showMessageSuccess(settingsTxt.value.msgFormatSuccessWithTime(elapsed.toFixed(0)));
         } else {
-            showMessageSuccess('格式化成功');
+            showMessageSuccess(settingsTxt.value.msgFormatSuccess);
         }
     } catch (error: any) {
-        showMessageError('格式化失败: ' + error.message);
+        showMessageError(settingsTxt.value.msgFormatFail(error.message));
     }
 };
 
@@ -7042,7 +7639,7 @@ const compressJSON = () => {
         outputType.value = 'json';
         const value = inputEditor?.getValue() || '';
         if (!value.trim()) {
-            showMessageError('请先输入 JSON 数据');
+            showMessageError(settingsTxt.value.msgInputJsonRequired);
             return;
         }
 
@@ -7051,7 +7648,7 @@ const compressJSON = () => {
         try {
             result = preprocessJSON(value, { preserveNumberLiterals: preserveNumberLiterals.value });
         } catch (error) {
-            showMessageError('请输入有效的 JSON 数据');
+            showMessageError(settingsTxt.value.msgInvalidJson);
             return;
         }
 
@@ -7064,9 +7661,9 @@ const compressJSON = () => {
         // 对于JSON输出，总是启用大文件折叠优化
         updateOutputEditorConfig('json', true);
 
-        showMessageSuccess('压缩成功');
+        showMessageSuccess(settingsTxt.value.msgCompressSuccess);
     } catch (error: any) {
-        showMessageError('压缩失败: ' + error.message);
+        showMessageError(settingsTxt.value.msgCompressFail(error.message));
     }
 };
 
@@ -7110,7 +7707,7 @@ const unescapeJSON = (recursive: boolean = true) => {
     try {
         const value = inputEditor?.getValue() || '';
         if (!value.trim()) {
-            showMessageError('请先输入内容');
+            showMessageError(settingsTxt.value.msgInputContentRequired);
             return;
         }
         outputType.value = 'json';
@@ -7133,7 +7730,7 @@ const unescapeJSON = (recursive: boolean = true) => {
         const illegalCheck = detectIllegalEscapes(value);
         if (illegalCheck.hasIllegal) {
             // 对于包含非法编码的情况，直接拒绝处理，预览区域不显示内容
-            showMessageError('检测到非法转义序列，为避免数据损坏，已拒绝去除转义操作');
+            showMessageError(settingsTxt.value.msgUnescapeIllegalRejected);
             return;
         }
 
@@ -7328,7 +7925,7 @@ const unescapeJSON = (recursive: boolean = true) => {
                     updateEditorHeight(outputEditor);
                 }
 
-                showMessageSuccess('已进行保守的转义去除处理（仅处理\\\\和\\"，非法转义保持原样）');
+                showMessageSuccess(settingsTxt.value.msgUnescapeConservative);
                 return;
             } else {
                 // 2. 宽松解析器（仅对合法编码使用）
@@ -7638,7 +8235,7 @@ const unescapeJSON = (recursive: boolean = true) => {
                         updateEditorHeight(outputEditor);
                     }
 
-                    showMessageSuccess('去除转义成功');
+                    showMessageSuccess(settingsTxt.value.msgUnescapeSuccess);
                     return;
                 }
             } catch (processError: any) {}
@@ -7736,7 +8333,7 @@ const unescapeJSON = (recursive: boolean = true) => {
                     updateEditorHeight(outputEditor);
                 }
 
-                showMessageSuccess('去除转义成功（仅外层）');
+                showMessageSuccess(settingsTxt.value.msgUnescapeShallowSuccess);
                 return;
             } catch (formatError) {
                 // 格式化失败，继续尝试其他方式
@@ -7785,7 +8382,7 @@ const unescapeJSON = (recursive: boolean = true) => {
                                     updateEditorHeight(outputEditor);
                                 }
 
-                                showMessageSuccess('去除双重转义成功');
+                                showMessageSuccess(settingsTxt.value.msgUnescapeDoubleSuccess);
                                 return;
                             }
                         } catch {
@@ -7807,7 +8404,7 @@ const unescapeJSON = (recursive: boolean = true) => {
                                 updateEditorHeight(outputEditor);
                             }
 
-                            showMessageSuccess('去除转义成功');
+                            showMessageSuccess(settingsTxt.value.msgUnescapeSuccess);
                             return;
                         }
                     } else {
@@ -7858,7 +8455,7 @@ const unescapeJSON = (recursive: boolean = true) => {
                     updateEditorHeight(outputEditor);
                 }
 
-                showMessageSuccess('去除转义成功');
+                showMessageSuccess(settingsTxt.value.msgUnescapeSuccess);
             } else {
                 // 没有标准JSON转义特征，提示用户
                 outputEditor?.setValue(originalInput);
@@ -7878,7 +8475,7 @@ const unescapeJSON = (recursive: boolean = true) => {
                     updateEditorHeight(outputEditor);
                 }
 
-                showMessageWarning('未检测到标准JSON转义, 内容保持不变');
+                showMessageWarning(settingsTxt.value.msgUnescapeNotDetected);
             }
         } else {
             outputEditor?.setValue(originalInput);
@@ -7898,12 +8495,12 @@ const unescapeJSON = (recursive: boolean = true) => {
                 updateEditorHeight(outputEditor);
             }
 
-            showMessageSuccess('去除转义成功');
+            showMessageSuccess(settingsTxt.value.msgUnescapeSuccess);
         }
 
         return;
     } catch (error: any) {
-        showMessageError('去除转义失败: ' + error.message);
+        showMessageError(settingsTxt.value.msgUnescapeFail(error.message));
     }
 };
 
@@ -7913,7 +8510,7 @@ const compressAndEscapeJSON = () => {
     try {
         const value = inputEditor?.getValue() || '';
         if (!value.trim()) {
-            showMessageError('请先输入 JSON 数据');
+            showMessageError(settingsTxt.value.msgInputJsonRequired);
             return;
         }
         outputType.value = 'json';
@@ -7922,7 +8519,7 @@ const compressAndEscapeJSON = () => {
         const illegalCheck = detectIllegalEscapes(value);
         if (illegalCheck.hasIllegal) {
             // 对于包含非法编码的情况，直接拒绝处理
-            showMessageError('检测到非法转义序列，为避免数据损坏，已拒绝压缩并转义操作');
+            showMessageError(settingsTxt.value.msgEscapeIllegalRejected);
             return;
         }
 
@@ -7931,7 +8528,7 @@ const compressAndEscapeJSON = () => {
         try {
             result = preprocessJSON(value, { preserveNumberLiterals: true });
         } catch (error) {
-            showMessageError('请输入有效的 JSON 数据');
+            showMessageError(settingsTxt.value.msgInvalidJson);
             return;
         }
 
@@ -7958,9 +8555,9 @@ const compressAndEscapeJSON = () => {
             updateEditorHeight(outputEditor);
         }
 
-        showMessageSuccess('转义成功');
+        showMessageSuccess(settingsTxt.value.msgEscapeSuccess);
     } catch (error: any) {
-        showMessageError('压缩并转义失败: ' + error.message);
+        showMessageError(settingsTxt.value.msgEscapeFail(error.message));
     }
 };
 
@@ -7969,13 +8566,13 @@ const handleLevelAction = () => {
     if (!ensureCollapseFeatureAvailable()) return;
     // 检查是否有正在进行的折叠操作，如果有则直接拒绝新请求
     if (isFoldOperationLocked) {
-        showMessageWarning('请等待当前折叠操作完成');
+        showMessageWarning(settingsTxt.value.msgCollapseBusy);
         return;
     }
 
     try {
         if (!outputEditor) {
-            showMessageError('编辑器未初始化');
+            showMessageError(settingsTxt.value.msgEditorNotInit);
             return;
         }
 
@@ -7983,7 +8580,7 @@ const handleLevelAction = () => {
         // 这样即使用户平时选择“简单数组同一行显示”，收缩时也能为内层数组生成稳定的折叠区域。
         let value = inputEditor?.getValue() || '';
         if (!value.trim()) {
-            showMessageError('请先输入 JSON 数据');
+            showMessageError(settingsTxt.value.msgInputJsonRequired);
             selectedLevel.value = 1;
             return;
         }
@@ -7996,7 +8593,7 @@ const handleLevelAction = () => {
             parsedData = result.data; // 提取实际的JSON数据
             escapeMap = result.escapeMap; // 获取转义映射
         } catch (error) {
-            showMessageError('请输入有效的 JSON 数据');
+            showMessageError(settingsTxt.value.msgInvalidJson);
             return;
         }
 
@@ -8036,7 +8633,7 @@ const handleLevelAction = () => {
                     resolvedMaxFoldableLevel > 0 &&
                     selectedLevel.value > resolvedMaxFoldableLevel
                 ) {
-                    showMessageWarning(`当前内容最多只能收缩到第 ${resolvedMaxFoldableLevel} 层`);
+                    showMessageWarning(settingsTxt.value.msgCollapseMaxLevel(resolvedMaxFoldableLevel));
                     return;
                 }
 
@@ -8063,11 +8660,11 @@ const handleLevelAction = () => {
                 const beforeFoldVisible = getVisibleLineRange();
                 const foldResult = await foldByIndentation();
                 if (foldResult.collapsedCount === 0) {
-                    const fallbackMaxLevel = maxFoldableLevel.value && maxFoldableLevel.value > 0 ? `，当前最多可折叠到第 ${maxFoldableLevel.value} 层` : '';
-                    showMessageWarning(`第 ${selectedLevel.value} 层没有可用折叠区域${fallbackMaxLevel}`);
+                    const fallbackMaxLevel = maxFoldableLevel.value && maxFoldableLevel.value > 0 ? maxFoldableLevel.value : null;
+                    showMessageWarning(settingsTxt.value.msgCollapseNoRegion(selectedLevel.value, fallbackMaxLevel));
                     return;
                 }
-                showMessageSuccess(`收缩到第 ${selectedLevel.value} 层成功`);
+                showMessageSuccess(settingsTxt.value.msgCollapseSuccess(selectedLevel.value));
 
                 // 折叠完成后，启用折叠信息更新并立即刷新，然后重新计算
                 setTimeout(() => {
@@ -8107,7 +8704,7 @@ const handleLevelAction = () => {
             performFold();
         }, 100);
     } catch (error: any) {
-        showMessageError('操作失败: ' + error.message);
+        showMessageError(settingsTxt.value.msgCollapseFail(error.message));
     }
 };
 
@@ -8127,13 +8724,13 @@ const openDataMaskingDialog = () => {
     if (!ensureProcessingFeatureAvailable()) return;
     // 检查输入编辑器是否有内容
     if (!inputEditor) {
-        showMessageWarning('编辑器未初始化，请稍候再试');
+        showMessageWarning(settingsTxt.value.msgEditorNotInit);
         return;
     }
 
     const jsonData = inputEditor.getValue();
     if (!jsonData || !jsonData.trim()) {
-        showMessageError('请先输入 JSON 数据');
+        showMessageError(settingsTxt.value.msgInputJsonRequired);
         return;
     }
 
@@ -8141,7 +8738,7 @@ const openDataMaskingDialog = () => {
     try {
         JSON.parse(jsonData);
     } catch (error) {
-        showMessageError('JSON 数据格式不正确，请先格式化 JSON 数据');
+        showMessageError(settingsTxt.value.msgMaskingInvalidJson);
         return;
     }
 
@@ -8202,7 +8799,7 @@ const handleDataMaskingApply = (maskedJson: string) => {
 
         outputType.value = 'json';
     } catch (error: any) {
-        showMessageError('应用脱敏结果失败: ' + (error.message || '未知错误'));
+        showMessageError(settingsTxt.value.msgMaskingApplyFail(error.message || settingsTxt.value.msgUnknownError));
     }
 };
 
@@ -8280,46 +8877,46 @@ const calculateArchiveSize = (content: string): number => {
 const handleSaveArchive = () => {
     if (!ensureProcessingFeatureAvailable()) return;
     if (!inputEditor) {
-        showMessageError('编辑器未初始化，请稍候再试');
+        showMessageError(settingsTxt.value.msgEditorNotInit);
         return;
     }
 
     const content = inputEditor.getValue() || '';
     if (!content.trim()) {
-        showMessageError('当前没有可存档的内容');
+        showMessageError(settingsTxt.value.msgArchiveNoContent);
         return;
     }
 
     // 检查存档数量上限
     if (archives.value.length >= MAX_ARCHIVE_COUNT) {
-        showMessageError(`存档数量已达到上限（${MAX_ARCHIVE_COUNT}个），请先删除部分存档`);
+        showMessageError(settingsTxt.value.msgArchiveCountReached(MAX_ARCHIVE_COUNT));
         return;
     }
 
     const size = calculateArchiveSize(content);
     if (size > MAX_SINGLE_ARCHIVE_SIZE) {
-        showMessageError(`存档失败：单个存档大小不能超过 30MB（当前 ${Math.round(size / (1024 * 1024))}MB）`);
+        showMessageError(settingsTxt.value.msgArchiveTooLarge(Math.round(size / (1024 * 1024))));
         return;
     }
 
     if (customArchiveName.value) {
         // 使用自定义弹窗
-        archiveNameDialogTitle.value = '保存存档';
+        archiveNameDialogTitle.value = settingsTxt.value.dialogSaveArchive;
         // 使用最小的未使用数字作为默认值
         archiveNameDialogInputValue.value = `${findNextAvailableNumber()}`;
-        archiveNameDialogPlaceholder.value = '请输入存档名称';
+        archiveNameDialogPlaceholder.value = settingsTxt.value.placeholderArchiveName;
         archiveNameDialogExcludeId.value = ''; // 新增时不需要排除
         archiveNameDialogCallback.value = (name: string) => {
             void (async () => {
             // 再次检查存档数量上限（防止在弹窗打开期间存档数量达到上限）
             if (archives.value.length >= MAX_ARCHIVE_COUNT) {
-                showMessageError(`存档数量已达到上限（${MAX_ARCHIVE_COUNT}个），请先删除部分存档`);
+                showMessageError(settingsTxt.value.msgArchiveCountReached(MAX_ARCHIVE_COUNT));
                 return;
             }
 
             const normalizedName = normalizeArchiveName(name);
             if (!normalizedName) {
-                showMessageError('存档名称不能为空');
+                showMessageError(settingsTxt.value.msgArchiveNameEmpty);
                 return;
             }
 
@@ -8338,7 +8935,7 @@ const handleSaveArchive = () => {
             const saveSuccess = await saveArchives();
 
             if (saveSuccess) {
-                showMessageSuccess(`已保存到本标签页存档，${getArchivesTotalSizeInfo()}`);
+                showMessageSuccess(settingsTxt.value.msgArchiveSavedWithSize(getArchivesTotalSizeInfo()));
             } else {
                 // 保存失败时，从内存数组中移除刚刚添加的存档
                 archives.value.shift();
@@ -8367,7 +8964,7 @@ const handleSaveArchive = () => {
         void (async () => {
             const saveSuccess = await saveArchives();
             if (saveSuccess) {
-                showMessageSuccess(`已保存到本标签页存档，${getArchivesTotalSizeInfo()}`);
+                showMessageSuccess(settingsTxt.value.msgArchiveSavedWithSize(getArchivesTotalSizeInfo()));
             } else {
                 // 保存失败时，从内存数组中移除刚刚添加的存档
                 archives.value.shift();
@@ -8379,12 +8976,12 @@ const handleSaveArchive = () => {
 const handleArchiveCommand = async (command: string) => {
     const archive = archives.value.find(item => item.id === command);
     if (!archive) {
-        showMessageError('未找到对应的存档');
+        showMessageError(settingsTxt.value.msgArchiveNotFound);
         return;
     }
 
     if (!inputEditor) {
-        showMessageError('编辑器未初始化，请稍候再试');
+        showMessageError(settingsTxt.value.msgEditorNotInit);
         return;
     }
 
@@ -8455,19 +9052,19 @@ const handleArchiveCommand = async (command: string) => {
         maxLevel.value = 0;
     }
 
-    showMessageSuccess(`已加载存档：${archive.name}`);
+    showMessageSuccess(settingsTxt.value.msgArchiveLoaded(archive.name));
 };
 
 // 处理加载分享的JSON数据到编辑区域
 const handleLoadSharedJson = (jsonData: string) => {
     try {
         if (!inputEditor) {
-            showMessageError('编辑器未初始化，请稍候再试');
+            showMessageError(settingsTxt.value.msgEditorNotInit);
             return;
         }
 
         if (!jsonData || !jsonData.trim()) {
-            showMessageError('分享数据为空');
+            showMessageError(settingsTxt.value.msgSharedDataEmpty);
             return;
         }
 
@@ -8517,10 +9114,10 @@ const handleLoadSharedJson = (jsonData: string) => {
 
             outputType.value = 'json';
         } catch (error: any) {
-            showMessageError('JSON格式不正确: ' + (error.message || '解析失败'));
+            showMessageError(settingsTxt.value.msgSharedJsonInvalid(error.message || settingsTxt.value.msgUnknownError));
         }
     } catch (error: any) {
-        showMessageError('加载分享数据失败: ' + (error.message || '未知错误'));
+        showMessageError(settingsTxt.value.msgSharedLoadFail(error.message || settingsTxt.value.msgUnknownError));
     }
 };
 
@@ -8746,19 +9343,19 @@ const stopArchiveResize = () => {
 // 更新存档内容（将当前编辑区域的内容保存到指定存档）
 const handleRefreshArchive = async (item: JsonArchive) => {
     if (!inputEditor) {
-        showMessageError('编辑器未初始化，请稍候再试');
+        showMessageError(settingsTxt.value.msgEditorNotInit);
         return;
     }
 
     const newContent = inputEditor.getValue() || '';
     if (!newContent.trim()) {
-        showMessageError('当前编辑区域内容为空，无法更新存档');
+        showMessageError(settingsTxt.value.msgArchiveRefreshNoContent);
         return;
     }
 
     const newSize = calculateArchiveSize(newContent);
     if (newSize > MAX_SINGLE_ARCHIVE_SIZE) {
-        showMessageError(`更新存档失败：单个存档大小不能超过 30MB（当前 ${Math.round(newSize / (1024 * 1024))}MB）`);
+        showMessageError(settingsTxt.value.msgArchiveRefreshTooLarge(Math.round(newSize / (1024 * 1024))));
         return;
     }
 
@@ -8775,7 +9372,7 @@ const handleRefreshArchive = async (item: JsonArchive) => {
 
             const saveSuccess = await saveArchives();
             if (saveSuccess) {
-                showMessageSuccess(`已更新本标签页存档，${getArchivesTotalSizeInfo()}`);
+                showMessageSuccess(settingsTxt.value.msgArchiveRefreshSuccess(getArchivesTotalSizeInfo()));
             } else {
                 // 保存失败时，回滚内存中的更改
                 const currentIndex = archives.value.findIndex(a => a.id === item.id);
@@ -8785,10 +9382,10 @@ const handleRefreshArchive = async (item: JsonArchive) => {
                 }
             }
         } else {
-            showMessageError('未找到对应的存档');
+            showMessageError(settingsTxt.value.msgArchiveNotFound);
         }
     } catch (error: any) {
-        showMessageError('更新存档失败: ' + error.message);
+        showMessageError(settingsTxt.value.msgArchiveUpdateFail(error.message));
     }
 };
 
@@ -8810,7 +9407,7 @@ const handleDeleteArchive = async (item: JsonArchive) => {
         const deletedArchive = archives.value.splice(index, 1)[0];
         const saveSuccess = await saveArchives();
         if (saveSuccess) {
-            showMessageSuccess(`已删除本标签页存档，${getArchivesTotalSizeInfo()}`);
+            showMessageSuccess(settingsTxt.value.msgArchiveDeletedWithSize(getArchivesTotalSizeInfo()));
         } else {
             // 保存失败时，将删除的存档重新添加回去
             archives.value.splice(index, 0, deletedArchive);
@@ -8820,15 +9417,15 @@ const handleDeleteArchive = async (item: JsonArchive) => {
 
 // 重命名单个存档
 const handleRenameArchive = (item: JsonArchive) => {
-    archiveNameDialogTitle.value = '重命名存档';
+    archiveNameDialogTitle.value = settingsTxt.value.dialogRenameArchive;
     archiveNameDialogInputValue.value = item.name;
-    archiveNameDialogPlaceholder.value = '请输入存档名称';
+    archiveNameDialogPlaceholder.value = settingsTxt.value.placeholderArchiveName;
     archiveNameDialogExcludeId.value = item.id; // 编辑时排除当前存档
     archiveNameDialogCallback.value = (name: string) => {
         void (async () => {
         const normalizedName = normalizeArchiveName(name);
         if (!normalizedName) {
-            showMessageError('存档名称不能为空');
+            showMessageError(settingsTxt.value.msgArchiveNameEmpty);
             return;
         }
 
@@ -8838,7 +9435,7 @@ const handleRenameArchive = (item: JsonArchive) => {
         item.name = normalizedName;
         const saveSuccess = await saveArchives();
         if (saveSuccess) {
-            showMessageSuccess('重命名成功');
+            showMessageSuccess(settingsTxt.value.msgArchiveRenameSuccess);
         } else {
             // 保存失败时，回滚名称更改
             item.name = oldName;
@@ -9100,9 +9697,9 @@ const loadSharedDataFromUrl = async () => {
 
                     // 显示成功消息
                     if (response.data.description) {
-                        showMessageSuccess(`已加载分享数据：${response.data.description}`);
+                        showMessageSuccess(settingsTxt.value.msgSharedLoadedWithDesc(response.data.description));
                     } else {
-                        showMessageSuccess('已加载分享数据');
+                        showMessageSuccess(settingsTxt.value.msgSharedLoaded);
                     }
 
                     // 清除URL参数（可选，保持URL干净）
@@ -9111,20 +9708,20 @@ const loadSharedDataFromUrl = async () => {
                     cleanUrl.searchParams.delete('password');
                     window.history.replaceState({}, '', cleanUrl.toString());
                 } catch (error) {
-                    showMessageError('分享数据格式不正确');
+                    showMessageError(settingsTxt.value.msgSharedDataFormatInvalid);
                 }
             }
         } else {
             // 处理错误情况
             if (response.hasPassword) {
                 // 需要密码或密码错误，显示密码输入对话框
-                const promptMessage = password ? '密码不正确，请重新输入' : '此分享链接需要密码才能访问';
+                const promptMessage = password ? settingsTxt.value.promptSharePasswordIncorrect : settingsTxt.value.promptSharePasswordRequired;
 
-                ElMessageBox.prompt(promptMessage, '输入密码', {
-                    confirmButtonText: '确定',
-                    cancelButtonText: '取消',
+                ElMessageBox.prompt(promptMessage, settingsTxt.value.promptSharePasswordTitle, {
+                    confirmButtonText: settingsTxt.value.btnConfirm,
+                    cancelButtonText: settingsTxt.value.btnCancel,
                     inputType: 'password',
-                    inputPlaceholder: '请输入访问密码',
+                    inputPlaceholder: settingsTxt.value.promptSharePasswordPlaceholder,
                 })
                     .then(async ({ value }: any) => {
                         if (value) {
@@ -9139,11 +9736,11 @@ const loadSharedDataFromUrl = async () => {
                         // 用户取消
                     });
             } else {
-                showMessageError(response.error || '加载分享数据失败');
+                showMessageError(localizeShareApiError(response.error, settingsTxt.value.msgSharedLoadFallback));
             }
         }
     } catch (error: any) {
-        showMessageError('加载分享数据失败: ' + (error.message || '未知错误'));
+        showMessageError(settingsTxt.value.msgSharedLoadFail(error.message || settingsTxt.value.msgUnknownError));
     }
 };
 
@@ -9897,14 +10494,14 @@ const getNextLevelKeys = (jsonObj: any, contextPath: string): PathSuggestion[] =
     return suggestions.sort((a, b) => a.value.localeCompare(b.value));
 };
 
-// 获取类型标签的中文显示
+// 获取类型标签的本地化显示
 const getTypeLabel = (type: string): string => {
     const typeMap: Record<string, string> = {
-        exact: '精确匹配',
-        'array-wildcard': '数组通配符',
-        'array-index': '数组索引',
-        wildcard: '通配符',
-        key: '字段',
+        exact: settingsTxt.value.sortTypeExact,
+        'array-wildcard': settingsTxt.value.sortTypeArrayWildcard,
+        'array-index': settingsTxt.value.sortTypeArrayIndex,
+        wildcard: settingsTxt.value.sortTypeWildcard,
+        key: settingsTxt.value.sortTypeKey,
     };
     return typeMap[type] || type;
 };
@@ -10384,128 +10981,126 @@ const showDemoStep: (step: number) => void = (step: number) => {
 
     const steps = [
         {
-            title: '📊 演示开始',
-            content: '已自动填入演示数据，接下来让我们学习如何使用字段排序功能',
+            title: settingsTxt.value.demoStartTitle,
+            content: settingsTxt.value.demoStartContent,
             highlight: '.editor-panel-input',
-            buttons: [{ text: '开始学习', action: () => showDemoStep(1) }],
+            buttons: [{ text: settingsTxt.value.demoStartButton, action: () => showDemoStep(1) }],
         },
         {
-            title: '🔢 示例1：Array - 按 id 排序',
-            content: '由于按照 id 字段排序的对象就是最外层数组的元素，所以排序范围就是整个 JSON 数据，因此排序范围可以留空，排序字段参数填入 id 即可',
+            title: settingsTxt.value.demoArrayIdTitle,
+            content: settingsTxt.value.demoArrayIdContent,
             highlight: '.editor-panel-input',
             buttons: [
-                { text: '上一步', action: () => showDemoStep(0) },
-                { text: '设置参数', action: () => setAndNext('', 'id', 2) },
+                { text: settingsTxt.value.demoPrev, action: () => showDemoStep(0) },
+                { text: settingsTxt.value.demoSetParams, action: () => setAndNext('', 'id', 2) },
             ],
         },
         {
-            title: '🎯 执行排序',
-            content: '参数设置完成，点击“执行排序”将会应用排序并进入结果查看步骤',
+            title: settingsTxt.value.demoExecuteTitle,
+            content: settingsTxt.value.demoExecuteContent,
             highlight: '.editor-panel-input',
             buttons: [
-                { text: '上一步', action: () => showDemoStep(1) },
-                { text: '执行排序', action: () => execAndNext('', 'id', 3) },
+                { text: settingsTxt.value.demoPrev, action: () => showDemoStep(1) },
+                { text: settingsTxt.value.demoExecuteSort, action: () => execAndNext('', 'id', 3) },
             ],
         },
         {
-            title: '✅ 排序完成',
-            content: '排序已完成，结果已写入右侧预览区域，你可以返回上一步重新查看，或者进入下一个示例',
+            title: settingsTxt.value.demoSortDoneTitle,
+            content: settingsTxt.value.demoSortDoneContent,
             highlight: null,
             buttons: [
-                { text: '上一步', action: () => showDemoStep(2) },
-                { text: '下一个示例', action: () => showDemoStep(4) },
+                { text: settingsTxt.value.demoPrev, action: () => showDemoStep(2) },
+                { text: settingsTxt.value.demoNextExample, action: () => showDemoStep(4) },
             ],
         },
         {
-            title: '🔢 示例2：Array - 按毕业年份排序每个人的教育经历',
-            content:
-                '排序范围要指到"被排序的数组本身"：[*].education（每个人的 education 数组），字段填 graduationYear。' +
-                '别写成 [*].education.[*]，那指的是数组里的单个元素，不是数组，无法排序。',
+            title: settingsTxt.value.demoArrayEducationTitle,
+            content: settingsTxt.value.demoArrayEducationContent,
             highlight: '.editor-panel-input',
             buttons: [
-                { text: '上一步', action: () => showDemoStep(3) },
+                { text: settingsTxt.value.demoPrev, action: () => showDemoStep(3) },
                 {
-                    text: '设置参数',
+                    text: settingsTxt.value.demoSetParams,
                     action: () => setAndNext('[*].education', 'graduationYear', 5),
                 },
             ],
         },
         {
-            title: '🎯 执行排序',
-            content: '参数设置完成，点击“执行排序”将会应用排序并进入结果查看步骤',
+            title: settingsTxt.value.demoExecuteTitle,
+            content: settingsTxt.value.demoExecuteContent,
             highlight: '.editor-panel-input',
             buttons: [
-                { text: '上一步', action: () => showDemoStep(4) },
+                { text: settingsTxt.value.demoPrev, action: () => showDemoStep(4) },
                 {
-                    text: '执行排序',
+                    text: settingsTxt.value.demoExecuteSort,
                     action: () => execAndNext('[*].education', 'graduationYear', 6),
                 },
             ],
         },
         {
-            title: '✅ 排序完成（Array - education）',
-            content: '排序已完成，结果已写入右侧预览区域，你可以返回上一步重新设置，或者进入 Map 示例',
+            title: settingsTxt.value.demoSortDoneEducationTitle,
+            content: settingsTxt.value.demoSortDoneEducationContent,
             highlight: null,
             buttons: [
-                { text: '上一步', action: () => showDemoStep(5) },
-                { text: '下一个示例', action: () => showDemoStep(7) },
+                { text: settingsTxt.value.demoPrev, action: () => showDemoStep(5) },
+                { text: settingsTxt.value.demoNextExample, action: () => showDemoStep(7) },
             ],
         },
         {
-            title: '🔢 示例3：Map — 按 id 排序',
-            content: '下面我们切换到 map 示例数据，示范如何对 map 按 id 排序，需要注意的是排序字段不需要输入 map 的 Key，直接输入 Value 内部的排序字段就行',
+            title: settingsTxt.value.demoMapIdTitle,
+            content: settingsTxt.value.demoMapIdContent,
             highlight: '.editor-panel-input',
             buttons: [
-                { text: '上一步', action: () => showDemoStep(6) },
-                { text: '设置参数', action: () => setAndNext('', 'id', 8) },
+                { text: settingsTxt.value.demoPrev, action: () => showDemoStep(6) },
+                { text: settingsTxt.value.demoSetParams, action: () => setAndNext('', 'id', 8) },
             ],
         },
         {
-            title: '🎯 执行排序',
-            content: '参数设置完成，点击“执行排序”将对 map 进行排序并进入结果查看步骤',
+            title: settingsTxt.value.demoExecuteTitle,
+            content: settingsTxt.value.demoMapExecuteContent,
             highlight: '.editor-panel-input',
             buttons: [
-                { text: '上一步', action: () => showDemoStep(7) },
-                { text: '执行排序', action: () => execAndNextMap('', 'id', 9) },
+                { text: settingsTxt.value.demoPrev, action: () => showDemoStep(7) },
+                { text: settingsTxt.value.demoExecuteSort, action: () => execAndNextMap('', 'id', 9) },
             ],
         },
         {
-            title: '✅ 排序完成（Map - id）',
-            content: 'Map 排序已完成，结果已写入右侧预览区域，你可以返回上一步重新设置，或者进入下一个示例',
+            title: settingsTxt.value.demoMapIdDoneTitle,
+            content: settingsTxt.value.demoMapIdDoneContent,
             highlight: null,
             buttons: [
-                { text: '上一步', action: () => showDemoStep(8) },
-                { text: '下一个示例', action: () => showDemoStep(10) },
+                { text: settingsTxt.value.demoPrev, action: () => showDemoStep(8) },
+                { text: settingsTxt.value.demoNextExample, action: () => showDemoStep(10) },
             ],
         },
         {
-            title: '🔢 示例4：Map — 按 value.score 排序',
-            content: '同样可以按 map 内部字段排序，例如填写 value.score 来按 score 排序',
+            title: settingsTxt.value.demoMapScoreTitle,
+            content: settingsTxt.value.demoMapScoreContent,
             highlight: '.editor-panel-input',
             buttons: [
-                { text: '上一步', action: () => showDemoStep(9) },
-                { text: '设置参数', action: () => setAndNext('', 'value.score', 11) },
+                { text: settingsTxt.value.demoPrev, action: () => showDemoStep(9) },
+                { text: settingsTxt.value.demoSetParams, action: () => setAndNext('', 'value.score', 11) },
             ],
         },
         {
-            title: '🎯 执行排序',
-            content: '参数设置完成，点击“执行排序”将应用 map 内部字段排序并进入结果查看步骤',
+            title: settingsTxt.value.demoExecuteTitle,
+            content: settingsTxt.value.demoMapScoreExecuteContent,
             highlight: '.editor-panel-input',
             buttons: [
-                { text: '上一步', action: () => showDemoStep(10) },
+                { text: settingsTxt.value.demoPrev, action: () => showDemoStep(10) },
                 {
-                    text: '执行排序',
+                    text: settingsTxt.value.demoExecuteSort,
                     action: () => execAndNextMap('', 'value.score', 12),
                 },
             ],
         },
         {
-            title: '✅ 排序完成（Map - value.score）',
-            content: '排序已完成，结果已写入右侧预览区域，你已完成所有示例',
+            title: settingsTxt.value.demoMapScoreDoneTitle,
+            content: settingsTxt.value.demoMapScoreDoneContent,
             highlight: null,
             buttons: [
-                { text: '再试一次', action: () => startDemoMode() },
-                { text: '结束演示', action: () => endDemoMode() },
+                { text: settingsTxt.value.demoTryAgain, action: () => startDemoMode() },
+                { text: settingsTxt.value.demoEnd, action: () => endDemoMode() },
             ],
         },
     ];
@@ -10635,7 +11230,7 @@ const performFieldSort = (data: any, rootPath: string, fieldName: string) => {
     if (path) {
         const target = getValueByPath(result, path);
         if (!Array.isArray(target)) {
-            throw new Error(`路径 "${path}" 对应的数据不是数组，无法排序`);
+            throw new Error(settingsTxt.value.msgFieldSortPathNotArray(path));
         }
         const sorted = sortJsonByField(target, fieldName, sortOrder.value);
         setValueByPath(result, path, sorted);
@@ -10660,7 +11255,7 @@ const executeFieldSort = () => {
             : inputEditor;
 
     if (!sourceEditor) {
-        showMessageError('没有可用的编辑器');
+        showMessageError(settingsTxt.value.msgNoAvailableEditor);
         return;
     }
 
@@ -10705,21 +11300,21 @@ const executeFieldSort = () => {
         try {
             finalResult = performFieldSort(parsed, rootPathTrim, fieldTrim);
         } catch (e: any) {
-            showMessageError('排序失败: ' + e.message);
+            showMessageError(settingsTxt.value.msgSortFail(e.message));
             return;
         }
 
         // 格式化输出
-        const formatter = new JsonPlusFormatter(false, indentSize.value, arrayNewLine.value, preserveNumberLiterals.value);
+        const formatter = new JsonPlusFormatter(false, indentSize.value, true, preserveNumberLiterals.value);
         const formatted = formatter.format(finalResult, escapeMap);
         const finalOutput = formatted.replace(/\\u([0-9a-fA-F]{4})/g, '\\u$1');
 
         writeResult(finalOutput);
 
-        const rootDesc = rootPathTrim ? `路径 "${rootPathTrim}" 下的数据` : '根级数据';
-        showMessageSuccess(`按字段 "${fieldTrim}" 对${rootDesc}排序成功`);
+        const rootDesc = rootPathTrim ? settingsTxt.value.fieldSortPathData(rootPathTrim) : settingsTxt.value.fieldSortRootData;
+        showMessageSuccess(settingsTxt.value.msgFieldSortSuccess(fieldTrim, rootDesc));
     } catch (error: any) {
-        showMessageError('排序失败: ' + error.message);
+        showMessageError(settingsTxt.value.msgSortFail(error.message));
     }
 };
 
@@ -10759,7 +11354,7 @@ const applySort = () => {
         const value = inputEditor?.getValue() || '';
 
         if (!value.trim()) {
-            showMessageError('请先输入数据');
+            showMessageError(settingsTxt.value.msgSortDataRequired);
             return;
         }
 
@@ -10788,7 +11383,7 @@ const applySort = () => {
                 const sorted = sortJsonObject(parsed, sortMethod.value, sortOrder.value, '');
 
                 // 格式化输出
-                const formatter = new JsonPlusFormatter(false, indentSize.value, arrayNewLine.value, preserveNumberLiterals.value);
+                const formatter = new JsonPlusFormatter(false, indentSize.value, true, preserveNumberLiterals.value);
                 const formatted = formatter.format(sorted, escapeMap);
                 outputResult = formatted.replace(/\\u([0-9a-fA-F]{4})/g, '\\u$1');
             } catch (jsonError) {
@@ -10805,7 +11400,7 @@ const applySort = () => {
             const escapeMap = result.escapeMap;
 
             const sorted = sortJsonObject(parsed, sortMethod.value, sortOrder.value, '');
-            const formatter = new JsonPlusFormatter(false, indentSize.value, arrayNewLine.value, preserveNumberLiterals.value);
+            const formatter = new JsonPlusFormatter(false, indentSize.value, true, preserveNumberLiterals.value);
             const formatted = formatter.format(sorted, escapeMap);
             outputResult = formatted.replace(/\\u([0-9a-fA-F]{4})/g, '\\u$1');
         }
@@ -10832,10 +11427,10 @@ const applySort = () => {
             updateEditorHeight(outputEditor);
         }
 
-        const formatType = isJsonFormat ? 'JSON' : '文本行';
-        showMessageSuccess(`${formatType}排序成功`);
+        const formatType = isJsonFormat ? settingsTxt.value.sortFormatJson : settingsTxt.value.sortFormatTextLines;
+        showMessageSuccess(settingsTxt.value.msgSortFormatSuccess(formatType));
     } catch (error: any) {
-        showMessageError('排序失败: ' + error.message);
+        showMessageError(settingsTxt.value.msgSortFail(error.message));
     }
 };
 
@@ -11664,14 +12259,14 @@ const transferToInput = (e: MouseEvent) => {
     // 阻止事件冒泡，防止触发分割线的拖动
     e.stopPropagation();
     if (outputType.value !== 'json') {
-        showMessageWarning('当前内容类型不支持转移到编辑区域');
+        showMessageWarning(settingsTxt.value.msgTransferUnsupportedType);
         return;
     }
 
     try {
         const outputContent = outputEditor?.getValue() || '';
         if (!outputContent.trim()) {
-            showMessageWarning('预览区域内容为空, 无需转移');
+            showMessageWarning(settingsTxt.value.msgTransferOutputEmpty);
             return;
         }
 
@@ -11742,9 +12337,9 @@ const transferToInput = (e: MouseEvent) => {
             updateEditorHeight(outputEditor);
         }
 
-        showMessageSuccess('内容已成功转移到编辑区域');
+        showMessageSuccess(settingsTxt.value.msgTransferSuccess);
     } catch (error: any) {
-        showMessageError('转移内容失败: ' + error.message);
+        showMessageError(settingsTxt.value.msgTransferFail(error.message));
     }
 };
 </script>
@@ -11758,7 +12353,7 @@ const transferToInput = (e: MouseEvent) => {
 .json-tool-container {
     display: flex;
     flex-direction: column;
-    height: calc(100vh - 165px);
+    height: calc(100vh - 174px);
     overflow: hidden;
 }
 
@@ -11972,6 +12567,22 @@ const transferToInput = (e: MouseEvent) => {
 
 :deep(.el-select-dropdown__item) {
     padding: 0 20px !important;
+}
+
+:global(.level-select-dropdown) {
+    min-width: 100px !important;
+}
+
+:global(.level-select-dropdown .el-select-dropdown__item) {
+    overflow: visible;
+    padding: 0 20px !important;
+    text-overflow: clip;
+    white-space: nowrap;
+}
+
+:global(.level-select-dropdown .el-select-dropdown__item span) {
+    overflow: visible;
+    text-overflow: clip;
 }
 
 /* 响应式：小屏幕时调整布局 */

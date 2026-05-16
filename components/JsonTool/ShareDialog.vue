@@ -13,8 +13,8 @@
         >
             <template #header>
                 <div class="dialog-header">
-                    <span class="dialog-title">分享JSON数据</span>
-                    <button class="dialog-close-btn" @click="dialogVisible = false" aria-label="关闭分享弹窗">✕</button>
+                    <span class="dialog-title">{{ shareTxt.title }}</span>
+                    <button class="dialog-close-btn" @click="dialogVisible = false" :aria-label="shareTxt.closeAria">✕</button>
                 </div>
             </template>
             <div class="share-dialog">
@@ -24,7 +24,7 @@
                     <el-alert type="info" :closable="false" style="margin-bottom: 20px">
                         <template #title>
                             <span style="font-size: 12px">
-                                <strong>免费服务限制：</strong>分享编辑区域的JSON数据，单次分享最大2MB数据，每个用户最多5次分享，每分钟最多分享3次。
+                                <strong>{{ shareTxt.freeLimitPrefix }}</strong>{{ shareTxt.freeLimitText }}
                             </span>
                         </template>
                     </el-alert>
@@ -32,8 +32,8 @@
                     <!-- 我的分享（可折叠） -->
                     <div class="my-shares">
                         <div class="my-shares-header" @click="toggleMyShares">
-                            <span class="my-shares-title">我的分享</span>
-                            <span class="my-shares-toggle">{{ mySharesExpanded ? '收起' : '展开' }}</span>
+                            <span class="my-shares-title">{{ shareTxt.myShares }}</span>
+                            <span class="my-shares-toggle">{{ mySharesExpanded ? shareTxt.collapse : shareTxt.expand }}</span>
                         </div>
                         <el-collapse-transition>
                             <div v-show="mySharesExpanded" class="my-shares-body">
@@ -42,40 +42,40 @@
                                     size="small"
                                     border
                                     :style="{ width: '100%' }"
-                                    empty-text="暂无分享"
+                                    :empty-text="shareTxt.emptyShares"
                                     :header-cell-style="{ textAlign: 'center' }"
                                     :cell-style="{ textAlign: 'center' }"
                                     :fit="true"
                                 >
-                                    <el-table-column prop="shareName" label="分享名称" width="150" align="center" header-align="center">
+                                    <el-table-column prop="shareName" :label="shareTxt.colShareName" width="150" align="center" header-align="center">
                                         <template #default="{ row }">
                                             <span v-if="row.shareName">{{ row.shareName }}</span>
                                             <span v-else style="color: #909399">—</span>
                                         </template>
                                     </el-table-column>
-                                    <el-table-column prop="expiresAt" label="过期时间" width="200" align="center" header-align="center">
+                                    <el-table-column prop="expiresAt" :label="shareTxt.colExpiresAt" width="200" align="center" header-align="center">
                                         <template #default="{ row }">
-                                            <span v-if="row.expiresAt">{{ new Date(row.expiresAt).toLocaleString('zh-CN') }}</span>
+                                            <span v-if="row.expiresAt">{{ formatDateTime(row.expiresAt) }}</span>
                                             <span v-else>—</span>
                                         </template>
                                     </el-table-column>
-                                    <el-table-column prop="hasPassword" label="需要密码" width="110" align="center" header-align="center">
+                                    <el-table-column prop="hasPassword" :label="shareTxt.colHasPassword" width="110" align="center" header-align="center">
                                         <template #default="{ row }">
                                             <el-tag size="small" :type="row.hasPassword ? 'warning' : 'success'">
-                                                {{ row.hasPassword ? '是' : '否' }}
+                                                {{ row.hasPassword ? shareTxt.yes : shareTxt.no }}
                                             </el-tag>
                                         </template>
                                     </el-table-column>
-                                    <el-table-column label="操作" :min-width="200" fixed="right" align="center" header-align="center">
+                                    <el-table-column :label="shareTxt.colActions" :min-width="200" fixed="right" align="center" header-align="center">
                                         <template #default="{ row }">
-                                            <el-button type="primary" size="small" @click="loadShareIntoEditor(row)"> 使用 </el-button>
-                                            <el-button size="small" @click="copyText(row.shareUrl, '链接已复制')"> 复制链接 </el-button>
+                                            <el-button type="primary" size="small" @click="loadShareIntoEditor(row)"> {{ shareTxt.btnUse }} </el-button>
+                                            <el-button size="small" @click="copyText(row.shareUrl, shareTxt.msgLinkCopied)"> {{ shareTxt.btnCopyLink }} </el-button>
                                         </template>
                                     </el-table-column>
                                 </el-table>
                                 <div class="my-shares-actions">
-                                    <el-button size="small" @click="toggleMyShares">收起</el-button>
-                                    <el-button size="small" type="primary" @click="fetchMyShares" :disabled="mySharesLoading" class="no-jitter"> 刷新 </el-button>
+                                    <el-button size="small" @click="toggleMyShares">{{ shareTxt.collapse }}</el-button>
+                                    <el-button size="small" type="primary" @click="fetchMyShares" :disabled="mySharesLoading" class="no-jitter"> {{ shareTxt.btnRefresh }} </el-button>
                                 </div>
                             </div>
                         </el-collapse-transition>
@@ -83,21 +83,21 @@
 
                     <form @submit.prevent="createShare">
                         <div class="form-item">
-                            <label class="form-label" for="share-name"> 分享名称 <span style="color: #f56c6c">*</span> </label>
+                            <label class="form-label" for="share-name"> {{ shareTxt.shareNameLabel }} <span style="color: #f56c6c">*</span> </label>
                             <el-input
                                 id="share-name"
                                 v-model="shareName"
-                                placeholder="请输入分享名称（10个字符以内，中英文、数字及常见连字符）"
+                                :placeholder="shareTxt.shareNamePlaceholder"
                                 maxlength="10"
                                 show-word-limit
                                 clearable
                                 @input="handleShareNameInput"
                             />
-                            <div class="form-hint">必填，最多10个字符，只能包含中英文、数字和常见连字符（-、_、.），对同一用户具有唯一性</div>
+                            <div class="form-hint">{{ shareTxt.shareNameHint }}</div>
                         </div>
 
                         <div class="form-item">
-                            <label class="form-label" for="expires-amount">过期时间</label>
+                            <label class="form-label" for="expires-amount">{{ shareTxt.expiresLabel }}</label>
                             <div style="margin-top: 0">
                                 <div class="custom-exp-row" style="display: flex; gap: 8px">
                                     <el-input-number
@@ -107,28 +107,28 @@
                                         :max="customMax"
                                         :step="customStep"
                                         :precision="customPrecision"
-                                        placeholder="请输入数值"
+                                        :placeholder="shareTxt.amountPlaceholder"
                                         style="width: 60%"
                                         @change="handleCustomExpiresInChange"
                                     />
                                     <el-select id="expires-unit" v-model="customUnit" style="width: 38%" @change="handleCustomUnitChange">
-                                        <el-option label="分钟" value="minutes" />
-                                        <el-option label="小时" value="hours" />
-                                        <el-option label="天" value="days" />
+                                        <el-option :label="shareTxt.unitMinutes" value="minutes" />
+                                        <el-option :label="shareTxt.unitHours" value="hours" />
+                                        <el-option :label="shareTxt.unitDays" value="days" />
                                     </el-select>
                                 </div>
-                                <div class="form-hint" style="margin-top: 5px">允许范围：3分钟 - 3天（当前：{{ formatCustomExpiresIn() }}）</div>
+                                <div class="form-hint" style="margin-top: 5px">{{ shareTxt.expiresHint(formatCustomExpiresIn()) }}</div>
                             </div>
                         </div>
 
                         <div class="form-item">
-                            <label class="form-label" for="share-password">访问密码（可选）</label>
+                            <label class="form-label" for="share-password">{{ shareTxt.passwordLabel }}</label>
                             <el-input
                                 id="share-password"
                                 ref="passwordInputRef"
                                 v-model="password"
                                 type="password"
-                                placeholder="设置密码以保护分享链接"
+                                :placeholder="shareTxt.passwordPlaceholder"
                                 clearable
                                 show-password
                                 autocomplete="new-password"
@@ -137,7 +137,7 @@
                                 @input="handlePasswordInput"
                                 @focus="handlePasswordInputFocus"
                             />
-                            <div class="form-hint">最多30位，允许英文、数字及常用符号（不含空格）</div>
+                            <div class="form-hint">{{ shareTxt.passwordHint }}</div>
                         </div>
                     </form>
                 </div>
@@ -145,27 +145,27 @@
                 <!-- 分享结果 -->
                 <div v-if="shareResult" class="share-result">
                     <div class="form-item">
-                        <label class="form-label" for="share-url">分享链接：</label>
+                        <label class="form-label" for="share-url">{{ shareTxt.shareUrlLabel }}</label>
                         <div class="share-url-container">
                             <el-input id="share-url" v-model="shareResult.shareUrl" readonly class="share-url-input" />
                             <el-button type="primary" @click="copyShareUrl" :loading="copyLoading">
-                                {{ copyLoading ? '复制中...' : '复制链接' }}
+                                {{ copyLoading ? shareTxt.copying : shareTxt.btnCopyLink }}
                             </el-button>
                         </div>
                     </div>
 
                     <div class="form-item" v-if="shareResult.expiresAt">
-                        <label class="form-label">过期时间：</label>
+                        <label class="form-label">{{ shareTxt.expiresAtLabel }}</label>
                         <div class="expires-info">
                             {{ formatExpiresAt(shareResult.expiresAt) }}
                         </div>
                     </div>
 
                     <div class="form-item" v-if="password">
-                        <label class="form-label" for="access-password">访问密码：</label>
+                        <label class="form-label" for="access-password">{{ shareTxt.accessPasswordLabel }}</label>
                         <div class="password-info">
                             <el-input id="access-password" v-model="password" readonly type="password" class="password-display" />
-                            <el-button type="info" @click="copyPassword" size="small"> 复制密码 </el-button>
+                            <el-button type="info" @click="copyPassword" size="small"> {{ shareTxt.btnCopyPassword }} </el-button>
                         </div>
                     </div>
                 </div>
@@ -173,9 +173,9 @@
 
             <template #footer>
                 <div class="dialog-footer">
-                    <el-button @click="handleDialogClose">关闭</el-button>
-                    <el-button v-if="!shareResult" type="primary" @click="createShare" :loading="loading"> 生成分享链接 </el-button>
-                    <el-button v-if="shareResult" type="primary" @click="resetForm"> 创建新分享 </el-button>
+                    <el-button @click="handleDialogClose">{{ shareTxt.btnClose }}</el-button>
+                    <el-button v-if="!shareResult" type="primary" @click="createShare" :loading="loading"> {{ shareTxt.btnCreateShare }} </el-button>
+                    <el-button v-if="shareResult" type="primary" @click="resetForm"> {{ shareTxt.btnNewShare }} </el-button>
                 </div>
             </template>
         </el-dialog>
@@ -192,6 +192,7 @@ import { showMessageError } from '~/utils/api';
 interface Props {
     modelValue: boolean;
     jsonData: string;
+    locale?: 'zh' | 'en';
 }
 
 const props = defineProps<Props>();
@@ -211,11 +212,223 @@ const formatBytes = (bytes: number): string => {
     return `${(bytes / 1024 / 1024).toFixed(2)} MB`;
 };
 
+const formatDateTime = (timestamp: number) => new Date(timestamp).toLocaleString(props.locale === 'en' ? 'en-US' : 'zh-CN');
+
 // Emits
 const emit = defineEmits<{
     'update:modelValue': [value: boolean];
     loadSharedJson: [value: string];
 }>();
+
+const SHARE_TXT_ZH = {
+    title: '分享JSON数据',
+    closeAria: '关闭分享弹窗',
+    freeLimitPrefix: '免费服务限制：',
+    freeLimitText: '分享编辑区域的JSON数据，单次分享最大2MB数据，每个用户最多5次分享，每分钟最多分享3次。',
+    myShares: '我的分享',
+    expand: '展开',
+    collapse: '收起',
+    emptyShares: '暂无分享',
+    colShareName: '分享名称',
+    colExpiresAt: '过期时间',
+    colHasPassword: '需要密码',
+    colActions: '操作',
+    yes: '是',
+    no: '否',
+    btnUse: '使用',
+    btnCopyLink: '复制链接',
+    btnRefresh: '刷新',
+    shareNameLabel: '分享名称',
+    shareNamePlaceholder: '请输入分享名称（10个字符以内，中英文、数字及常见连字符）',
+    shareNameHint: '必填，最多10个字符，只能包含中英文、数字和常见连字符（-、_、.），对同一用户具有唯一性',
+    expiresLabel: '过期时间',
+    amountPlaceholder: '请输入数值',
+    unitMinutes: '分钟',
+    unitHours: '小时',
+    unitDays: '天',
+    expiresHint: (current: string) => `允许范围：3分钟 - 3天（当前：${current}）`,
+    passwordLabel: '访问密码（可选）',
+    passwordPlaceholder: '设置密码以保护分享链接',
+    passwordHint: '最多30位，允许英文、数字及常用符号（不含空格）',
+    shareUrlLabel: '分享链接：',
+    copying: '复制中...',
+    expiresAtLabel: '过期时间：',
+    accessPasswordLabel: '访问密码：',
+    btnCopyPassword: '复制密码',
+    btnClose: '关闭',
+    btnCreateShare: '生成分享链接',
+    btnNewShare: '创建新分享',
+    expired: '已过期',
+    day: (n: number) => `${n}天`,
+    hour: (n: number) => `${n}小时`,
+    minute: (n: number) => `${n}分钟`,
+    defaultDuration: '3分钟',
+    msgJsonRequired: 'JSON数据不能为空',
+    msgJsonTooLarge: (current: string, max: string) => `当前输入区 JSON 数据过大（${current}，最大 ${max}）`,
+    msgInvalidJson: 'JSON 数据格式不正确，请先格式化 JSON 数据',
+    msgShareNameRequired: '分享名称不能为空',
+    msgShareNameTooLong: '分享名称长度不能超过10个字符',
+    msgShareNameInvalid: '分享名称只能包含中英文、数字和常见连字符（-、_、.）',
+    msgPasswordTooLong: '密码长度不能超过30位',
+    msgPasswordInvalid: '密码包含不被允许的字符',
+    msgExpiresTooLong: '过期时间不能超过3天',
+    msgExpiresTooShort: '过期时间不能少于3分钟',
+    msgFingerprintFail: '无法获取浏览器指纹，请刷新页面后重试',
+    msgCreateFail: '创建分享链接失败',
+    msgCreateFailWithError: (err: string) => `创建分享链接失败: ${err}`,
+    msgRequestTimeout: '请求超时，请稍后重试或尝试更小的 JSON 数据',
+    msgNetworkError: '网络错误，请检查网络连接后重试',
+    msgLinkCopied: '链接已复制',
+    msgCopied: '已复制',
+    msgCopyFail: '复制失败，请手动复制',
+    msgMySharesLoadFail: '获取分享列表失败',
+    promptProtectedMessage: '该分享受密码保护，请输入密码',
+    promptProtectedTitle: '需要密码',
+    promptPasswordPlaceholder: '访问密码',
+    btnConfirm: '确定',
+    btnCancel: '取消',
+    promptPasswordRequired: '请输入密码',
+    msgLoadedToEditor: '已加载到编辑区域',
+    msgLoadFail: '加载失败',
+    unknownError: '未知错误',
+};
+
+type ShareTxt = typeof SHARE_TXT_ZH;
+
+const SHARE_TXT_EN: ShareTxt = {
+    title: 'Share JSON Data',
+    closeAria: 'Close share dialog',
+    freeLimitPrefix: 'Free service limits:',
+    freeLimitText: 'Share JSON from the editor. Each share can be up to 2MB, each user can create up to 5 shares, and at most 3 shares per minute.',
+    myShares: 'My Shares',
+    expand: 'Expand',
+    collapse: 'Collapse',
+    emptyShares: 'No shares yet',
+    colShareName: 'Share Name',
+    colExpiresAt: 'Expires At',
+    colHasPassword: 'Password',
+    colActions: 'Actions',
+    yes: 'Yes',
+    no: 'No',
+    btnUse: 'Use',
+    btnCopyLink: 'Copy Link',
+    btnRefresh: 'Refresh',
+    shareNameLabel: 'Share Name',
+    shareNamePlaceholder: 'Enter a share name (up to 10 characters; letters, numbers, Chinese, and common separators)',
+    shareNameHint: 'Required, up to 10 characters. Only letters, numbers, Chinese characters, and common separators (-, _, .) are allowed. The name must be unique for the same user.',
+    expiresLabel: 'Expiration',
+    amountPlaceholder: 'Enter a value',
+    unitMinutes: 'Minutes',
+    unitHours: 'Hours',
+    unitDays: 'Days',
+    expiresHint: (current: string) => `Allowed range: 3 minutes - 3 days (current: ${current})`,
+    passwordLabel: 'Access Password (Optional)',
+    passwordPlaceholder: 'Set a password to protect the share link',
+    passwordHint: 'Up to 30 characters. Letters, numbers, and common symbols are allowed. Spaces are not allowed.',
+    shareUrlLabel: 'Share link:',
+    copying: 'Copying...',
+    expiresAtLabel: 'Expires at:',
+    accessPasswordLabel: 'Access password:',
+    btnCopyPassword: 'Copy Password',
+    btnClose: 'Close',
+    btnCreateShare: 'Generate Share Link',
+    btnNewShare: 'Create New Share',
+    expired: 'Expired',
+    day: (n: number) => `${n} day${n === 1 ? '' : 's'}`,
+    hour: (n: number) => `${n} hour${n === 1 ? '' : 's'}`,
+    minute: (n: number) => `${n} minute${n === 1 ? '' : 's'}`,
+    defaultDuration: '3 minutes',
+    msgJsonRequired: 'JSON data cannot be empty',
+    msgJsonTooLarge: (current: string, max: string) => `The JSON in the editor is too large (${current}; max ${max})`,
+    msgInvalidJson: 'Invalid JSON data. Please format the JSON first',
+    msgShareNameRequired: 'Share name cannot be empty',
+    msgShareNameTooLong: 'Share name cannot exceed 10 characters',
+    msgShareNameInvalid: 'Share name can only contain Chinese/English letters, numbers, and common separators (-, _, .)',
+    msgPasswordTooLong: 'Password cannot exceed 30 characters',
+    msgPasswordInvalid: 'Password contains unsupported characters',
+    msgExpiresTooLong: 'Expiration cannot exceed 3 days',
+    msgExpiresTooShort: 'Expiration cannot be shorter than 3 minutes',
+    msgFingerprintFail: 'Unable to get browser fingerprint. Please refresh the page and try again',
+    msgCreateFail: 'Failed to create share link',
+    msgCreateFailWithError: (err: string) => `Failed to create share link: ${err}`,
+    msgRequestTimeout: 'Request timed out. Please try again later or use smaller JSON data',
+    msgNetworkError: 'Network error. Please check your connection and try again',
+    msgLinkCopied: 'Link copied',
+    msgCopied: 'Copied',
+    msgCopyFail: 'Copy failed. Please copy manually',
+    msgMySharesLoadFail: 'Failed to load share list',
+    promptProtectedMessage: 'This share is password-protected. Please enter the password',
+    promptProtectedTitle: 'Password Required',
+    promptPasswordPlaceholder: 'Access password',
+    btnConfirm: 'OK',
+    btnCancel: 'Cancel',
+    promptPasswordRequired: 'Please enter the password',
+    msgLoadedToEditor: 'Loaded into editor',
+    msgLoadFail: 'Load failed',
+    unknownError: 'Unknown error',
+};
+
+const shareTxt = computed<ShareTxt>(() => (props.locale === 'en' ? SHARE_TXT_EN : SHARE_TXT_ZH));
+
+const SHARE_API_ERROR_EN: Record<string, string> = {
+    '无法验证客户端身份，请刷新页面后重试': 'Unable to verify client identity. Please refresh the page and try again',
+    '分享ID不能为空': 'Share ID cannot be empty',
+    '分享ID格式不正确': 'Invalid share ID format',
+    '分享链接不存在或已过期': 'Share link does not exist or has expired',
+    '分享链接已过期': 'Share link has expired',
+    '密码不正确': 'Incorrect password',
+    '密码长度不能超过30位': 'Password cannot exceed 30 characters',
+    '密码包含不被允许的字符': 'Password contains unsupported characters',
+    '分享名称不能为空': 'Share name cannot be empty',
+    '分享名称长度不能超过10个字符': 'Share name cannot exceed 10 characters',
+    '分享名称只能包含中英文、数字和常见连字符（-、_、.）': 'Share name can only contain Chinese/English letters, numbers, and common separators (-, _, .)',
+    '分享名称已存在，请使用其他名称': 'Share name already exists. Please use another name',
+    '请求过于频繁，请稍后再试（每分钟最多3次）': 'Too many requests. Please try again later (up to 3 shares per minute)',
+    'JSON数据不能为空': 'JSON data cannot be empty',
+    'JSON格式不正确': 'Invalid JSON format',
+    '过期时间必须大于0': 'Expiration must be greater than 0',
+    '分享链接不存在': 'Share link does not exist',
+    '无权限删除该分享（需创建者身份或正确密码）': 'No permission to delete this share (creator identity or correct password required)',
+    '分享链接已删除': 'Share link deleted',
+    '不支持的请求方法': 'Unsupported request method',
+    '服务器错误': 'Server error',
+};
+
+const localizeShareApiError = (message?: string, fallback?: string): string => {
+    if (!message) return fallback || shareTxt.value.msgLoadFail;
+    if (props.locale !== 'en') return message;
+
+    if (SHARE_API_ERROR_EN[message]) {
+        return SHARE_API_ERROR_EN[message];
+    }
+
+    let match = message.match(/^JSON数据过大（(.+?) MB，最大 (.+?) MB）$/);
+    if (match) {
+        return `JSON data is too large (${match[1]} MB; max ${match[2]} MB)`;
+    }
+
+    match = message.match(/^系统用户数量已达到上限（(.+?) 个），暂时无法创建新用户，请稍后再试$/);
+    if (match) {
+        return `The system user limit has been reached (${match[1]} users). New users cannot be created right now. Please try again later`;
+    }
+
+    match = message.match(/^您创建的分享数量已达到上限（(.+?) 个，最大 (.+?) 个），请先删除一些分享或等待过期$/);
+    if (match) {
+        return `You have reached the share limit (${match[1]} of ${match[2]}). Please delete some shares or wait for them to expire`;
+    }
+
+    match = message.match(/^您的存储空间不足（已使用 (.+?)，最大 (.+?)），请先删除一些分享或等待过期$/);
+    if (match) {
+        return `Not enough storage space (used ${match[1]}, max ${match[2]}). Please delete some shares or wait for them to expire`;
+    }
+
+    match = message.match(/^过期时间不能超过(.+?)天$/);
+    if (match) {
+        return `Expiration cannot exceed ${match[1]} days`;
+    }
+
+    return message;
+};
 
 // 对话框显示状态
 const dialogVisible = computed({
@@ -337,10 +550,10 @@ const formatCustomExpiresIn = () => {
     const hours = Math.floor((totalMs % (24 * 60 * 60 * 1000)) / (60 * 60 * 1000));
     const minutes = Math.floor((totalMs % (60 * 60 * 1000)) / (60 * 1000));
     const parts: string[] = [];
-    if (days > 0) parts.push(`${days}天`);
-    if (hours > 0) parts.push(`${hours}小时`);
-    if (minutes > 0 && days === 0) parts.push(`${minutes}分钟`);
-    return parts.join('') || '3分钟';
+    if (days > 0) parts.push(shareTxt.value.day(days));
+    if (hours > 0) parts.push(shareTxt.value.hour(hours));
+    if (minutes > 0 && days === 0) parts.push(shareTxt.value.minute(minutes));
+    return parts.join(props.locale === 'en' ? ' ' : '') || shareTxt.value.defaultDuration;
 };
 
 // 重置表单
@@ -410,12 +623,12 @@ watch(
 const createShare = async () => {
     // 验证JSON数据
     if (!props.jsonData || !props.jsonData.trim()) {
-        showMessageError('JSON数据不能为空');
+        showMessageError(shareTxt.value.msgJsonRequired);
         return;
     }
 
     if (isJsonTooLarge.value) {
-        showMessageError(`当前输入区 JSON 数据过大（${formattedJsonSize.value}，最大 ${formatBytes(MAX_SHARE_SIZE_BYTES)}）`);
+        showMessageError(shareTxt.value.msgJsonTooLarge(formattedJsonSize.value, formatBytes(MAX_SHARE_SIZE_BYTES)));
         return;
     }
 
@@ -423,36 +636,36 @@ const createShare = async () => {
     try {
         JSON.parse(props.jsonData);
     } catch (error) {
-        showMessageError('JSON 数据格式不正确，请先格式化 JSON 数据');
+        showMessageError(shareTxt.value.msgInvalidJson);
         return;
     }
 
     // 验证分享名称（必填，最多10字符）
     const name = shareName.value?.trim() || '';
     if (!name || name.length === 0) {
-        showMessageError('分享名称不能为空');
+        showMessageError(shareTxt.value.msgShareNameRequired);
         return;
     }
     if (name.length > 10) {
-        showMessageError('分享名称长度不能超过10个字符');
+        showMessageError(shareTxt.value.msgShareNameTooLong);
         return;
     }
     // 验证字符：只允许中英文、数字和常见连字符（-、_、.）
     const shareNamePattern = /^[\u4e00-\u9fa5A-Za-z0-9\-_.]+$/;
     if (!shareNamePattern.test(name)) {
-        showMessageError('分享名称只能包含中英文、数字和常见连字符（-、_、.）');
+        showMessageError(shareTxt.value.msgShareNameInvalid);
         return;
     }
 
     // 验证密码（最多30位 + 字符集限制）
     if (password.value) {
         if (password.value.length > 30) {
-            showMessageError('密码长度不能超过30位');
+            showMessageError(shareTxt.value.msgPasswordTooLong);
             return;
         }
         const passwordAllowed = /^[A-Za-z0-9!@#\$%\^&\*\-_\.\+=:;,\?\(\)\[\]\{\}~]+$/;
         if (!passwordAllowed.test(password.value)) {
-            showMessageError('密码包含不被允许的字符');
+            showMessageError(shareTxt.value.msgPasswordInvalid);
             return;
         }
     }
@@ -461,11 +674,11 @@ const createShare = async () => {
     const MAX_EXPIRES_IN = MAX_EXPIRES_IN_MS; // 3天
     const MIN_EXPIRES_IN = MIN_EXPIRES_IN_MS; // 3分钟
     if (expiresIn.value && expiresIn.value > MAX_EXPIRES_IN) {
-        showMessageError('过期时间不能超过3天');
+        showMessageError(shareTxt.value.msgExpiresTooLong);
         return;
     }
     if (expiresIn.value && expiresIn.value < MIN_EXPIRES_IN) {
-        showMessageError('过期时间不能少于3分钟');
+        showMessageError(shareTxt.value.msgExpiresTooShort);
         return;
     }
 
@@ -483,7 +696,7 @@ const createShare = async () => {
             const fingerprintResult = await fingerprintDetector.getFingerprint();
             encryptedFingerprint = fingerprintResult.fingerprintId;
         } catch (error: any) {
-            showMessageError('无法获取浏览器指纹，请刷新页面后重试');
+            showMessageError(shareTxt.value.msgFingerprintFail);
             loading.value = false;
             return;
         }
@@ -513,16 +726,16 @@ const createShare = async () => {
         if (response.success && response.data) {
             shareResult.value = response.data;
         } else {
-            showMessageError(response.error || '创建分享链接失败');
+            showMessageError(localizeShareApiError(response.error, shareTxt.value.msgCreateFail));
         }
     } catch (error: any) {
         // 判断是否为超时错误
         if (error.name === 'AbortError' || error.message?.includes('aborted')) {
-            showMessageError('请求超时，请稍后重试或尝试更小的 JSON 数据');
+            showMessageError(shareTxt.value.msgRequestTimeout);
         } else if (error.message?.includes('fetch') || error.message?.includes('network')) {
-            showMessageError('网络错误，请检查网络连接后重试');
+            showMessageError(shareTxt.value.msgNetworkError);
         } else {
-            showMessageError('创建分享链接失败: ' + (error.message || '未知错误'));
+            showMessageError(shareTxt.value.msgCreateFailWithError(error.message || shareTxt.value.unknownError));
         }
     } finally {
         clearTimeout(timeoutId);
@@ -538,7 +751,7 @@ const copyShareUrl = async () => {
     try {
         // 优先使用现代 Clipboard API
         await navigator.clipboard.writeText(shareResult.value.shareUrl);
-        showMessageSuccess('链接已复制');
+        showMessageSuccess(shareTxt.value.msgLinkCopied);
     } catch (error) {
         // 降级方案：使用传统方法（execCommand 已废弃，但作为兼容性降级方案）
         const textarea = document.createElement('textarea');
@@ -558,7 +771,7 @@ const copyShareUrl = async () => {
                 throw new Error('execCommand failed');
             }
         } catch (err) {
-            showMessageError('复制失败，请手动复制');
+            showMessageError(shareTxt.value.msgCopyFail);
         } finally {
             document.body.removeChild(textarea);
         }
@@ -568,7 +781,7 @@ const copyShareUrl = async () => {
 };
 
 // 通用复制
-const copyText = async (text: string, successTip = '已复制') => {
+const copyText = async (text: string, successTip = shareTxt.value.msgCopied) => {
     try {
         await navigator.clipboard.writeText(text);
         showMessageSuccess(successTip);
@@ -591,7 +804,7 @@ const copyText = async (text: string, successTip = '已复制') => {
                 throw new Error('execCommand failed');
             }
         } catch {
-            showMessageError('复制失败，请手动复制');
+            showMessageError(shareTxt.value.msgCopyFail);
         } finally {
             document.body.removeChild(textarea);
         }
@@ -624,7 +837,7 @@ const copyPassword = async () => {
                 throw new Error('execCommand failed');
             }
         } catch (err) {
-            showMessageError('复制失败，请手动复制');
+            showMessageError(shareTxt.value.msgCopyFail);
         } finally {
             document.body.removeChild(textarea);
         }
@@ -633,31 +846,23 @@ const copyPassword = async () => {
 
 // 格式化过期时间
 const formatExpiresAt = (timestamp: number) => {
-    const date = new Date(timestamp);
     const now = new Date();
     const diff = timestamp - now.getTime();
 
     if (diff < 0) {
-        return '已过期';
+        return shareTxt.value.expired;
     }
 
     const days = Math.floor(diff / (24 * 60 * 60 * 1000));
     const hours = Math.floor((diff % (24 * 60 * 60 * 1000)) / (60 * 60 * 1000));
-    const minutes = Math.floor((diff % (60 * 60 * 1000)) / (60 * 1000));
 
     if (days > 0) {
-        return `${date.toLocaleString('zh-CN')}`;
+        return `${formatDateTime(timestamp)}`;
     } else if (hours > 0) {
-        return `${date.toLocaleString('zh-CN')}`;
+        return `${formatDateTime(timestamp)}`;
     } else {
-        return `${date.toLocaleString('zh-CN')}`;
+        return `${formatDateTime(timestamp)}`;
     }
-};
-
-// 工具函数：截断字符串到指定长度，超出加…
-const truncate = (text: string, max = 30) => {
-    if (!text) return '';
-    return text.length > max ? text.slice(0, max) + '…' : text;
 };
 
 // 折叠开关
@@ -698,10 +903,10 @@ const fetchMyShares = async () => {
                 shareName: item.shareName,
             }));
         } else {
-            showMessageError(response.error || '获取分享列表失败');
+            showMessageError(localizeShareApiError(response.error, shareTxt.value.msgMySharesLoadFail));
         }
     } catch (e: any) {
-        showMessageError(e?.message || '获取分享列表失败');
+        showMessageError(localizeShareApiError(e?.message, shareTxt.value.msgMySharesLoadFail));
     } finally {
         mySharesLoading.value = false;
     }
@@ -712,12 +917,12 @@ const loadShareIntoEditor = async (row: any) => {
     try {
         let passwordInput: string | undefined = undefined;
         if (row.hasPassword) {
-            const { value }: any = await ElMessageBox.prompt('该分享受密码保护，请输入密码', '需要密码', {
+            const { value }: any = await ElMessageBox.prompt(shareTxt.value.promptProtectedMessage, shareTxt.value.promptProtectedTitle, {
                 inputType: 'password',
-                inputPlaceholder: '访问密码',
-                confirmButtonText: '确定',
-                cancelButtonText: '取消',
-                inputValidator: (val: string) => !!val || '请输入密码',
+                inputPlaceholder: shareTxt.value.promptPasswordPlaceholder,
+                confirmButtonText: shareTxt.value.btnConfirm,
+                cancelButtonText: shareTxt.value.btnCancel,
+                inputValidator: (val: string) => !!val || shareTxt.value.promptPasswordRequired,
             });
             passwordInput = value;
         }
@@ -732,9 +937,9 @@ const loadShareIntoEditor = async (row: any) => {
         if (res.success && res.data?.jsonData) {
             // 将内容发射给父组件处理注入到编辑区域
             emit('loadSharedJson', res.data.jsonData);
-            showMessageSuccess('已加载到编辑区域');
+            showMessageSuccess(shareTxt.value.msgLoadedToEditor);
         } else {
-            showMessageError(res.error || '加载失败');
+            showMessageError(localizeShareApiError(res.error, shareTxt.value.msgLoadFail));
         }
     } catch {
         // 用户取消等不提示错误

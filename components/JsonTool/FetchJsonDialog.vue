@@ -13,13 +13,13 @@
         >
             <template #header>
                 <div class="dialog-header">
-                    <span class="dialog-title">获取JSON数据</span>
+                    <span class="dialog-title">{{ fetchTxt.title }}</span>
                     <div class="dialog-header-actions">
                         <el-radio-group v-model="fetchJsonMode" class="fetch-mode-group" size="small">
-                            <el-radio-button value="url">表单输入</el-radio-button>
-                            <el-radio-button value="curl">命令导入</el-radio-button>
+                            <el-radio-button value="url">{{ fetchTxt.modeUrl }}</el-radio-button>
+                            <el-radio-button value="curl">{{ fetchTxt.modeCurl }}</el-radio-button>
                         </el-radio-group>
-                        <button class="dialog-close-btn" @click="dialogVisible = false" aria-label="关闭获取JSON弹窗">✕</button>
+                        <button class="dialog-close-btn" @click="dialogVisible = false" :aria-label="fetchTxt.closeAria">✕</button>
                     </div>
                 </div>
             </template>
@@ -30,23 +30,23 @@
                         <div style="display: flex; justify-content: flex-end; width: 100%">
                             <div style="display: flex; gap: 10px">
                                 <el-button size="small" type="success" @click="openSaveConfigDialog">
-                                    <el-icon style="margin-right: 3px"><DocumentAdd /></el-icon>保存配置
+                                    <el-icon style="margin-right: 3px"><DocumentAdd /></el-icon>{{ fetchTxt.saveConfig }}
                                 </el-button>
                                 <el-button size="small" type="info" @click="openLoadConfigDialog">
-                                    <el-icon style="margin-right: 3px"><Folder /></el-icon>加载配置
+                                    <el-icon style="margin-right: 3px"><Folder /></el-icon>{{ fetchTxt.loadConfig }}
                                 </el-button>
                                 <el-button size="small" type="danger" @click="openDeleteConfigDialog" :disabled="savedConfigs.length === 0">
-                                    <el-icon style="margin-right: 3px"><Delete /></el-icon>删除配置
+                                    <el-icon style="margin-right: 3px"><Delete /></el-icon>{{ fetchTxt.deleteConfig }}
                                 </el-button>
                             </div>
                         </div>
                     </div>
                     <div class="form-item">
-                        <label class="form-label" for="fetch-json-url">请求URL <span style="color: #f56c6c">*</span></label>
+                        <label class="form-label" for="fetch-json-url">{{ fetchTxt.labelUrl }} <span style="color: #f56c6c">*</span></label>
                         <el-input
                             id="fetch-json-url"
                             v-model="fetchJsonUrl"
-                            placeholder="请输入URL，例如: https://api.example.com/data.json"
+                            :placeholder="fetchTxt.placeholderUrl"
                             clearable
                             :maxlength="MAX_URL_LENGTH"
                             show-word-limit
@@ -55,7 +55,7 @@
                     </div>
 
                     <div class="form-item">
-                        <label class="form-label" for="fetch-json-method">请求方法 <span style="color: #f56c6c">*</span></label>
+                        <label class="form-label" for="fetch-json-method">{{ fetchTxt.labelMethod }} <span style="color: #f56c6c">*</span></label>
                         <el-select id="fetch-json-method" v-model="fetchJsonMethod" style="width: 100%">
                             <el-option label="GET" value="GET" />
                             <el-option label="POST" value="POST" />
@@ -66,34 +66,34 @@
                     </div>
 
                     <div class="form-item" v-if="fetchJsonMethod !== 'GET'">
-                        <label class="form-label" for="fetch-json-body">请求体（可选）</label>
+                        <label class="form-label" for="fetch-json-body">{{ fetchTxt.labelBody }}</label>
                         <el-input
                             id="fetch-json-body"
                             v-model="fetchJsonBody"
                             type="textarea"
                             :autosize="{ minRows: 3, maxRows: requestBodyMaxRows }"
-                            placeholder="请输入请求体（支持JSON、XML、Form Data等多种格式，根据Content-Type自动识别）"
+                            :placeholder="fetchTxt.placeholderBody"
                             class="request-body-textarea"
                             :show-word-limit="false"
                         />
                         <div class="textarea-footer">
                             <div v-if="requestBodyError" class="field-error">{{ requestBodyError }}</div>
                             <div class="textarea-counter">
-                                字符数：{{ fetchJsonBody.length }} | 字节数：{{ requestBodyByteSize }} / {{ (MAX_REQUEST_BODY_SIZE / 1024 / 1024).toFixed(0) }} MB
+                                {{ fetchTxt.bodyCharCount(fetchJsonBody.length, requestBodyByteSize, MAX_REQUEST_BODY_SIZE / 1024 / 1024) }}
                             </div>
                         </div>
                     </div>
 
                     <div class="form-item">
                         <div class="form-label-row">
-                            <label class="form-label" for="header-key-0">请求头（可选）</label>
-                            <el-button size="small" type="primary" @click="addHeader">添加</el-button>
+                            <label class="form-label" for="header-key-0">{{ fetchTxt.labelHeaders }}</label>
+                            <el-button size="small" type="primary" @click="addHeader">{{ fetchTxt.btnAdd }}</el-button>
                         </div>
                         <div
                             v-if="showEmptyHeaderWarning && hasEmptyHeader && fetchJsonHeaders.length > 0"
                             style="color: #f56c6c; font-size: 12px; margin-top: 5px; margin-bottom: 5px"
                         >
-                            请先填写已有的请求头，再添加新的请求头
+                            {{ fetchTxt.headerKeyEmptyWarn }}
                         </div>
                         <div v-if="addHeaderError" style="color: #f56c6c; font-size: 12px; margin-top: 5px; margin-bottom: 5px">
                             {{ addHeaderError }}
@@ -105,7 +105,7 @@
                                         :id="index === 0 ? 'header-key-0' : undefined"
                                         v-model="header.key"
                                         :fetch-suggestions="fetchHeaderKeySuggestions"
-                                        placeholder="Header名称"
+                                        :placeholder="fetchTxt.placeholderHeaderKey"
                                         class="header-key-input"
                                         :maxlength="MAX_HEADER_KEY_LENGTH"
                                         clearable
@@ -118,7 +118,7 @@
                                     <el-autocomplete
                                         v-model="header.value"
                                         :fetch-suggestions="fetchHeaderValueSuggestions(header.key)"
-                                        placeholder="Header值"
+                                        :placeholder="fetchTxt.placeholderHeaderValue"
                                         class="header-value-input"
                                         :maxlength="MAX_HEADER_VALUE_LENGTH"
                                         clearable
@@ -127,35 +127,35 @@
                                         <span v-if="headerErrors[index]?.valueError">{{ headerErrors[index].valueError }}</span>
                                     </div>
                                 </div>
-                                <el-button size="small" type="danger" @click="removeHeader(index)" class="header-delete-btn"> 删除 </el-button>
+                                <el-button size="small" type="danger" @click="removeHeader(index)" class="header-delete-btn"> {{ fetchTxt.btnDelete }} </el-button>
                             </div>
-                            <div v-if="fetchJsonHeaders.length === 0" class="empty-hint">暂无请求头，点击"添加"按钮添加</div>
+                            <div v-if="fetchJsonHeaders.length === 0" class="empty-hint">{{ fetchTxt.headersEmpty }}</div>
                         </div>
                     </div>
 
                     <div class="form-item">
                         <div class="form-label-row">
-                            <span class="form-label">客户端证书（可选）</span>
+                            <span class="form-label">{{ fetchTxt.labelCert }}</span>
                             <el-button size="small" type="primary" plain @click="showCertUpload = !showCertUpload">
-                                {{ showCertUpload ? '隐藏证书配置' : '添加证书配置' }}
+                                {{ showCertUpload ? fetchTxt.btnHideCert : fetchTxt.btnShowCert }}
                             </el-button>
                         </div>
                         <div v-if="showCertUpload" class="cert-upload">
                             <div class="cert-item">
-                                <span class="cert-label">证书文件（.pem）：</span>
+                                <span class="cert-label">{{ fetchTxt.certFileLabel }}</span>
                                 <el-upload :auto-upload="false" :show-file-list="false" :on-change="handleCertUpload" accept=".pem,.crt">
-                                    <el-button size="small" type="primary">上传证书</el-button>
+                                    <el-button size="small" type="primary">{{ fetchTxt.btnUploadCert }}</el-button>
                                 </el-upload>
                                 <span v-if="fetchJsonCert" class="cert-name">{{ certFileName }}</span>
-                                <el-button v-if="fetchJsonCert" size="small" type="danger" @click="clearCert" class="cert-clear-btn"> 清除 </el-button>
+                                <el-button v-if="fetchJsonCert" size="small" type="danger" @click="clearCert" class="cert-clear-btn"> {{ fetchTxt.btnClear }} </el-button>
                             </div>
                             <div class="cert-item">
-                                <span class="cert-label">私钥文件（.pem）：</span>
+                                <span class="cert-label">{{ fetchTxt.keyFileLabel }}</span>
                                 <el-upload :auto-upload="false" :show-file-list="false" :on-change="handleKeyUpload" accept=".pem,.key">
-                                    <el-button size="small" type="primary">上传私钥</el-button>
+                                    <el-button size="small" type="primary">{{ fetchTxt.btnUploadKey }}</el-button>
                                 </el-upload>
                                 <span v-if="fetchJsonKey" class="cert-name">{{ keyFileName }}</span>
-                                <el-button v-if="fetchJsonKey" size="small" type="danger" @click="clearKey" class="cert-clear-btn"> 清除 </el-button>
+                                <el-button v-if="fetchJsonKey" size="small" type="danger" @click="clearKey" class="cert-clear-btn"> {{ fetchTxt.btnClear }} </el-button>
                             </div>
                         </div>
                     </div>
@@ -164,13 +164,13 @@
                 <!-- cURL命令方式 -->
                 <div v-if="fetchJsonMode === 'curl'" class="fetch-mode-content">
                     <div class="form-item">
-                        <label class="form-label" for="fetch-json-curl-command">cURL命令</label>
+                        <label class="form-label" for="fetch-json-curl-command">{{ fetchTxt.labelCurl }}</label>
                         <el-input
                             id="fetch-json-curl-command"
                             v-model="fetchJsonCurlCommand"
                             type="textarea"
                             :rows="6"
-                            placeholder="请输入cURL命令，例如: curl -X GET 'https://api.example.com/data.json' -H 'Authorization: Bearer token'"
+                            :placeholder="fetchTxt.placeholderCurl"
                             class="curl-command-textarea"
                             :maxlength="MAX_CURL_COMMAND_LENGTH"
                             show-word-limit
@@ -181,48 +181,48 @@
             </div>
             <template #footer>
                 <div class="dialog-footer">
-                    <el-button @click="handleDialogClose">取消</el-button>
-                    <el-button type="primary" @click="fetchJsonData" :loading="fetchJsonLoading"> 获取数据 </el-button>
+                    <el-button @click="handleDialogClose">{{ fetchTxt.btnCancel }}</el-button>
+                    <el-button type="primary" @click="fetchJsonData" :loading="fetchJsonLoading"> {{ fetchTxt.btnFetch }} </el-button>
                 </div>
             </template>
         </el-dialog>
 
         <!-- 保存配置对话框 -->
-        <el-dialog v-model="showConfigDialog" title="保存配置" width="600px" class="config-save-dialog-wrapper" :close-on-click-modal="false" :align-center="false" top="20vh">
+        <el-dialog v-model="showConfigDialog" :title="fetchTxt.saveConfigTitle" width="600px" class="config-save-dialog-wrapper" :close-on-click-modal="false" :align-center="false" top="20vh">
             <div class="config-save-dialog">
                 <div v-if="saveConfigError" style="color: #f56c6c; font-size: 12px; margin-bottom: 15px; padding: 10px; background-color: #fef0f0; border-radius: 4px">
                     {{ saveConfigError }}
                 </div>
                 <div class="form-item">
-                    <label class="form-label" for="config-name">配置名称：</label>
-                    <el-input id="config-name" v-model="configName" placeholder="请输入配置名称，例如：API测试环境" clearable :maxlength="MAX_CONFIG_NAME_LENGTH" show-word-limit />
+                    <label class="form-label" for="config-name">{{ fetchTxt.labelConfigName }}</label>
+                    <el-input id="config-name" v-model="configName" :placeholder="fetchTxt.placeholderConfigName" clearable :maxlength="MAX_CONFIG_NAME_LENGTH" show-word-limit />
                     <div v-if="configNameError" class="field-error">{{ configNameError }}</div>
                 </div>
                 <div class="form-item">
                     <div class="config-preview">
                         <div class="preview-item">
-                            <span class="preview-label">URL：</span>
-                            <span class="preview-value">{{ fetchJsonUrl || '未设置' }}</span>
+                            <span class="preview-label">{{ fetchTxt.previewUrl }}</span>
+                            <span class="preview-value">{{ fetchJsonUrl || fetchTxt.previewNotSet }}</span>
                         </div>
                         <div class="preview-item">
-                            <span class="preview-label">方法：</span>
+                            <span class="preview-label">{{ fetchTxt.previewMethod }}</span>
                             <span class="preview-value">{{ fetchJsonMethod }}</span>
                         </div>
                         <div class="preview-item" v-if="fetchJsonMethod !== 'GET'">
-                            <span class="preview-label">请求体：</span>
-                            <span class="preview-value">{{ fetchJsonBody ? '已设置' : '未设置' }}</span>
+                            <span class="preview-label">{{ fetchTxt.previewBody }}</span>
+                            <span class="preview-value">{{ fetchJsonBody ? fetchTxt.previewBodySet : fetchTxt.previewNotSet }}</span>
                         </div>
                         <div class="preview-item">
-                            <span class="preview-label">请求头：</span>
-                            <span class="preview-value">{{ fetchJsonHeaders.length }} 个</span>
+                            <span class="preview-label">{{ fetchTxt.previewHeaders }}</span>
+                            <span class="preview-value">{{ fetchTxt.previewHeadersCount(fetchJsonHeaders.length) }}</span>
                         </div>
                     </div>
                 </div>
             </div>
             <template #footer>
                 <div class="dialog-footer">
-                    <el-button @click="showConfigDialog = false">取消</el-button>
-                    <el-button type="primary" :disabled="isSaveConfigDisabled" @click="saveConfig">保存</el-button>
+                    <el-button @click="showConfigDialog = false">{{ fetchTxt.btnCancel }}</el-button>
+                    <el-button type="primary" :disabled="isSaveConfigDisabled" @click="saveConfig">{{ fetchTxt.btnSave }}</el-button>
                 </div>
             </template>
         </el-dialog>
@@ -230,7 +230,7 @@
         <!-- 加载配置对话框 -->
         <el-dialog
             v-model="showLoadConfigDialog"
-            title="选择要加载的配置"
+            :title="fetchTxt.loadConfigTitle"
             width="600px"
             class="config-load-dialog-wrapper"
             :close-on-click-modal="false"
@@ -242,7 +242,7 @@
                     {{ loadConfigError }}
                 </div>
                 <div v-if="savedConfigs.length === 0" class="empty-configs">
-                    <el-empty description="暂无保存的配置" />
+                    <el-empty :description="fetchTxt.emptyConfigs" />
                 </div>
                 <div v-else class="configs-list">
                     <div v-for="(config, index) in savedConfigs" :key="index" class="config-item-wrapper" @click="loadConfig(config)">
@@ -252,7 +252,7 @@
                                 <div class="config-details">
                                     <el-tag size="small" type="info">{{ config.method }}</el-tag>
                                     <span class="config-url">{{ config.url }}</span>
-                                    <span class="config-headers">{{ config.headers.length }} 个请求头</span>
+                                    <span class="config-headers">{{ fetchTxt.headersCountSuffix(config.headers.length) }}</span>
                                 </div>
                             </div>
                             <el-icon class="select-icon"><ArrowRight /></el-icon>
@@ -262,7 +262,7 @@
             </div>
             <template #footer>
                 <div class="dialog-footer">
-                    <el-button @click="showLoadConfigDialog = false">取消</el-button>
+                    <el-button @click="showLoadConfigDialog = false">{{ fetchTxt.btnCancel }}</el-button>
                 </div>
             </template>
         </el-dialog>
@@ -270,7 +270,7 @@
         <!-- 删除配置对话框 -->
         <el-dialog
             v-model="showDeleteConfigDialog"
-            title="选择要删除的配置"
+            :title="fetchTxt.deleteConfigTitle"
             width="600px"
             class="config-delete-dialog-wrapper"
             :close-on-click-modal="false"
@@ -280,7 +280,7 @@
         >
             <div class="config-delete-dialog">
                 <div v-if="savedConfigs.length === 0" class="empty-configs">
-                    <el-empty description="暂无保存的配置" />
+                    <el-empty :description="fetchTxt.emptyConfigs" />
                 </div>
                 <div v-else class="configs-list">
                     <div v-for="(config, index) in savedConfigs" :key="index" class="config-item-wrapper">
@@ -290,20 +290,20 @@
                                 <div class="config-details">
                                     <el-tag size="small" type="info">{{ config.method }}</el-tag>
                                     <span class="config-url">{{ config.url }}</span>
-                                    <span class="config-headers">{{ config.headers.length }} 个请求头</span>
+                                    <span class="config-headers">{{ fetchTxt.headersCountSuffix(config.headers.length) }}</span>
                                 </div>
                             </div>
-                            <el-button size="small" type="danger" @click="confirmDelete(index)" :disabled="confirmingDeleteIndex === index"> 删除 </el-button>
+                            <el-button size="small" type="danger" @click="confirmDelete(index)" :disabled="confirmingDeleteIndex === index"> {{ fetchTxt.btnDelete }} </el-button>
                         </div>
                         <!-- 内联确认删除提示 -->
                         <div v-if="confirmingDeleteIndex === index" class="delete-confirm">
                             <div class="delete-confirm-content">
                                 <el-icon class="delete-warning-icon"><Warning /></el-icon>
-                                <span class="delete-confirm-text">确定要删除配置 "{{ config.name }}" 吗？</span>
+                                <span class="delete-confirm-text">{{ fetchTxt.confirmDeleteTextPrefix }}{{ config.name }}{{ fetchTxt.confirmDeleteTextSuffix }}</span>
                             </div>
                             <div class="delete-confirm-actions">
-                                <el-button size="small" @click="cancelDelete">取消</el-button>
-                                <el-button size="small" type="danger" @click="executeDelete(index)">确认删除</el-button>
+                                <el-button size="small" @click="cancelDelete">{{ fetchTxt.btnCancel }}</el-button>
+                                <el-button size="small" type="danger" @click="executeDelete(index)">{{ fetchTxt.btnConfirmDelete }}</el-button>
                             </div>
                         </div>
                     </div>
@@ -311,7 +311,7 @@
             </div>
             <template #footer>
                 <div class="dialog-footer">
-                    <el-button @click="showDeleteConfigDialog = false">取消</el-button>
+                    <el-button @click="showDeleteConfigDialog = false">{{ fetchTxt.btnCancel }}</el-button>
                 </div>
             </template>
         </el-dialog>
@@ -331,9 +331,253 @@ interface Props {
     modelValue: boolean;
     indentSize: number;
     inputEditor: monaco.editor.IStandaloneCodeEditor | null;
+    locale?: 'zh' | 'en';
 }
 
 const props = defineProps<Props>();
+
+// ==================== i18n 字典 ====================
+const FETCH_TXT_ZH = {
+    title: '获取JSON数据',
+    closeAria: '关闭获取JSON弹窗',
+    modeUrl: '表单输入',
+    modeCurl: '命令导入',
+    saveConfig: '保存配置',
+    loadConfig: '加载配置',
+    deleteConfig: '删除配置',
+    labelUrl: '请求URL',
+    placeholderUrl: '请输入URL，例如: https://api.example.com/data.json',
+    labelMethod: '请求方法',
+    labelBody: '请求体（可选）',
+    placeholderBody: '请输入请求体（支持JSON、XML、Form Data等多种格式，根据Content-Type自动识别）',
+    bodyCharCount: (chars: number, bytes: number, maxMB: number) => `字符数：${chars} | 字节数：${bytes} / ${maxMB} MB`,
+    labelHeaders: '请求头（可选）',
+    btnAdd: '添加',
+    headerKeyEmptyWarn: '请先填写已有的请求头，再添加新的请求头',
+    placeholderHeaderKey: 'Header名称',
+    placeholderHeaderValue: 'Header值',
+    btnDelete: '删除',
+    headersEmpty: '暂无请求头，点击"添加"按钮添加',
+    labelCert: '客户端证书（可选）',
+    btnHideCert: '隐藏证书配置',
+    btnShowCert: '添加证书配置',
+    certFileLabel: '证书文件（.pem）：',
+    btnUploadCert: '上传证书',
+    keyFileLabel: '私钥文件（.pem）：',
+    btnUploadKey: '上传私钥',
+    btnClear: '清除',
+    labelCurl: 'cURL命令',
+    placeholderCurl: "请输入cURL命令，例如: curl -X GET 'https://api.example.com/data.json' -H 'Authorization: Bearer token'",
+    btnCancel: '取消',
+    btnFetch: '获取数据',
+    saveConfigTitle: '保存配置',
+    labelConfigName: '配置名称：',
+    placeholderConfigName: '请输入配置名称，例如：API测试环境',
+    previewUrl: 'URL：',
+    previewNotSet: '未设置',
+    previewMethod: '方法：',
+    previewBody: '请求体：',
+    previewBodySet: '已设置',
+    previewHeaders: '请求头：',
+    previewHeadersCount: (n: number) => `${n} 个`,
+    btnSave: '保存',
+    loadConfigTitle: '选择要加载的配置',
+    emptyConfigs: '暂无保存的配置',
+    headersCountSuffix: (n: number) => `${n} 个请求头`,
+    deleteConfigTitle: '选择要删除的配置',
+    confirmDeleteTextPrefix: '确定要删除配置 "',
+    confirmDeleteTextSuffix: '" 吗？',
+    btnConfirmDelete: '确认删除',
+    overwritePromptPrefix: '配置 "',
+    overwritePromptSuffix: '" 已存在，是否覆盖？',
+    overwriteTitle: '提示',
+    btnOverwrite: '覆盖',
+    msgUrlEmpty: 'URL不能为空',
+    msgUrlTooLong: (n: number, max: number) => `URL长度超过限制（${n} 字符，最大 ${max} 字符）`,
+    msgUrlProtocol: 'URL协议必须是 http 或 https',
+    msgUrlInvalid: 'URL格式不正确，请输入有效的URL（例如：https://example.com）',
+    msgHeaderCountExceed: (n: number, max: number) => `请求头数量超过限制（${n} 个，最大 ${max} 个）`,
+    msgHeaderCountReached: (n: number, max: number) => `请求头数量已达到上限（${n} 个，最大 ${max} 个）`,
+    msgHeaderKeyEmpty: (i: number) => `第 ${i} 个请求头的Key不能为空`,
+    msgHeaderValueEmpty: (i: number, key: string) => `第 ${i} 个请求头 "${key}" 的Value不能为空`,
+    msgHeaderKeyTooLong: (i: number, n: number, max: number) => `第 ${i} 个请求头Key长度超过限制（${n} 字符，最大 ${max} 字符）`,
+    msgHeaderValueTooLong: (i: number, key: string, n: number, max: number) => `第 ${i} 个请求头 "${key}" 的Value长度超过限制（${n} 字符，最大 ${max} 字符）`,
+    msgHeaderKeyInvalidChar: (i: number) => `第 ${i} 个请求头Key包含非法字符（不允许换行符）`,
+    msgHeaderValueInvalidChar: (i: number, key: string) => `第 ${i} 个请求头 "${key}" 的Value包含非法字符（不允许换行符）`,
+    msgBodyTooLarge: (mb: string, maxMB: string) => `请求体大小超过限制（${mb} MB，最大 ${maxMB} MB）`,
+    msgBodyJsonInvalid: (err: string) => `请求体看起来像JSON格式，但JSON格式不正确：${err}`,
+    msgUnknownError: '未知错误',
+    msgCertTooLarge: (kb: string, maxKB: string) => `证书大小超过限制（${kb} KB，最大 ${maxKB} KB）`,
+    msgCertFormat: '证书格式不正确，应包含 -----BEGIN----- 和 -----END----- 标记',
+    msgKeyTooLarge: (kb: string, maxKB: string) => `私钥大小超过限制（${kb} KB，最大 ${maxKB} KB）`,
+    msgKeyFormat: '私钥格式不正确，应包含 -----BEGIN----- 和 -----END----- 标记',
+    msgConfigNameEmpty: '配置名称不能为空',
+    msgConfigNameTooLong: (n: number, max: number) => `配置名称长度超过限制（${n} 字符，最大 ${max} 字符）`,
+    msgConfigNameInvalidChar: '配置名称包含非法字符（不允许包含 < > : " / \\ | ? * 和控制字符）',
+    msgConfigCountReached: (n: number, max: number) => `配置数量已达到上限（${n} 个，最大 ${max} 个），请先删除一些配置`,
+    msgCertFileTooLarge: (kb: string, maxKB: string) => `证书文件大小超过限制（${kb} KB，最大 ${maxKB} KB）`,
+    msgCertValidateFail: '证书校验失败',
+    msgCertReadFail: '证书文件读取失败',
+    msgKeyFileTooLarge: (kb: string, maxKB: string) => `私钥文件大小超过限制（${kb} KB，最大 ${maxKB} KB）`,
+    msgKeyValidateFail: '私钥校验失败',
+    msgKeyReadFail: '私钥文件读取失败',
+    msgConfigsTrimmed: (max: number) => `配置数量超过限制，已自动保留前 ${max} 个配置`,
+    msgConfigLoadFail: '加载配置失败，可能是数据格式错误',
+    msgConfigSaveFail: '保存配置失败，可能是存储空间不足',
+    msgConfigIndexInvalid: '配置索引无效',
+    msgUrlInvalidShort: 'URL无效，请检查后再试',
+    msgUrlValidateFail: 'URL校验失败',
+    msgHeaderCountValidateFail: '请求头数量校验失败',
+    msgHeaderValidateFail: '请求头校验失败',
+    msgBodyValidateFail: '请求体校验失败',
+    msgCurlEmpty: '请输入cURL命令',
+    msgCurlTooLong: (n: number, max: number) => `cURL命令长度超过限制（${n} 字符，最大 ${max} 字符）`,
+    msgFetchFail: '获取JSON数据失败',
+    msgFetchFailWith: (err: string) => `获取JSON数据失败: ${err}`,
+    msgConfigNameValidateFail: '配置名称校验失败',
+    msgConfigUrlEmpty: 'URL不能为空，请填写请求URL',
+    msgConfigUrlInvalid: (err: string) => `配置中的URL无效：${err}`,
+    msgConfigHeadersInvalid: (err: string) => `配置中的请求头无效：${err}`,
+    msgConfigHeaderCountInvalid: (err: string) => `配置中的请求头数量无效：${err}`,
+    msgConfigBodyInvalid: (err: string) => `配置中的请求体无效：${err}`,
+    msgConfigCertInvalid: (err: string) => `配置中的证书无效：${err}`,
+    msgConfigKeyInvalid: (err: string) => `配置中的私钥无效：${err}`,
+    msgConfigCountValidateFail: '配置数量已达到上限',
+    msgConfigUrlInvalidLoaded: (err: string) => `配置中的URL无效：${err}，已加载但请检查`,
+    msgConfigHeadersInvalidLoaded: (err: string) => `配置中的请求头无效：${err}，已加载但请检查`,
+    msgConfigHeaderCountInvalidLoaded: (err: string) => `配置中的请求头数量无效：${err}，已加载但请检查`,
+    msgConfigBodyInvalidLoaded: (err: string) => `配置中的请求体无效：${err}，已加载但请检查`,
+    msgFieldKeyEmpty: 'Key不能为空',
+    msgFieldKeyTooLong: (n: number, max: number) => `Key长度超过限制（${n} 字符，最大 ${max} 字符）`,
+    msgFieldKeyInvalidChar: 'Key包含非法字符（不允许换行符）',
+    msgFieldValueEmpty: 'Value不能为空',
+    msgFieldValueTooLong: (n: number, max: number) => `Value长度超过限制（${n} 字符，最大 ${max} 字符）`,
+    msgFieldValueInvalidChar: 'Value包含非法字符（不允许换行符）',
+    errSeparator: '；',
+};
+
+type FetchTxt = typeof FETCH_TXT_ZH;
+
+const FETCH_TXT_EN: FetchTxt = {
+    title: 'Fetch JSON',
+    closeAria: 'Close fetch JSON dialog',
+    modeUrl: 'Form',
+    modeCurl: 'cURL',
+    saveConfig: 'Save Config',
+    loadConfig: 'Load Config',
+    deleteConfig: 'Delete Config',
+    labelUrl: 'Request URL',
+    placeholderUrl: 'Enter URL, e.g. https://api.example.com/data.json',
+    labelMethod: 'Request Method',
+    labelBody: 'Request Body (optional)',
+    placeholderBody: 'Enter request body (JSON, XML, Form Data, etc. — auto-detected from Content-Type)',
+    bodyCharCount: (chars: number, bytes: number, maxMB: number) => `Chars: ${chars} | Bytes: ${bytes} / ${maxMB} MB`,
+    labelHeaders: 'Request Headers (optional)',
+    btnAdd: 'Add',
+    headerKeyEmptyWarn: 'Please fill in existing headers before adding a new one',
+    placeholderHeaderKey: 'Header name',
+    placeholderHeaderValue: 'Header value',
+    btnDelete: 'Delete',
+    headersEmpty: 'No headers yet — click "Add" to create one',
+    labelCert: 'Client Certificate (optional)',
+    btnHideCert: 'Hide certificate config',
+    btnShowCert: 'Add certificate config',
+    certFileLabel: 'Certificate file (.pem):',
+    btnUploadCert: 'Upload Certificate',
+    keyFileLabel: 'Private key file (.pem):',
+    btnUploadKey: 'Upload Private Key',
+    btnClear: 'Clear',
+    labelCurl: 'cURL Command',
+    placeholderCurl: "Enter cURL command, e.g. curl -X GET 'https://api.example.com/data.json' -H 'Authorization: Bearer token'",
+    btnCancel: 'Cancel',
+    btnFetch: 'Fetch',
+    saveConfigTitle: 'Save Config',
+    labelConfigName: 'Config name:',
+    placeholderConfigName: 'Enter config name, e.g. API Staging',
+    previewUrl: 'URL:',
+    previewNotSet: 'Not set',
+    previewMethod: 'Method:',
+    previewBody: 'Body:',
+    previewBodySet: 'Set',
+    previewHeaders: 'Headers:',
+    previewHeadersCount: (n: number) => `${n}`,
+    btnSave: 'Save',
+    loadConfigTitle: 'Select a config to load',
+    emptyConfigs: 'No saved configs',
+    headersCountSuffix: (n: number) => `${n} headers`,
+    deleteConfigTitle: 'Select a config to delete',
+    confirmDeleteTextPrefix: 'Delete config "',
+    confirmDeleteTextSuffix: '"?',
+    btnConfirmDelete: 'Confirm Delete',
+    overwritePromptPrefix: 'Config "',
+    overwritePromptSuffix: '" already exists. Overwrite?',
+    overwriteTitle: 'Confirm',
+    btnOverwrite: 'Overwrite',
+    msgUrlEmpty: 'URL cannot be empty',
+    msgUrlTooLong: (n: number, max: number) => `URL too long (${n} chars, max ${max})`,
+    msgUrlProtocol: 'URL protocol must be http or https',
+    msgUrlInvalid: 'Invalid URL format. Please enter a valid URL (e.g. https://example.com)',
+    msgHeaderCountExceed: (n: number, max: number) => `Too many headers (${n}, max ${max})`,
+    msgHeaderCountReached: (n: number, max: number) => `Header count limit reached (${n}, max ${max})`,
+    msgHeaderKeyEmpty: (i: number) => `Header #${i}: key cannot be empty`,
+    msgHeaderValueEmpty: (i: number, key: string) => `Header #${i} "${key}": value cannot be empty`,
+    msgHeaderKeyTooLong: (i: number, n: number, max: number) => `Header #${i}: key too long (${n} chars, max ${max})`,
+    msgHeaderValueTooLong: (i: number, key: string, n: number, max: number) => `Header #${i} "${key}": value too long (${n} chars, max ${max})`,
+    msgHeaderKeyInvalidChar: (i: number) => `Header #${i}: key contains invalid characters (line breaks not allowed)`,
+    msgHeaderValueInvalidChar: (i: number, key: string) => `Header #${i} "${key}": value contains invalid characters (line breaks not allowed)`,
+    msgBodyTooLarge: (mb: string, maxMB: string) => `Request body too large (${mb} MB, max ${maxMB} MB)`,
+    msgBodyJsonInvalid: (err: string) => `Body looks like JSON but is invalid: ${err}`,
+    msgUnknownError: 'Unknown error',
+    msgCertTooLarge: (kb: string, maxKB: string) => `Certificate too large (${kb} KB, max ${maxKB} KB)`,
+    msgCertFormat: 'Invalid certificate format — must contain -----BEGIN----- and -----END----- markers',
+    msgKeyTooLarge: (kb: string, maxKB: string) => `Private key too large (${kb} KB, max ${maxKB} KB)`,
+    msgKeyFormat: 'Invalid private key format — must contain -----BEGIN----- and -----END----- markers',
+    msgConfigNameEmpty: 'Config name cannot be empty',
+    msgConfigNameTooLong: (n: number, max: number) => `Config name too long (${n} chars, max ${max})`,
+    msgConfigNameInvalidChar: 'Config name contains invalid characters (< > : " / \\ | ? * and control chars are not allowed)',
+    msgConfigCountReached: (n: number, max: number) => `Config count limit reached (${n}, max ${max}). Please delete some first`,
+    msgCertFileTooLarge: (kb: string, maxKB: string) => `Certificate file too large (${kb} KB, max ${maxKB} KB)`,
+    msgCertValidateFail: 'Certificate validation failed',
+    msgCertReadFail: 'Failed to read certificate file',
+    msgKeyFileTooLarge: (kb: string, maxKB: string) => `Private key file too large (${kb} KB, max ${maxKB} KB)`,
+    msgKeyValidateFail: 'Private key validation failed',
+    msgKeyReadFail: 'Failed to read private key file',
+    msgConfigsTrimmed: (max: number) => `Too many configs — kept the first ${max}`,
+    msgConfigLoadFail: 'Failed to load configs (data format may be corrupted)',
+    msgConfigSaveFail: 'Failed to save config (storage may be full)',
+    msgConfigIndexInvalid: 'Invalid config index',
+    msgUrlInvalidShort: 'Invalid URL — please check and try again',
+    msgUrlValidateFail: 'URL validation failed',
+    msgHeaderCountValidateFail: 'Header count validation failed',
+    msgHeaderValidateFail: 'Header validation failed',
+    msgBodyValidateFail: 'Request body validation failed',
+    msgCurlEmpty: 'Please enter a cURL command',
+    msgCurlTooLong: (n: number, max: number) => `cURL command too long (${n} chars, max ${max})`,
+    msgFetchFail: 'Failed to fetch JSON',
+    msgFetchFailWith: (err: string) => `Failed to fetch JSON: ${err}`,
+    msgConfigNameValidateFail: 'Config name validation failed',
+    msgConfigUrlEmpty: 'URL cannot be empty — please fill in the request URL',
+    msgConfigUrlInvalid: (err: string) => `Invalid URL in config: ${err}`,
+    msgConfigHeadersInvalid: (err: string) => `Invalid headers in config: ${err}`,
+    msgConfigHeaderCountInvalid: (err: string) => `Invalid header count in config: ${err}`,
+    msgConfigBodyInvalid: (err: string) => `Invalid body in config: ${err}`,
+    msgConfigCertInvalid: (err: string) => `Invalid certificate in config: ${err}`,
+    msgConfigKeyInvalid: (err: string) => `Invalid private key in config: ${err}`,
+    msgConfigCountValidateFail: 'Config count limit reached',
+    msgConfigUrlInvalidLoaded: (err: string) => `Invalid URL in config: ${err} — loaded, please review`,
+    msgConfigHeadersInvalidLoaded: (err: string) => `Invalid headers in config: ${err} — loaded, please review`,
+    msgConfigHeaderCountInvalidLoaded: (err: string) => `Invalid header count in config: ${err} — loaded, please review`,
+    msgConfigBodyInvalidLoaded: (err: string) => `Invalid body in config: ${err} — loaded, please review`,
+    msgFieldKeyEmpty: 'Key cannot be empty',
+    msgFieldKeyTooLong: (n: number, max: number) => `Key too long (${n} chars, max ${max})`,
+    msgFieldKeyInvalidChar: 'Key contains invalid characters (line breaks not allowed)',
+    msgFieldValueEmpty: 'Value cannot be empty',
+    msgFieldValueTooLong: (n: number, max: number) => `Value too long (${n} chars, max ${max})`,
+    msgFieldValueInvalidChar: 'Value contains invalid characters (line breaks not allowed)',
+    errSeparator: '; ',
+};
+
+const fetchTxt = computed<FetchTxt>(() => (props.locale === 'en' ? FETCH_TXT_EN : FETCH_TXT_ZH));
 
 // Emits
 const emit = defineEmits<{
@@ -676,7 +920,7 @@ const addHeader = () => {
     // 检查请求头数量限制
     const validHeaders = fetchJsonHeaders.value.filter(h => h.key?.trim() && h.value?.trim());
     if (validHeaders.length >= MAX_HEADER_COUNT) {
-        addHeaderError.value = `请求头数量已达到上限（${validHeaders.length} 个，最大 ${MAX_HEADER_COUNT} 个）`;
+        addHeaderError.value = fetchTxt.value.msgHeaderCountReached(validHeaders.length, MAX_HEADER_COUNT);
         return;
     }
 
@@ -697,7 +941,7 @@ const handleCertUpload = (file: UploadFile) => {
     if (file.size && file.size > MAX_CERT_SIZE) {
         const sizeKB = (file.size / 1024).toFixed(2);
         const maxKB = (MAX_CERT_SIZE / 1024).toFixed(0);
-        showMessageError(`证书文件大小超过限制（${sizeKB} KB，最大 ${maxKB} KB）`);
+        showMessageError(fetchTxt.value.msgCertFileTooLarge(sizeKB, maxKB));
         return;
     }
 
@@ -708,7 +952,7 @@ const handleCertUpload = (file: UploadFile) => {
         // 证书格式和大小校验
         const certValidation = validateCert(content);
         if (!certValidation.isValid) {
-            showMessageError(certValidation.error || '证书校验失败');
+            showMessageError(certValidation.error || fetchTxt.value.msgCertValidateFail);
             return;
         }
 
@@ -716,7 +960,7 @@ const handleCertUpload = (file: UploadFile) => {
         certFileName.value = file.name;
     };
     reader.onerror = () => {
-        showMessageError('证书文件读取失败');
+        showMessageError(fetchTxt.value.msgCertReadFail);
     };
     reader.readAsText(file.raw as Blob);
 };
@@ -727,7 +971,7 @@ const handleKeyUpload = (file: UploadFile) => {
     if (file.size && file.size > MAX_KEY_SIZE) {
         const sizeKB = (file.size / 1024).toFixed(2);
         const maxKB = (MAX_KEY_SIZE / 1024).toFixed(0);
-        showMessageError(`私钥文件大小超过限制（${sizeKB} KB，最大 ${maxKB} KB）`);
+        showMessageError(fetchTxt.value.msgKeyFileTooLarge(sizeKB, maxKB));
         return;
     }
 
@@ -738,7 +982,7 @@ const handleKeyUpload = (file: UploadFile) => {
         // 私钥格式和大小校验
         const keyValidation = validateKey(content);
         if (!keyValidation.isValid) {
-            showMessageError(keyValidation.error || '私钥校验失败');
+            showMessageError(keyValidation.error || fetchTxt.value.msgKeyValidateFail);
             return;
         }
 
@@ -746,7 +990,7 @@ const handleKeyUpload = (file: UploadFile) => {
         keyFileName.value = file.name;
     };
     reader.onerror = () => {
-        showMessageError('私钥文件读取失败');
+        showMessageError(fetchTxt.value.msgKeyReadFail);
     };
     reader.readAsText(file.raw as Blob);
 };
@@ -768,7 +1012,7 @@ const clearKey = () => {
 // URL格式和长度校验
 const validateUrl = (url: string): { isValid: boolean; error?: string } => {
     if (!url || !url.trim()) {
-        return { isValid: false, error: 'URL不能为空' };
+        return { isValid: false, error: fetchTxt.value.msgUrlEmpty };
     }
 
     const trimmedUrl = url.trim();
@@ -777,7 +1021,7 @@ const validateUrl = (url: string): { isValid: boolean; error?: string } => {
     if (trimmedUrl.length > MAX_URL_LENGTH) {
         return {
             isValid: false,
-            error: `URL长度超过限制（${trimmedUrl.length} 字符，最大 ${MAX_URL_LENGTH} 字符）`,
+            error: fetchTxt.value.msgUrlTooLong(trimmedUrl.length, MAX_URL_LENGTH),
         };
     }
 
@@ -788,13 +1032,13 @@ const validateUrl = (url: string): { isValid: boolean; error?: string } => {
         if (!['http:', 'https:'].includes(urlObj.protocol)) {
             return {
                 isValid: false,
-                error: 'URL协议必须是 http 或 https',
+                error: fetchTxt.value.msgUrlProtocol,
             };
         }
     } catch (error) {
         return {
             isValid: false,
-            error: 'URL格式不正确，请输入有效的URL（例如：https://example.com）',
+            error: fetchTxt.value.msgUrlInvalid,
         };
     }
 
@@ -813,7 +1057,7 @@ const validateHeaderCount = (headers: Array<{ key: string; value: string }>): { 
     if (validHeaders.length > MAX_HEADER_COUNT) {
         return {
             isValid: false,
-            error: `请求头数量超过限制（${validHeaders.length} 个，最大 ${MAX_HEADER_COUNT} 个）`,
+            error: fetchTxt.value.msgHeaderCountExceed(validHeaders.length, MAX_HEADER_COUNT),
         };
     }
 
@@ -836,7 +1080,7 @@ const validateHeaders = (headers: Array<{ key: string; value: string }>): { isVa
         if (!key) {
             return {
                 isValid: false,
-                error: `第 ${i + 1} 个请求头的Key不能为空`,
+                error: fetchTxt.value.msgHeaderKeyEmpty(i + 1),
             };
         }
 
@@ -844,7 +1088,7 @@ const validateHeaders = (headers: Array<{ key: string; value: string }>): { isVa
         if (!value) {
             return {
                 isValid: false,
-                error: `第 ${i + 1} 个请求头 "${key}" 的Value不能为空`,
+                error: fetchTxt.value.msgHeaderValueEmpty(i + 1, key),
             };
         }
 
@@ -852,7 +1096,7 @@ const validateHeaders = (headers: Array<{ key: string; value: string }>): { isVa
         if (key.length > MAX_HEADER_KEY_LENGTH) {
             return {
                 isValid: false,
-                error: `第 ${i + 1} 个请求头Key长度超过限制（${key.length} 字符，最大 ${MAX_HEADER_KEY_LENGTH} 字符）`,
+                error: fetchTxt.value.msgHeaderKeyTooLong(i + 1, key.length, MAX_HEADER_KEY_LENGTH),
             };
         }
 
@@ -860,7 +1104,7 @@ const validateHeaders = (headers: Array<{ key: string; value: string }>): { isVa
         if (value.length > MAX_HEADER_VALUE_LENGTH) {
             return {
                 isValid: false,
-                error: `第 ${i + 1} 个请求头 "${key}" 的Value长度超过限制（${value.length} 字符，最大 ${MAX_HEADER_VALUE_LENGTH} 字符）`,
+                error: fetchTxt.value.msgHeaderValueTooLong(i + 1, key, value.length, MAX_HEADER_VALUE_LENGTH),
             };
         }
 
@@ -868,7 +1112,7 @@ const validateHeaders = (headers: Array<{ key: string; value: string }>): { isVa
         if (INVALID_HEADER_KEY_CHARS.test(key)) {
             return {
                 isValid: false,
-                error: `第 ${i + 1} 个请求头Key包含非法字符（不允许换行符）`,
+                error: fetchTxt.value.msgHeaderKeyInvalidChar(i + 1),
             };
         }
 
@@ -876,7 +1120,7 @@ const validateHeaders = (headers: Array<{ key: string; value: string }>): { isVa
         if (INVALID_HEADER_VALUE_CHARS.test(value)) {
             return {
                 isValid: false,
-                error: `第 ${i + 1} 个请求头 "${key}" 的Value包含非法字符（不允许换行符）`,
+                error: fetchTxt.value.msgHeaderValueInvalidChar(i + 1, key),
             };
         }
     }
@@ -902,7 +1146,7 @@ const validateRequestBody = (body: string, method: string): { isValid: boolean; 
         const maxMB = (MAX_REQUEST_BODY_SIZE / (1024 * 1024)).toFixed(0);
         return {
             isValid: false,
-            error: `请求体大小超过限制（${sizeMB} MB，最大 ${maxMB} MB）`,
+            error: fetchTxt.value.msgBodyTooLarge(sizeMB, maxMB),
         };
     }
 
@@ -916,7 +1160,7 @@ const validateRequestBody = (body: string, method: string): { isValid: boolean; 
         } catch (error) {
             return {
                 isValid: false,
-                error: '请求体看起来像JSON格式，但JSON格式不正确：' + (error instanceof Error ? error.message : '未知错误'),
+                error: fetchTxt.value.msgBodyJsonInvalid(error instanceof Error ? error.message : fetchTxt.value.msgUnknownError),
             };
         }
     }
@@ -937,7 +1181,7 @@ const validateCert = (cert: string): { isValid: boolean; error?: string } => {
         const maxKB = (MAX_CERT_SIZE / 1024).toFixed(0);
         return {
             isValid: false,
-            error: `证书大小超过限制（${sizeKB} KB，最大 ${maxKB} KB）`,
+            error: fetchTxt.value.msgCertTooLarge(sizeKB, maxKB),
         };
     }
 
@@ -946,7 +1190,7 @@ const validateCert = (cert: string): { isValid: boolean; error?: string } => {
     if (!certContent.includes('-----BEGIN') || !certContent.includes('-----END')) {
         return {
             isValid: false,
-            error: '证书格式不正确，应包含 -----BEGIN----- 和 -----END----- 标记',
+            error: fetchTxt.value.msgCertFormat,
         };
     }
 
@@ -966,7 +1210,7 @@ const validateKey = (key: string): { isValid: boolean; error?: string } => {
         const maxKB = (MAX_KEY_SIZE / 1024).toFixed(0);
         return {
             isValid: false,
-            error: `私钥大小超过限制（${sizeKB} KB，最大 ${maxKB} KB）`,
+            error: fetchTxt.value.msgKeyTooLarge(sizeKB, maxKB),
         };
     }
 
@@ -975,7 +1219,7 @@ const validateKey = (key: string): { isValid: boolean; error?: string } => {
     if (!keyContent.includes('-----BEGIN') || !keyContent.includes('-----END')) {
         return {
             isValid: false,
-            error: '私钥格式不正确，应包含 -----BEGIN----- 和 -----END----- 标记',
+            error: fetchTxt.value.msgKeyFormat,
         };
     }
 
@@ -985,7 +1229,7 @@ const validateKey = (key: string): { isValid: boolean; error?: string } => {
 // 配置名称校验
 const validateConfigName = (name: string): { isValid: boolean; error?: string } => {
     if (!name || !name.trim()) {
-        return { isValid: false, error: '配置名称不能为空' };
+        return { isValid: false, error: fetchTxt.value.msgConfigNameEmpty };
     }
 
     const trimmedName = name.trim();
@@ -994,7 +1238,7 @@ const validateConfigName = (name: string): { isValid: boolean; error?: string } 
     if (trimmedName.length > MAX_CONFIG_NAME_LENGTH) {
         return {
             isValid: false,
-            error: `配置名称长度超过限制（${trimmedName.length} 字符，最大 ${MAX_CONFIG_NAME_LENGTH} 字符）`,
+            error: fetchTxt.value.msgConfigNameTooLong(trimmedName.length, MAX_CONFIG_NAME_LENGTH),
         };
     }
 
@@ -1002,7 +1246,7 @@ const validateConfigName = (name: string): { isValid: boolean; error?: string } 
     if (INVALID_CONFIG_NAME_CHARS.test(trimmedName)) {
         return {
             isValid: false,
-            error: '配置名称包含非法字符（不允许包含 < > : " / \\ | ? * 和控制字符）',
+            error: fetchTxt.value.msgConfigNameInvalidChar,
         };
     }
 
@@ -1014,7 +1258,7 @@ const validateConfigCount = (): { isValid: boolean; error?: string } => {
     if (savedConfigs.value.length >= MAX_CONFIG_COUNT) {
         return {
             isValid: false,
-            error: `配置数量已达到上限（${savedConfigs.value.length} 个，最大 ${MAX_CONFIG_COUNT} 个），请先删除一些配置`,
+            error: fetchTxt.value.msgConfigCountReached(savedConfigs.value.length, MAX_CONFIG_COUNT),
         };
     }
 
@@ -1050,7 +1294,7 @@ const validateCurlCommandRealTime = () => {
         return;
     }
     if (fetchJsonCurlCommand.value.length > MAX_CURL_COMMAND_LENGTH) {
-        curlCommandError.value = `cURL命令长度超过限制（${fetchJsonCurlCommand.value.length} 字符，最大 ${MAX_CURL_COMMAND_LENGTH} 字符）`;
+        curlCommandError.value = fetchTxt.value.msgCurlTooLong(fetchJsonCurlCommand.value.length, MAX_CURL_COMMAND_LENGTH);
         return;
     }
     curlCommandError.value = '';
@@ -1089,22 +1333,22 @@ const validateHeadersRealTime = () => {
 
         // 校验Key
         if (!key) {
-            headerErrors.value[index].keyError = 'Key不能为空';
+            headerErrors.value[index].keyError = fetchTxt.value.msgFieldKeyEmpty;
         } else if (key.length > MAX_HEADER_KEY_LENGTH) {
-            headerErrors.value[index].keyError = `Key长度超过限制（${key.length} 字符，最大 ${MAX_HEADER_KEY_LENGTH} 字符）`;
+            headerErrors.value[index].keyError = fetchTxt.value.msgFieldKeyTooLong(key.length, MAX_HEADER_KEY_LENGTH);
         } else if (INVALID_HEADER_KEY_CHARS.test(key)) {
-            headerErrors.value[index].keyError = 'Key包含非法字符（不允许换行符）';
+            headerErrors.value[index].keyError = fetchTxt.value.msgFieldKeyInvalidChar;
         } else {
             headerErrors.value[index].keyError = '';
         }
 
         // 校验Value
         if (!value) {
-            headerErrors.value[index].valueError = 'Value不能为空';
+            headerErrors.value[index].valueError = fetchTxt.value.msgFieldValueEmpty;
         } else if (value.length > MAX_HEADER_VALUE_LENGTH) {
-            headerErrors.value[index].valueError = `Value长度超过限制（${value.length} 字符，最大 ${MAX_HEADER_VALUE_LENGTH} 字符）`;
+            headerErrors.value[index].valueError = fetchTxt.value.msgFieldValueTooLong(value.length, MAX_HEADER_VALUE_LENGTH);
         } else if (INVALID_HEADER_VALUE_CHARS.test(value)) {
-            headerErrors.value[index].valueError = 'Value包含非法字符（不允许换行符）';
+            headerErrors.value[index].valueError = fetchTxt.value.msgFieldValueInvalidChar;
         } else {
             headerErrors.value[index].valueError = '';
         }
@@ -1123,13 +1367,13 @@ const loadSavedConfigs = () => {
                 savedConfigs.value = configs.slice(0, MAX_CONFIG_COUNT);
                 saveConfigsToStorage(); // 保存截断后的配置
                 // 这个提示在加载配置时显示，使用 ElMessage 更合适，因为此时弹窗可能还没打开
-                showMessageWarning(`配置数量超过限制，已自动保留前 ${MAX_CONFIG_COUNT} 个配置`);
+                showMessageWarning(fetchTxt.value.msgConfigsTrimmed(MAX_CONFIG_COUNT));
             } else {
                 savedConfigs.value = configs;
             }
         }
     } catch (error) {
-        showMessageError('加载配置失败，可能是数据格式错误');
+        showMessageError(fetchTxt.value.msgConfigLoadFail);
     }
 };
 
@@ -1139,7 +1383,7 @@ const saveConfigsToStorage = () => {
     try {
         localStorage.setItem(CONFIG_STORAGE_KEY, JSON.stringify(savedConfigs.value));
     } catch (error) {
-        showMessageError('保存配置失败，可能是存储空间不足');
+        showMessageError(fetchTxt.value.msgConfigSaveFail);
     }
 };
 
@@ -1151,7 +1395,7 @@ const saveConfig = () => {
     // 配置名称校验
     const nameValidation = validateConfigName(configName.value);
     if (!nameValidation.isValid) {
-        saveConfigError.value = nameValidation.error || '配置名称校验失败';
+        saveConfigError.value = nameValidation.error || fetchTxt.value.msgConfigNameValidateFail;
         return;
     }
 
@@ -1164,7 +1408,7 @@ const saveConfig = () => {
     if (existingIndex < 0) {
         const countValidation = validateConfigCount();
         if (!countValidation.isValid) {
-            saveConfigError.value = countValidation.error || '配置数量已达到上限';
+            saveConfigError.value = countValidation.error || fetchTxt.value.msgConfigCountValidateFail;
             return;
         }
     }
@@ -1172,26 +1416,26 @@ const saveConfig = () => {
     // 校验配置内容
     // 1. URL校验（必填）
     if (!fetchJsonUrl.value || !fetchJsonUrl.value.trim()) {
-        saveConfigError.value = 'URL不能为空，请填写请求URL';
+        saveConfigError.value = fetchTxt.value.msgConfigUrlEmpty;
         return;
     }
 
     const urlValidation = validateUrl(fetchJsonUrl.value);
     if (!urlValidation.isValid) {
-        saveConfigError.value = '配置中的URL无效：' + (urlValidation.error || '');
+        saveConfigError.value = fetchTxt.value.msgConfigUrlInvalid(urlValidation.error || '');
         return;
     }
 
     // 2. 请求头校验
     const headerValidation = validateHeaders(fetchJsonHeaders.value);
     if (!headerValidation.isValid) {
-        saveConfigError.value = '配置中的请求头无效：' + (headerValidation.error || '');
+        saveConfigError.value = fetchTxt.value.msgConfigHeadersInvalid(headerValidation.error || '');
         return;
     }
 
     const headerCountValidation = validateHeaderCount(fetchJsonHeaders.value);
     if (!headerCountValidation.isValid) {
-        saveConfigError.value = '配置中的请求头数量无效：' + (headerCountValidation.error || '');
+        saveConfigError.value = fetchTxt.value.msgConfigHeaderCountInvalid(headerCountValidation.error || '');
         return;
     }
 
@@ -1199,7 +1443,7 @@ const saveConfig = () => {
     if (fetchJsonMethod.value !== 'GET' && fetchJsonBody.value) {
         const bodyValidation = validateRequestBody(fetchJsonBody.value, fetchJsonMethod.value);
         if (!bodyValidation.isValid) {
-            saveConfigError.value = '配置中的请求体无效：' + (bodyValidation.error || '');
+            saveConfigError.value = fetchTxt.value.msgConfigBodyInvalid(bodyValidation.error || '');
             return;
         }
     }
@@ -1208,7 +1452,7 @@ const saveConfig = () => {
     if (fetchJsonCert.value) {
         const certValidation = validateCert(fetchJsonCert.value);
         if (!certValidation.isValid) {
-            saveConfigError.value = '配置中的证书无效：' + (certValidation.error || '');
+            saveConfigError.value = fetchTxt.value.msgConfigCertInvalid(certValidation.error || '');
             return;
         }
     }
@@ -1217,7 +1461,7 @@ const saveConfig = () => {
     if (fetchJsonKey.value) {
         const keyValidation = validateKey(fetchJsonKey.value);
         if (!keyValidation.isValid) {
-            saveConfigError.value = '配置中的私钥无效：' + (keyValidation.error || '');
+            saveConfigError.value = fetchTxt.value.msgConfigKeyInvalid(keyValidation.error || '');
             return;
         }
     }
@@ -1232,11 +1476,15 @@ const saveConfig = () => {
 
     if (existingIndex >= 0) {
         // 更新现有配置
-        ElMessageBox.confirm(`配置 "${trimmedName}" 已存在，是否覆盖？`, '提示', {
-            confirmButtonText: '覆盖',
-            cancelButtonText: '取消',
-            type: 'warning',
-        })
+        ElMessageBox.confirm(
+            fetchTxt.value.overwritePromptPrefix + trimmedName + fetchTxt.value.overwritePromptSuffix,
+            fetchTxt.value.overwriteTitle,
+            {
+                confirmButtonText: fetchTxt.value.btnOverwrite,
+                cancelButtonText: fetchTxt.value.btnCancel,
+                type: 'warning',
+            },
+        )
             .then(() => {
                 savedConfigs.value[existingIndex] = config;
                 saveConfigsToStorage();
@@ -1261,7 +1509,7 @@ const saveConfig = () => {
 const openSaveConfigDialog = () => {
     const validation = validateUrl(fetchJsonUrl.value);
     if (!validation.isValid) {
-        urlError.value = validation.error || 'URL无效，请检查后再试';
+        urlError.value = validation.error || fetchTxt.value.msgUrlInvalidShort;
         return;
     }
 
@@ -1288,32 +1536,32 @@ const loadConfig = (config: (typeof savedConfigs.value)[0]) => {
     if (config.url) {
         const urlValidation = validateUrl(config.url);
         if (!urlValidation.isValid) {
-            errors.push('配置中的URL无效：' + (urlValidation.error || '') + '，已加载但请检查');
+            errors.push(fetchTxt.value.msgConfigUrlInvalidLoaded(urlValidation.error || ''));
         }
     }
 
     // 2. 请求头校验
     const headerValidation = validateHeaders(config.headers || []);
     if (!headerValidation.isValid) {
-        errors.push('配置中的请求头无效：' + (headerValidation.error || '') + '，已加载但请检查');
+        errors.push(fetchTxt.value.msgConfigHeadersInvalidLoaded(headerValidation.error || ''));
     }
 
     const headerCountValidation = validateHeaderCount(config.headers || []);
     if (!headerCountValidation.isValid) {
-        errors.push('配置中的请求头数量无效：' + (headerCountValidation.error || '') + '，已加载但请检查');
+        errors.push(fetchTxt.value.msgConfigHeaderCountInvalidLoaded(headerCountValidation.error || ''));
     }
 
     // 3. 请求体校验
     if (config.method !== 'GET' && config.body) {
         const bodyValidation = validateRequestBody(config.body, config.method);
         if (!bodyValidation.isValid) {
-            errors.push('配置中的请求体无效：' + (bodyValidation.error || '') + '，已加载但请检查');
+            errors.push(fetchTxt.value.msgConfigBodyInvalidLoaded(bodyValidation.error || ''));
         }
     }
 
     // 显示所有错误信息
     if (errors.length > 0) {
-        loadConfigError.value = errors.join('；');
+        loadConfigError.value = errors.join(fetchTxt.value.errSeparator);
     }
 
     // 加载配置
@@ -1348,7 +1596,7 @@ const cancelDelete = () => {
 // 执行删除
 const executeDelete = (index: number) => {
     if (index < 0 || index >= savedConfigs.value.length) {
-        showMessageError('配置索引无效');
+        showMessageError(fetchTxt.value.msgConfigIndexInvalid);
         return;
     }
 
@@ -1370,28 +1618,28 @@ const fetchJsonData = async () => {
             // URL校验
             const urlValidation = validateUrl(fetchJsonUrl.value);
             if (!urlValidation.isValid) {
-                showMessageError(urlValidation.error || 'URL校验失败');
+                showMessageError(urlValidation.error || fetchTxt.value.msgUrlValidateFail);
                 return;
             }
 
             // 请求头数量校验
             const headerCountValidation = validateHeaderCount(fetchJsonHeaders.value);
             if (!headerCountValidation.isValid) {
-                showMessageError(headerCountValidation.error || '请求头数量校验失败');
+                showMessageError(headerCountValidation.error || fetchTxt.value.msgHeaderCountValidateFail);
                 return;
             }
 
             // 请求头KV字段校验
             const headerValidation = validateHeaders(fetchJsonHeaders.value);
             if (!headerValidation.isValid) {
-                showMessageError(headerValidation.error || '请求头校验失败');
+                showMessageError(headerValidation.error || fetchTxt.value.msgHeaderValidateFail);
                 return;
             }
 
             // 请求体校验
             const bodyValidation = validateRequestBody(fetchJsonBody.value, fetchJsonMethod.value);
             if (!bodyValidation.isValid) {
-                showMessageError(bodyValidation.error || '请求体校验失败');
+                showMessageError(bodyValidation.error || fetchTxt.value.msgBodyValidateFail);
                 return;
             }
 
@@ -1399,7 +1647,7 @@ const fetchJsonData = async () => {
             if (fetchJsonCert.value) {
                 const certValidation = validateCert(fetchJsonCert.value);
                 if (!certValidation.isValid) {
-                    showMessageError(certValidation.error || '证书校验失败');
+                    showMessageError(certValidation.error || fetchTxt.value.msgCertValidateFail);
                     return;
                 }
             }
@@ -1408,19 +1656,19 @@ const fetchJsonData = async () => {
             if (fetchJsonKey.value) {
                 const keyValidation = validateKey(fetchJsonKey.value);
                 if (!keyValidation.isValid) {
-                    showMessageError(keyValidation.error || '私钥校验失败');
+                    showMessageError(keyValidation.error || fetchTxt.value.msgKeyValidateFail);
                     return;
                 }
             }
         } else {
             if (!fetchJsonCurlCommand.value.trim()) {
-                showMessageError('请输入cURL命令');
+                showMessageError(fetchTxt.value.msgCurlEmpty);
                 return;
             }
 
             // cURL命令长度校验（防止过长命令）
             if (fetchJsonCurlCommand.value.length > MAX_CURL_COMMAND_LENGTH) {
-                showMessageError(`cURL命令长度超过限制（${fetchJsonCurlCommand.value.length} 字符，最大 ${MAX_CURL_COMMAND_LENGTH} 字符）`);
+                showMessageError(fetchTxt.value.msgCurlTooLong(fetchJsonCurlCommand.value.length, MAX_CURL_COMMAND_LENGTH));
                 return;
             }
         }
@@ -1473,10 +1721,10 @@ const fetchJsonData = async () => {
                 dialogVisible.value = false;
             }
         } else {
-            showMessageError(response.error || '获取JSON数据失败');
+            showMessageError(response.error || fetchTxt.value.msgFetchFail);
         }
     } catch (error: any) {
-        showMessageError('获取JSON数据失败: ' + (error.message || '未知错误'));
+        showMessageError(fetchTxt.value.msgFetchFailWith(error.message || fetchTxt.value.msgUnknownError));
     } finally {
         fetchJsonLoading.value = false;
     }

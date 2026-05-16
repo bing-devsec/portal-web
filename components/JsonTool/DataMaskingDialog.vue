@@ -13,8 +13,8 @@
         >
             <template #header>
                 <div class="dialog-header">
-                    <span class="dialog-title">数据脱敏</span>
-                    <button class="dialog-close-btn" @click="dialogVisible = false" aria-label="关闭脱敏弹窗">✕</button>
+                    <span class="dialog-title">{{ maskTxt.title }}</span>
+                    <button class="dialog-close-btn" @click="dialogVisible = false" :aria-label="maskTxt.closeAria">✕</button>
                 </div>
             </template>
             <div class="data-masking-dialog">
@@ -23,77 +23,81 @@
                     <template #title>
                         <div style="font-size: 12px; line-height: 1.6">
                             <p style="margin: 0 0 8px 0">
-                                <strong>功能说明：</strong>对JSON数据中的敏感字段进行脱敏处理。适用于分享数据前隐藏敏感信息，如密码、手机号、邮箱、身份证号等信息。
+                                <strong>{{ maskTxt.introLabel }}</strong>{{ maskTxt.introText }}
                             </p>
                             <div style="margin-top: 8px">
                                 <el-button text type="primary" size="small" @click="togglePathHelp" style="padding: 0; font-size: 12px; height: auto">
                                     <el-icon style="margin-right: 4px; transition: transform 0.3s" :style="{ transform: showPathHelp ? 'rotate(90deg)' : 'rotate(0deg)' }">
                                         <ArrowRight />
                                     </el-icon>
-                                    {{ showPathHelp ? '收起' : '展开' }}路径字段匹配规则说明
+                                    {{ showPathHelp ? maskTxt.collapse : maskTxt.expand }}{{ maskTxt.pathHelpToggle }}
                                 </el-button>
                             </div>
                             <el-collapse-transition>
                                 <div v-show="showPathHelp" style="margin-top: 12px; padding: 8px 12px; border-left: 3px solid #409eff">
                                     <div style="font-size: 12px; line-height: 1.8; color: #606266">
-                                        <p style="margin: 0 0 10px 0; font-weight: 600; color: #303133">字段路径匹配规则：</p>
+                                        <p style="margin: 0 0 10px 0; font-weight: 600; color: #303133">{{ maskTxt.pathRulesTitle }}</p>
 
                                         <div style="margin-bottom: 12px">
-                                            <p style="margin: 0 0 6px 0; font-weight: 600; color: #409eff">1. 精确路径匹配</p>
+                                            <p style="margin: 0 0 6px 0; font-weight: 600; color: #409eff">{{ maskTxt.exactTitle }}</p>
                                             <p style="margin: 0 0 4px 0; padding-left: 12px">
-                                                • 输入完整路径，如：<code style="background: #fff; padding: 2px 6px; border-radius: 2px">user.password</code> 或
+                                                {{ maskTxt.exactDesc }} <code style="background: #fff; padding: 2px 6px; border-radius: 2px">user.password</code> /
                                                 <code style="background: #fff; padding: 2px 6px; border-radius: 2px">company.name</code>
                                             </p>
                                             <p style="margin: 0; padding-left: 12px; color: #909399; font-size: 11px">
-                                                示例：输入 <code style="background: #fff; padding: 2px 6px; border-radius: 2px">name</code> 只匹配根层级的
-                                                <code style="background: #fff; padding: 2px 6px; border-radius: 2px">name</code> 字段；输入
-                                                <code style="background: #fff; padding: 2px 6px; border-radius: 2px">company.name</code> 匹配特定路径
+                                                {{ maskTxt.exactExamplePrefix }} <code style="background: #fff; padding: 2px 6px; border-radius: 2px">name</code>
+                                                {{ maskTxt.exactExampleMiddle }}
+                                                <code style="background: #fff; padding: 2px 6px; border-radius: 2px">name</code> {{ maskTxt.exactExampleSuffix }}
+                                                <code style="background: #fff; padding: 2px 6px; border-radius: 2px">company.name</code> {{ maskTxt.exactExampleEnd }}
                                             </p>
                                         </div>
 
                                         <div style="margin-bottom: 12px">
-                                            <p style="margin: 0 0 6px 0; font-weight: 600; color: #409eff">2. 通配符匹配</p>
+                                            <p style="margin: 0 0 6px 0; font-weight: 600; color: #409eff">{{ maskTxt.wildcardTitle }}</p>
                                             <p style="margin: 0 0 4px 0; padding-left: 12px">
-                                                • 使用 <code style="background: #fff; padding: 2px 6px; border-radius: 2px">*</code> 匹配任意字段名，如：<code
+                                                {{ maskTxt.wildcardDescPrefix }} <code style="background: #fff; padding: 2px 6px; border-radius: 2px">*</code>
+                                                {{ maskTxt.wildcardDescMiddle }} <code
                                                     style="background: #fff; padding: 2px 6px; border-radius: 2px"
                                                     >*.password</code
                                                 >
                                             </p>
                                             <p style="margin: 0; padding-left: 12px; color: #909399; font-size: 11px">
-                                                示例：<code style="background: #fff; padding: 2px 6px; border-radius: 2px">*.password</code> 会匹配
+                                                {{ maskTxt.wildcardExamplePrefix }} <code style="background: #fff; padding: 2px 6px; border-radius: 2px">*.password</code>
+                                                {{ maskTxt.wildcardExampleMiddle }}
                                                 <code style="background: #fff; padding: 2px 6px; border-radius: 2px">user.password</code>、<code
                                                     style="background: #fff; padding: 2px 6px; border-radius: 2px"
                                                     >root.admin.password</code
                                                 >
-                                                等
+                                                {{ maskTxt.wildcardExampleEnd }}
                                             </p>
                                         </div>
 
                                         <div style="margin-bottom: 12px">
-                                            <p style="margin: 0 0 6px 0; font-weight: 600; color: #409eff">3. 数组通配符匹配</p>
+                                            <p style="margin: 0 0 6px 0; font-weight: 600; color: #409eff">{{ maskTxt.arrayWildcardTitle }}</p>
                                             <p style="margin: 0 0 4px 0; padding-left: 12px">
-                                                • 使用
-                                                <code style="background: #fff; padding: 2px 6px; border-radius: 2px">[*]</code> 匹配数组中的所有元素，如：<code
+                                                {{ maskTxt.arrayWildcardDescPrefix }}
+                                                <code style="background: #fff; padding: 2px 6px; border-radius: 2px">[*]</code> {{ maskTxt.arrayWildcardDescMiddle }}<code
                                                     style="background: #fff; padding: 2px 6px; border-radius: 2px"
                                                     >users[*].email</code
                                                 >
                                             </p>
                                             <p style="margin: 0; padding-left: 12px; color: #909399; font-size: 11px">
-                                                示例：<code style="background: #fff; padding: 2px 6px; border-radius: 2px">company.employees[*].personalInfo.phone</code>
-                                                会匹配数组中所有员工的手机号
+                                                {{ maskTxt.wildcardExamplePrefix }} <code style="background: #fff; padding: 2px 6px; border-radius: 2px">company.employees[*].personalInfo.phone</code>
+                                                {{ maskTxt.arrayWildcardExampleEnd }}
                                             </p>
                                         </div>
 
                                         <div style="margin-bottom: 0">
-                                            <p style="margin: 0 0 6px 0; font-weight: 600; color: #409eff">4. 或运算符（|）</p>
+                                            <p style="margin: 0 0 6px 0; font-weight: 600; color: #409eff">{{ maskTxt.orTitle }}</p>
                                             <p style="margin: 0 0 4px 0; padding-left: 12px">
-                                                • 使用
+                                                {{ maskTxt.wildcardDescPrefix }}
                                                 <code style="background: #fff; padding: 2px 6px; border-radius: 2px">|</code>
-                                                连接多个路径，多个路径的结果去重后取并集
+                                                {{ maskTxt.orDesc }}
                                             </p>
                                             <p style="margin: 0; padding-left: 12px; color: #909399; font-size: 11px">
-                                                示例：<code style="background: #fff; padding: 2px 6px; border-radius: 2px">name | settings[*].name</code> 匹配根层级的
-                                                <code style="background: #fff; padding: 2px 6px; border-radius: 2px">name</code> 和数组中的所有
+                                                {{ maskTxt.orExamplePrefix }} <code style="background: #fff; padding: 2px 6px; border-radius: 2px">name | settings[*].name</code>
+                                                {{ maskTxt.orExampleMiddle }}
+                                                <code style="background: #fff; padding: 2px 6px; border-radius: 2px">name</code> {{ maskTxt.orExampleEnd }}
                                                 <code style="background: #fff; padding: 2px 6px; border-radius: 2px">name</code>
                                             </p>
                                         </div>
@@ -107,22 +111,22 @@
                 <!-- 脱敏规则配置 -->
                 <div class="masking-rules-section">
                     <div class="section-header">
-                        <span class="section-title">脱敏规则</span>
+                        <span class="section-title">{{ maskTxt.sectionRules }}</span>
                         <div class="header-actions">
                             <el-button
                                 type="success"
                                 size="small"
                                 @click="saveCurrentRule"
                                 :disabled="!canSaveNewRule"
-                                :title="savedRulesList.length >= 5 && !canSaveNewRule ? '脱敏规则数量已达上限（5条），无法保存新规则，请先删除旧规则后再保存。' : ''"
+                                :title="savedRulesList.length >= 5 && !canSaveNewRule ? maskTxt.ruleLimitTitle : ''"
                             >
-                                <el-icon style="margin-right: 3px"><DocumentAdd /></el-icon>保存规则
+                                <el-icon style="margin-right: 3px"><DocumentAdd /></el-icon>{{ maskTxt.btnSaveRule }}
                             </el-button>
                             <el-button type="info" size="small" @click="openLoadRuleDialog" :disabled="savedRulesList.length === 0">
-                                <el-icon style="margin-right: 3px"><FolderOpened /></el-icon>加载规则
+                                <el-icon style="margin-right: 3px"><FolderOpened /></el-icon>{{ maskTxt.btnLoadRule }}
                             </el-button>
                             <el-button type="danger" size="small" @click="openDeleteRuleDialog" :disabled="savedRulesList.length === 0">
-                                <el-icon style="margin-right: 3px"><Delete /></el-icon>删除规则
+                                <el-icon style="margin-right: 3px"><Delete /></el-icon>{{ maskTxt.btnDeleteRule }}
                             </el-button>
                         </div>
                     </div>
@@ -131,11 +135,11 @@
                         <div class="rule-item">
                             <div class="rule-header">
                                 <div class="rule-name-input-wrapper">
-                                    <label class="rule-name-label" for="rule-name">规则名称：</label>
+                                    <label class="rule-name-label" for="rule-name">{{ maskTxt.ruleNameLabel }}</label>
                                     <el-input
                                         id="rule-name"
                                         v-model="currentRule.name"
-                                        placeholder="例如：手机号脱敏（保存时必填）"
+                                        :placeholder="maskTxt.ruleNamePlaceholder"
                                         clearable
                                         maxlength="30"
                                         show-word-limit
@@ -149,7 +153,7 @@
                                 <div class="priority-hint">
                                     <el-alert type="info" :closable="false" show-icon>
                                         <template #title>
-                                            <span style="font-size: 12px">优先级说明：从上到下执行，下面的优先级更高（如果多个字段路径都匹配，将应用最后一个匹配的配置）</span>
+                                            <span style="font-size: 12px">{{ maskTxt.priorityHint }}</span>
                                         </template>
                                     </el-alert>
                                 </div>
@@ -158,9 +162,9 @@
                                 <div class="field-paths-list">
                                     <div v-for="(fieldPathConfig, pathIndex) in currentRule.fieldPaths" :key="pathIndex" class="field-path-item">
                                         <div class="field-path-header">
-                                            <span class="field-path-label">字段路径 {{ pathIndex + 1 }}：</span>
+                                            <span class="field-path-label">{{ maskTxt.fieldPathLabel(pathIndex + 1) }}</span>
                                             <div class="field-path-header-right">
-                                                <span class="field-path-priority">优先级：{{ currentRule.fieldPaths.length - pathIndex }}</span>
+                                                <span class="field-path-priority">{{ maskTxt.priorityLabel(currentRule.fieldPaths.length - pathIndex) }}</span>
                                                 <el-button
                                                     v-if="currentRule.fieldPaths.length > 1"
                                                     type="danger"
@@ -170,7 +174,7 @@
                                                     @click="removeFieldPath(pathIndex)"
                                                 >
                                                     <el-icon><Delete /></el-icon>
-                                                    删除
+                                                    {{ maskTxt.btnDelete }}
                                                 </el-button>
                                             </div>
                                         </div>
@@ -181,7 +185,7 @@
                                                 ref="fieldPathAutocompleteRef"
                                                 v-model="fieldPathConfig.fieldPath"
                                                 :fetch-suggestions="queryFieldPaths"
-                                                :placeholder="`例如: password, *.password, user.email, users[*].phone`"
+                                                :placeholder="maskTxt.fieldPathPlaceholder"
                                                 clearable
                                                 maxlength="300"
                                                 show-word-limit
@@ -208,25 +212,25 @@
                                             <!-- 当策略为 fixed 时，策略和固定值并排显示 -->
                                             <div v-if="fieldPathConfig.strategy === 'fixed'" class="strategy-row">
                                                 <div class="strategy-item">
-                                                    <label class="field-label" :for="'strategy-' + pathIndex">脱敏策略：</label>
+                                                    <label class="field-label" :for="'strategy-' + pathIndex">{{ maskTxt.strategyLabel }}</label>
                                                     <el-select
                                                         :id="'strategy-' + pathIndex"
                                                         v-model="fieldPathConfig.strategy"
                                                         style="width: 100%"
                                                         @change="handleStrategyChange(fieldPathConfig, pathIndex)"
                                                     >
-                                                        <el-option label="完全隐藏（删除字段）" value="remove" />
-                                                        <el-option label="替换为 null" value="null" />
-                                                        <el-option label="替换为固定值" value="fixed" />
-                                                        <el-option label="部分显示（保留前后几位）" value="partial" />
+                                                        <el-option :label="maskTxt.strategyRemove" value="remove" />
+                                                        <el-option :label="maskTxt.strategyNull" value="null" />
+                                                        <el-option :label="maskTxt.strategyFixed" value="fixed" />
+                                                        <el-option :label="maskTxt.strategyPartial" value="partial" />
                                                     </el-select>
                                                 </div>
                                                 <div class="strategy-item">
-                                                    <label class="field-label" :for="'fixed-value-' + pathIndex">固定值：</label>
+                                                    <label class="field-label" :for="'fixed-value-' + pathIndex">{{ maskTxt.fixedValueLabel }}</label>
                                                     <el-input
                                                         :id="'fixed-value-' + pathIndex"
                                                         v-model="fieldPathConfig.fixedValue"
-                                                        placeholder="例如: ***, <MASKED>"
+                                                        :placeholder="maskTxt.fixedValuePlaceholder"
                                                         clearable
                                                         maxlength="10"
                                                         show-word-limit
@@ -237,22 +241,22 @@
                                             <!-- 当策略为 partial 时，策略单独一行，参数配置在下一行 -->
                                             <template v-else-if="fieldPathConfig.strategy === 'partial'">
                                                 <div class="strategy-single">
-                                                    <label class="field-label" :for="'strategy-single-' + pathIndex">脱敏策略：</label>
+                                                    <label class="field-label" :for="'strategy-single-' + pathIndex">{{ maskTxt.strategyLabel }}</label>
                                                     <el-select
                                                         :id="'strategy-single-' + pathIndex"
                                                         v-model="fieldPathConfig.strategy"
                                                         style="width: 100%"
                                                         @change="handleStrategyChange(fieldPathConfig, pathIndex)"
                                                     >
-                                                        <el-option label="完全隐藏（删除字段）" value="remove" />
-                                                        <el-option label="替换为 null" value="null" />
-                                                        <el-option label="替换为固定值" value="fixed" />
-                                                        <el-option label="部分显示（保留前后几位）" value="partial" />
+                                                        <el-option :label="maskTxt.strategyRemove" value="remove" />
+                                                        <el-option :label="maskTxt.strategyNull" value="null" />
+                                                        <el-option :label="maskTxt.strategyFixed" value="fixed" />
+                                                        <el-option :label="maskTxt.strategyPartial" value="partial" />
                                                     </el-select>
                                                 </div>
                                                 <div class="partial-config">
                                                     <div class="partial-item">
-                                                        <label class="field-label" :for="'prefix-length-' + pathIndex">保留前几位：</label>
+                                                        <label class="field-label" :for="'prefix-length-' + pathIndex">{{ maskTxt.prefixLengthLabel }}</label>
                                                         <el-input-number
                                                             :id="'prefix-length-' + pathIndex"
                                                             v-model="fieldPathConfig.prefixLength"
@@ -263,7 +267,7 @@
                                                         />
                                                     </div>
                                                     <div class="partial-item">
-                                                        <label class="field-label" :for="'suffix-length-' + pathIndex">保留后几位：</label>
+                                                        <label class="field-label" :for="'suffix-length-' + pathIndex">{{ maskTxt.suffixLengthLabel }}</label>
                                                         <el-input-number
                                                             :id="'suffix-length-' + pathIndex"
                                                             v-model="fieldPathConfig.suffixLength"
@@ -274,11 +278,11 @@
                                                         />
                                                     </div>
                                                     <div class="partial-item">
-                                                        <label class="field-label" :for="'mask-char-' + pathIndex">掩码字符：</label>
+                                                        <label class="field-label" :for="'mask-char-' + pathIndex">{{ maskTxt.maskCharLabel }}</label>
                                                         <el-input
                                                             :id="'mask-char-' + pathIndex"
                                                             v-model="fieldPathConfig.maskChar"
-                                                            placeholder="例如: *"
+                                                            :placeholder="maskTxt.maskCharPlaceholder"
                                                             maxlength="1"
                                                             style="width: 100%"
                                                         />
@@ -288,17 +292,17 @@
 
                                             <!-- 其他策略（remove、null）时，只显示策略选择框 -->
                                             <div v-else class="strategy-single">
-                                                <label class="field-label" :for="'strategy-else-' + pathIndex">脱敏策略：</label>
+                                                <label class="field-label" :for="'strategy-else-' + pathIndex">{{ maskTxt.strategyLabel }}</label>
                                                 <el-select
                                                     :id="'strategy-else-' + pathIndex"
                                                     v-model="fieldPathConfig.strategy"
                                                     style="width: 100%"
                                                     @change="handleStrategyChange(fieldPathConfig, pathIndex)"
                                                 >
-                                                    <el-option label="完全隐藏（删除字段）" value="remove" />
-                                                    <el-option label="替换为 null" value="null" />
-                                                    <el-option label="替换为固定值" value="fixed" />
-                                                    <el-option label="部分显示（保留前后几位）" value="partial" />
+                                                    <el-option :label="maskTxt.strategyRemove" value="remove" />
+                                                    <el-option :label="maskTxt.strategyNull" value="null" />
+                                                    <el-option :label="maskTxt.strategyFixed" value="fixed" />
+                                                    <el-option :label="maskTxt.strategyPartial" value="partial" />
                                                 </el-select>
                                             </div>
                                         </div>
@@ -312,7 +316,7 @@
                                 <div v-if="currentRule.fieldPaths.length < 5" class="add-field-path-action">
                                     <el-button type="primary" size="small" text :disabled="!canAddFieldPath" @click="addFieldPath">
                                         <el-icon><Plus /></el-icon>
-                                        添加字段路径（{{ currentRule.fieldPaths.length }}/5）
+                                        {{ maskTxt.addFieldPath(currentRule.fieldPaths.length) }}
                                     </el-button>
                                     <div v-if="getAddFieldPathError" class="add-field-path-error">
                                         {{ getAddFieldPathError }}
@@ -326,26 +330,28 @@
 
             <template #footer>
                 <div class="dialog-footer">
-                    <el-button @click="handleDialogClose">取消</el-button>
+                    <el-button @click="handleDialogClose">{{ maskTxt.btnCancel }}</el-button>
                     <el-button type="primary" @click="confirmApply" :loading="applying">
-                        {{ applying ? '应用中...' : '应用' }}
+                        {{ applying ? maskTxt.btnApplying : maskTxt.btnApply }}
                     </el-button>
                 </div>
             </template>
         </el-dialog>
 
         <!-- 加载规则对话框 -->
-        <el-dialog v-model="loadRuleDialogVisible" title="选择要加载的规则" width="600px" :close-on-click-modal="false" :align-center="false" top="20vh">
+        <el-dialog v-model="loadRuleDialogVisible" :title="maskTxt.loadRuleTitle" width="600px" :close-on-click-modal="false" :align-center="false" top="20vh">
             <div class="select-rule-dialog">
                 <div v-if="savedRulesList.length === 0" class="empty-saved-rules">
-                    <el-empty description="暂无已保存的规则" :image-size="80" />
+                    <el-empty :description="maskTxt.emptySavedRules" :image-size="80" />
                 </div>
                 <div v-else class="saved-rules-list">
                     <div v-for="(savedRule, index) in savedRulesList" :key="index" class="saved-rule-item" @click="loadRule(index)">
                         <div class="saved-rule-info">
                             <div class="saved-rule-name">{{ savedRule.name }}</div>
-                            <div class="saved-rule-meta">保存时间：{{ savedRule.saveTime }}</div>
-                            <div class="saved-rule-meta">字段路径：{{ savedRule.fieldPaths?.map((fp, idx) => `${idx + 1}. ${fp.fieldPath || '(空)'}`).join('; ') || '(无)' }}</div>
+                            <div class="saved-rule-meta">{{ maskTxt.saveTimeLabel }}{{ savedRule.saveTime }}</div>
+                            <div class="saved-rule-meta">
+                                {{ maskTxt.fieldPathsLabel }}{{ savedRule.fieldPaths?.map((fp, idx) => `${idx + 1}. ${fp.fieldPath || maskTxt.emptyFieldPath}`).join('; ') || maskTxt.noneFieldPath }}
+                            </div>
                         </div>
                         <el-icon class="select-icon"><ArrowRight /></el-icon>
                     </div>
@@ -353,7 +359,7 @@
             </div>
             <template #footer>
                 <div class="dialog-footer">
-                    <el-button @click="loadRuleDialogVisible = false">取消</el-button>
+                    <el-button @click="loadRuleDialogVisible = false">{{ maskTxt.btnCancel }}</el-button>
                 </div>
             </template>
         </el-dialog>
@@ -361,7 +367,7 @@
         <!-- 删除规则对话框 -->
         <el-dialog
             v-model="deleteRuleDialogVisible"
-            title="选择要删除的规则"
+            :title="maskTxt.deleteRuleTitle"
             width="600px"
             :close-on-click-modal="false"
             :align-center="false"
@@ -370,29 +376,29 @@
         >
             <div class="select-rule-dialog">
                 <div v-if="savedRulesList.length === 0" class="empty-saved-rules">
-                    <el-empty description="暂无已保存的规则" :image-size="80" />
+                    <el-empty :description="maskTxt.emptySavedRules" :image-size="80" />
                 </div>
                 <div v-else class="saved-rules-list">
                     <div v-for="(savedRule, index) in savedRulesList" :key="index" class="saved-rule-item-wrapper">
                         <div class="saved-rule-item">
                             <div class="saved-rule-info">
                                 <div class="saved-rule-name">{{ savedRule.name }}</div>
-                                <div class="saved-rule-meta">保存时间：{{ savedRule.saveTime }}</div>
+                                <div class="saved-rule-meta">{{ maskTxt.saveTimeLabel }}{{ savedRule.saveTime }}</div>
                                 <div class="saved-rule-meta">
-                                    字段路径：{{ savedRule.fieldPaths?.map((fp, idx) => `${idx + 1}. ${fp.fieldPath || '(空)'}`).join('; ') || '(无)' }}
+                                    {{ maskTxt.fieldPathsLabel }}{{ savedRule.fieldPaths?.map((fp, idx) => `${idx + 1}. ${fp.fieldPath || maskTxt.emptyFieldPath}`).join('; ') || maskTxt.noneFieldPath }}
                                 </div>
                             </div>
-                            <el-button size="small" type="danger" @click="confirmDelete(index)" :disabled="confirmingDeleteIndex === index"> 删除 </el-button>
+                            <el-button size="small" type="danger" @click="confirmDelete(index)" :disabled="confirmingDeleteIndex === index"> {{ maskTxt.btnDelete }} </el-button>
                         </div>
                         <!-- 内联确认删除提示 -->
                         <div v-if="confirmingDeleteIndex === index" class="delete-confirm">
                             <div class="delete-confirm-content">
                                 <el-icon class="delete-warning-icon"><Warning /></el-icon>
-                                <span class="delete-confirm-text">确定要删除规则 "{{ savedRule.name }}" 吗？</span>
+                                <span class="delete-confirm-text">{{ maskTxt.deleteConfirm(savedRule.name) }}</span>
                             </div>
                             <div class="delete-confirm-actions">
-                                <el-button size="small" @click="cancelDelete">取消</el-button>
-                                <el-button size="small" type="danger" @click="executeDelete(index)">确认删除</el-button>
+                                <el-button size="small" @click="cancelDelete">{{ maskTxt.btnCancel }}</el-button>
+                                <el-button size="small" type="danger" @click="executeDelete(index)">{{ maskTxt.btnConfirmDelete }}</el-button>
                             </div>
                         </div>
                     </div>
@@ -400,7 +406,7 @@
             </div>
             <template #footer>
                 <div class="dialog-footer">
-                    <el-button @click="deleteRuleDialogVisible = false">取消</el-button>
+                    <el-button @click="deleteRuleDialogVisible = false">{{ maskTxt.btnCancel }}</el-button>
                 </div>
             </template>
         </el-dialog>
@@ -410,14 +416,14 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, watch, nextTick } from 'vue';
 import JSON5 from 'json5';
-import { ElMessage, ElMessageBox } from 'element-plus';
-import { showMessageSuccess as showSuccess, showMessageError as showError, showMessageWarning as showWarning } from '~/utils/api';
+import { ElMessageBox } from 'element-plus';
 import { Plus, Delete, DocumentAdd, FolderOpened, ArrowRight, Warning } from '@element-plus/icons-vue';
 
 // Props
 interface Props {
     modelValue: boolean;
     jsonData: string;
+    locale?: 'zh' | 'en';
 }
 
 const props = defineProps<Props>();
@@ -427,6 +433,216 @@ const emit = defineEmits<{
     'update:modelValue': [value: boolean];
     apply: [maskedJson: string];
 }>();
+
+const MASK_TXT_ZH = {
+    title: '数据脱敏',
+    closeAria: '关闭脱敏弹窗',
+    introLabel: '功能说明：',
+    introText: '对JSON数据中的敏感字段进行脱敏处理。适用于分享数据前隐藏敏感信息，如密码、手机号、邮箱、身份证号等信息。',
+    expand: '展开',
+    collapse: '收起',
+    pathHelpToggle: '路径字段匹配规则说明',
+    pathRulesTitle: '字段路径匹配规则：',
+    exactTitle: '1. 精确路径匹配',
+    exactDesc: '• 输入完整路径，如：',
+    exactExamplePrefix: '示例：输入',
+    exactExampleMiddle: '只匹配根层级的',
+    exactExampleSuffix: '字段；输入',
+    exactExampleEnd: '匹配特定路径',
+    wildcardTitle: '2. 通配符匹配',
+    wildcardDescPrefix: '• 使用',
+    wildcardDescMiddle: '匹配任意字段名，如：',
+    wildcardExamplePrefix: '示例：',
+    wildcardExampleMiddle: '会匹配',
+    wildcardExampleEnd: '等',
+    arrayWildcardTitle: '3. 数组通配符匹配',
+    arrayWildcardDescPrefix: '• 使用',
+    arrayWildcardDescMiddle: '匹配数组中的所有元素，如：',
+    arrayWildcardExampleEnd: '会匹配数组中所有员工的手机号',
+    orTitle: '4. 或运算符（|）',
+    orDesc: '连接多个路径，多个路径的结果去重后取并集',
+    orExamplePrefix: '示例：',
+    orExampleMiddle: '匹配根层级的',
+    orExampleEnd: '和数组中的所有',
+    sectionRules: '脱敏规则',
+    ruleLimitTitle: '脱敏规则数量已达上限（5条），无法保存新规则，请先删除旧规则后再保存。',
+    btnSaveRule: '保存规则',
+    btnLoadRule: '加载规则',
+    btnDeleteRule: '删除规则',
+    ruleNameLabel: '规则名称：',
+    ruleNamePlaceholder: '例如：手机号脱敏（保存时必填）',
+    priorityHint: '优先级说明：从上到下执行，下面的优先级更高（如果多个字段路径都匹配，将应用最后一个匹配的配置）',
+    fieldPathLabel: (index: number) => `字段路径 ${index}：`,
+    priorityLabel: (priority: number) => `优先级：${priority}`,
+    btnDelete: '删除',
+    fieldPathPlaceholder: '例如: password, *.password, user.email, users[*].phone',
+    strategyLabel: '脱敏策略：',
+    strategyRemove: '完全隐藏（删除字段）',
+    strategyNull: '替换为 null',
+    strategyFixed: '替换为固定值',
+    strategyPartial: '部分显示（保留前后几位）',
+    fixedValueLabel: '固定值：',
+    fixedValuePlaceholder: '例如: ***, <MASKED>',
+    prefixLengthLabel: '保留前几位：',
+    suffixLengthLabel: '保留后几位：',
+    maskCharLabel: '掩码字符：',
+    maskCharPlaceholder: '例如: *',
+    addFieldPath: (count: number) => `添加字段路径（${count}/5）`,
+    btnCancel: '取消',
+    btnApply: '应用',
+    btnApplying: '应用中...',
+    loadRuleTitle: '选择要加载的规则',
+    deleteRuleTitle: '选择要删除的规则',
+    emptySavedRules: '暂无已保存的规则',
+    saveTimeLabel: '保存时间：',
+    fieldPathsLabel: '字段路径：',
+    emptyFieldPath: '(空)',
+    noneFieldPath: '(无)',
+    deleteConfirm: (name: string) => `确定要删除规则 "${name}" 吗？`,
+    btnConfirmDelete: '确认删除',
+    msgSaveRulesFail: '保存规则列表失败',
+    msgRuleNameEmpty: '规则名称不能为空',
+    msgRuleNameTooLong: '规则名称不能超过30个字符',
+    msgFieldPathRequired: '至少需要配置一个字段路径',
+    msgFieldPathEmpty: (index: number) => `字段路径 ${index} 不能为空`,
+    msgFieldPathTooLong: (index: number) => `字段路径 ${index} 不能超过300个字符`,
+    msgFieldPathInvalidArrayIndex: (index: number) => `字段路径 ${index} 格式无效：数组索引前不能有点号`,
+    msgFixedValueTooLong: (index: number) => `字段路径 ${index} 的固定值不能超过10个字符`,
+    msgPrefixRange: (index: number) => `字段路径 ${index} 的保留前几位必须在0-10之间`,
+    msgSuffixRange: (index: number) => `字段路径 ${index} 的保留后几位必须在0-10之间`,
+    promptRuleNameTitle: '保存规则',
+    promptRuleNameMessage: '请输入规则名称',
+    btnConfirm: '确定',
+    ruleNamePromptPlaceholder: '例如：手机号脱敏',
+    msgRuleValidateFail: '规则验证失败',
+    msgRuleSavedSame: (name: string) => `规则"${name}"已保存（与现有规则完全相同）`,
+    overwriteTitle: '确认覆盖',
+    overwriteMessage: (name: string) => `规则"${name}"已存在，但内容不同，是否覆盖现有规则？`,
+    btnOverwrite: '覆盖',
+    msgRuleOverwriteSaved: (name: string) => `规则"${name}"已覆盖保存`,
+    duplicateTitle: '检测到重复规则',
+    duplicateMessage: (name: string) => `已存在相同内容的规则"${name}"。\n\n保存当前规则后，旧规则将被删除。\n\n是否继续保存并删除旧规则？`,
+    btnSaveAndDeleteOld: '保存并删除旧规则',
+    msgRuleSavedOldDeleted: (name: string, oldName: string) => `规则"${name}"已保存，旧规则"${oldName}"已删除`,
+    msgRuleLimitReached: '脱敏规则数量已达上限（5条），无法保存新规则。请先删除旧规则后再保存。',
+    msgRuleSaved: (name: string) => `规则"${name}"已保存`,
+    msgRuleIndexInvalid: '规则索引无效',
+    msgAddFieldPathFirst: (index: number) => `请先填写字段路径 ${index}，才能添加新的字段路径`,
+    defaultMaskedValue: '[已脱敏]',
+    msgJsonEmpty: 'JSON 数据不能为空',
+    msgInvalidJson: 'JSON 数据格式不正确，请先格式化 JSON 数据',
+    msgMaskSuccess: (count: number) => `已成功脱敏 ${count} 个字段`,
+    msgMaskFail: (err: string) => `脱敏处理失败: ${err}`,
+    msgApplyFail: (err: string) => `应用脱敏结果失败: ${err}`,
+    msgUnknownError: '未知错误',
+};
+
+type MaskTxt = typeof MASK_TXT_ZH;
+
+const MASK_TXT_EN: MaskTxt = {
+    title: 'Data Masking',
+    closeAria: 'Close masking dialog',
+    introLabel: 'What it does:',
+    introText: 'Mask sensitive fields in JSON data before sharing it, such as passwords, phone numbers, emails, ID numbers, and similar private information.',
+    expand: 'Show',
+    collapse: 'Hide',
+    pathHelpToggle: 'field path matching rules',
+    pathRulesTitle: 'Field Path Matching Rules:',
+    exactTitle: '1. Exact Path Match',
+    exactDesc: '• Enter a full path, such as:',
+    exactExamplePrefix: 'Example: entering',
+    exactExampleMiddle: 'matches only the root-level',
+    exactExampleSuffix: 'field; entering',
+    exactExampleEnd: 'matches a specific path',
+    wildcardTitle: '2. Wildcard Match',
+    wildcardDescPrefix: '• Use',
+    wildcardDescMiddle: 'to match any field name, such as:',
+    wildcardExamplePrefix: 'Example:',
+    wildcardExampleMiddle: 'matches',
+    wildcardExampleEnd: 'and more',
+    arrayWildcardTitle: '3. Array Wildcard Match',
+    arrayWildcardDescPrefix: '• Use',
+    arrayWildcardDescMiddle: 'to match every item in an array, such as:',
+    arrayWildcardExampleEnd: 'matches the phone number of every employee in the array',
+    orTitle: '4. OR Operator (|)',
+    orDesc: 'connects multiple paths and uses the deduplicated union of all matched results',
+    orExamplePrefix: 'Example:',
+    orExampleMiddle: 'matches the root-level',
+    orExampleEnd: 'and every',
+    sectionRules: 'Masking Rules',
+    ruleLimitTitle: 'The masking rule limit has been reached (5 rules). Delete old rules before saving a new one.',
+    btnSaveRule: 'Save Rule',
+    btnLoadRule: 'Load Rule',
+    btnDeleteRule: 'Delete Rule',
+    ruleNameLabel: 'Rule name:',
+    ruleNamePlaceholder: 'Example: Phone masking (required when saving)',
+    priorityHint: 'Priority: rules run from top to bottom, and lower rules have higher priority. If multiple field paths match, the last matching configuration is applied.',
+    fieldPathLabel: (index: number) => `Field path ${index}:`,
+    priorityLabel: (priority: number) => `Priority: ${priority}`,
+    btnDelete: 'Delete',
+    fieldPathPlaceholder: 'Example: password, *.password, user.email, users[*].phone',
+    strategyLabel: 'Masking strategy:',
+    strategyRemove: 'Hide completely (remove field)',
+    strategyNull: 'Replace with null',
+    strategyFixed: 'Replace with fixed value',
+    strategyPartial: 'Partially show (keep prefix/suffix)',
+    fixedValueLabel: 'Fixed value:',
+    fixedValuePlaceholder: 'Example: ***, <MASKED>',
+    prefixLengthLabel: 'Keep first characters:',
+    suffixLengthLabel: 'Keep last characters:',
+    maskCharLabel: 'Mask character:',
+    maskCharPlaceholder: 'Example: *',
+    addFieldPath: (count: number) => `Add field path (${count}/5)`,
+    btnCancel: 'Cancel',
+    btnApply: 'Apply',
+    btnApplying: 'Applying...',
+    loadRuleTitle: 'Select a Rule to Load',
+    deleteRuleTitle: 'Select a Rule to Delete',
+    emptySavedRules: 'No saved rules',
+    saveTimeLabel: 'Saved at: ',
+    fieldPathsLabel: 'Field paths: ',
+    emptyFieldPath: '(empty)',
+    noneFieldPath: '(none)',
+    deleteConfirm: (name: string) => `Delete rule "${name}"?`,
+    btnConfirmDelete: 'Confirm Delete',
+    msgSaveRulesFail: 'Failed to save rule list',
+    msgRuleNameEmpty: 'Rule name cannot be empty',
+    msgRuleNameTooLong: 'Rule name cannot exceed 30 characters',
+    msgFieldPathRequired: 'At least one field path is required',
+    msgFieldPathEmpty: (index: number) => `Field path ${index} cannot be empty`,
+    msgFieldPathTooLong: (index: number) => `Field path ${index} cannot exceed 300 characters`,
+    msgFieldPathInvalidArrayIndex: (index: number) => `Field path ${index} is invalid: do not put a dot before an array index`,
+    msgFixedValueTooLong: (index: number) => `The fixed value for field path ${index} cannot exceed 10 characters`,
+    msgPrefixRange: (index: number) => `The prefix length for field path ${index} must be between 0 and 10`,
+    msgSuffixRange: (index: number) => `The suffix length for field path ${index} must be between 0 and 10`,
+    promptRuleNameTitle: 'Save Rule',
+    promptRuleNameMessage: 'Enter a rule name',
+    btnConfirm: 'OK',
+    ruleNamePromptPlaceholder: 'Example: Phone masking',
+    msgRuleValidateFail: 'Rule validation failed',
+    msgRuleSavedSame: (name: string) => `Rule "${name}" saved (identical to the existing rule)`,
+    overwriteTitle: 'Confirm Overwrite',
+    overwriteMessage: (name: string) => `Rule "${name}" already exists with different content. Overwrite it?`,
+    btnOverwrite: 'Overwrite',
+    msgRuleOverwriteSaved: (name: string) => `Rule "${name}" overwritten`,
+    duplicateTitle: 'Duplicate Rule Detected',
+    duplicateMessage: (name: string) => `A rule with the same content already exists: "${name}".\n\nAfter saving the current rule, the old rule will be deleted.\n\nContinue and delete the old rule?`,
+    btnSaveAndDeleteOld: 'Save and Delete Old Rule',
+    msgRuleSavedOldDeleted: (name: string, oldName: string) => `Rule "${name}" saved, old rule "${oldName}" deleted`,
+    msgRuleLimitReached: 'The masking rule limit has been reached (5 rules). Delete old rules before saving a new one.',
+    msgRuleSaved: (name: string) => `Rule "${name}" saved`,
+    msgRuleIndexInvalid: 'Invalid rule index',
+    msgAddFieldPathFirst: (index: number) => `Fill in field path ${index} before adding a new field path`,
+    defaultMaskedValue: '[MASKED]',
+    msgJsonEmpty: 'JSON data cannot be empty',
+    msgInvalidJson: 'Invalid JSON data. Please format the JSON first',
+    msgMaskSuccess: (count: number) => `Successfully masked ${count} field${count === 1 ? '' : 's'}`,
+    msgMaskFail: (err: string) => `Masking failed: ${err}`,
+    msgApplyFail: (err: string) => `Failed to apply masked result: ${err}`,
+    msgUnknownError: 'Unknown error',
+};
+
+const maskTxt = computed<MaskTxt>(() => (props.locale === 'en' ? MASK_TXT_EN : MASK_TXT_ZH));
 
 const highPrecisionMarkerPrefix = '\uE000HPN:';
 const highPrecisionMarkerSuffix = ':HPN\uE000';
@@ -830,7 +1046,7 @@ const saveRulesListToStorage = () => {
     try {
         localStorage.setItem(STORAGE_KEY, JSON.stringify(savedRulesList.value));
     } catch (error) {
-        showMessageError('保存规则列表失败');
+        showMessageError(maskTxt.value.msgSaveRulesFail);
     }
 };
 
@@ -843,15 +1059,15 @@ onMounted(() => {
 const validateRule = (rule: MaskingRule): { valid: boolean; error?: string } => {
     // 验证规则名称
     if (!rule.name || !rule.name.trim()) {
-        return { valid: false, error: '规则名称不能为空' };
+        return { valid: false, error: maskTxt.value.msgRuleNameEmpty };
     }
     if (rule.name.length > 30) {
-        return { valid: false, error: '规则名称不能超过30个字符' };
+        return { valid: false, error: maskTxt.value.msgRuleNameTooLong };
     }
 
     // 验证字段路径
     if (!rule.fieldPaths || rule.fieldPaths.length === 0) {
-        return { valid: false, error: '至少需要配置一个字段路径' };
+        return { valid: false, error: maskTxt.value.msgFieldPathRequired };
     }
 
     // 检查每个字段路径
@@ -860,18 +1076,18 @@ const validateRule = (rule: MaskingRule): { valid: boolean; error?: string } => 
 
         // 验证字段路径不能为空
         if (!fieldPathConfig.fieldPath || !fieldPathConfig.fieldPath.trim()) {
-            return { valid: false, error: `字段路径 ${i + 1} 不能为空` };
+            return { valid: false, error: maskTxt.value.msgFieldPathEmpty(i + 1) };
         }
 
         // 验证字段路径长度
         if (fieldPathConfig.fieldPath.length > 300) {
-            return { valid: false, error: `字段路径 ${i + 1} 不能超过300个字符` };
+            return { valid: false, error: maskTxt.value.msgFieldPathTooLong(i + 1) };
         }
 
         // 验证字段路径格式（检查无效格式，如 .[数字]）
         // 检测数组索引前有点号的无效格式，如 .[0] 或 .[123]
         if (/\.\[\d+\]/.test(fieldPathConfig.fieldPath)) {
-            return { valid: false, error: `字段路径 ${i + 1} 格式无效：数组索引前不能有点号` };
+            return { valid: false, error: maskTxt.value.msgFieldPathInvalidArrayIndex(i + 1) };
         }
 
         // 根据策略验证相应参数
@@ -879,19 +1095,19 @@ const validateRule = (rule: MaskingRule): { valid: boolean; error?: string } => 
             // 固定值策略：验证固定值
             if (fieldPathConfig.fixedValue !== undefined && fieldPathConfig.fixedValue !== null) {
                 if (fieldPathConfig.fixedValue.length > 10) {
-                    return { valid: false, error: `字段路径 ${i + 1} 的固定值不能超过10个字符` };
+                    return { valid: false, error: maskTxt.value.msgFixedValueTooLong(i + 1) };
                 }
             }
         } else if (fieldPathConfig.strategy === 'partial') {
             // 部分显示策略：验证前后范围
             if (fieldPathConfig.prefixLength !== undefined && fieldPathConfig.prefixLength !== null) {
                 if (fieldPathConfig.prefixLength < 0 || fieldPathConfig.prefixLength > 10) {
-                    return { valid: false, error: `字段路径 ${i + 1} 的保留前几位必须在0-10之间` };
+                    return { valid: false, error: maskTxt.value.msgPrefixRange(i + 1) };
                 }
             }
             if (fieldPathConfig.suffixLength !== undefined && fieldPathConfig.suffixLength !== null) {
                 if (fieldPathConfig.suffixLength < 0 || fieldPathConfig.suffixLength > 10) {
-                    return { valid: false, error: `字段路径 ${i + 1} 的保留后几位必须在0-10之间` };
+                    return { valid: false, error: maskTxt.value.msgSuffixRange(i + 1) };
                 }
             }
         }
@@ -972,7 +1188,7 @@ const compareRuleContent = (rule1: MaskingRule, rule2: MaskingRule): boolean => 
 const saveCurrentRule = async () => {
     // 检查是否有有效的字段路径
     if (!currentRule.value.fieldPaths.some(fieldPath => fieldPath.fieldPath.trim())) {
-        showMessageWarning('请至少配置一个有效的字段路径');
+        showMessageWarning(maskTxt.value.msgFieldPathRequired);
         return;
     }
 
@@ -980,16 +1196,16 @@ const saveCurrentRule = async () => {
     let ruleName = currentRule.value.name?.trim() || '';
     if (!ruleName) {
         try {
-            const { value: inputName }: any = await ElMessageBox.prompt('请输入规则名称', '保存规则', {
-                confirmButtonText: '确定',
-                cancelButtonText: '取消',
-                inputPlaceholder: '例如：手机号脱敏',
+            const { value: inputName }: any = await ElMessageBox.prompt(maskTxt.value.promptRuleNameMessage, maskTxt.value.promptRuleNameTitle, {
+                confirmButtonText: maskTxt.value.btnConfirm,
+                cancelButtonText: maskTxt.value.btnCancel,
+                inputPlaceholder: maskTxt.value.ruleNamePromptPlaceholder,
                 inputValidator: value => {
                     if (!value || !value.trim()) {
-                        return '规则名称不能为空';
+                        return maskTxt.value.msgRuleNameEmpty;
                     }
                     if (value.length > 30) {
-                        return '规则名称不能超过30个字符';
+                        return maskTxt.value.msgRuleNameTooLong;
                     }
                     return true;
                 },
@@ -1009,7 +1225,7 @@ const saveCurrentRule = async () => {
     // 验证规则的有效性
     const validation = validateRule(currentRule.value);
     if (!validation.valid) {
-        showMessageError(validation.error || '规则验证失败');
+        showMessageError(validation.error || maskTxt.value.msgRuleValidateFail);
         return;
     }
 
@@ -1032,7 +1248,7 @@ const saveCurrentRule = async () => {
 
         // 情况1.1：同名且内容相同，直接提示保存成功
         if (compareRuleContent(existingRule, newRuleContent)) {
-            showMessageSuccess(`规则"${ruleName}"已保存（与现有规则完全相同）`);
+            showMessageSuccess(maskTxt.value.msgRuleSavedSame(ruleName));
             // 标记规则为已保存
             currentRule.value.isSaved = true;
             currentRule.value.name = ruleName;
@@ -1041,9 +1257,9 @@ const saveCurrentRule = async () => {
 
         // 情况1.2：同名但内容不同，提示规则覆盖
         try {
-            await ElMessageBox.confirm(`规则"${ruleName}"已存在，但内容不同，是否覆盖现有规则？`, '确认覆盖', {
-                confirmButtonText: '覆盖',
-                cancelButtonText: '取消',
+            await ElMessageBox.confirm(maskTxt.value.overwriteMessage(ruleName), maskTxt.value.overwriteTitle, {
+                confirmButtonText: maskTxt.value.btnOverwrite,
+                cancelButtonText: maskTxt.value.btnCancel,
                 type: 'warning',
             });
 
@@ -1060,7 +1276,7 @@ const saveCurrentRule = async () => {
 
             savedRulesList.value[existingSameNameIndex] = newRule;
             saveRulesListToStorage();
-            showMessageSuccess(`规则"${ruleName}"已覆盖保存`);
+            showMessageSuccess(maskTxt.value.msgRuleOverwriteSaved(ruleName));
 
             // 标记规则为已保存
             currentRule.value.isSaved = true;
@@ -1077,11 +1293,11 @@ const saveCurrentRule = async () => {
         // 询问用户是否要删除旧规则，因为两个内容完全相同的规则没有意义
         try {
             await ElMessageBox.confirm(
-                `已存在相同内容的规则"${existingSameContentRule.name}"。\n\n保存当前规则后，旧规则将被删除。\n\n是否继续保存并删除旧规则？`,
-                '检测到重复规则',
+                maskTxt.value.duplicateMessage(existingSameContentRule.name),
+                maskTxt.value.duplicateTitle,
                 {
-                    confirmButtonText: '保存并删除旧规则',
-                    cancelButtonText: '取消',
+                    confirmButtonText: maskTxt.value.btnSaveAndDeleteOld,
+                    cancelButtonText: maskTxt.value.btnCancel,
                     type: 'warning',
                 }
             );
@@ -1103,7 +1319,7 @@ const saveCurrentRule = async () => {
             // 保存新规则
             savedRulesList.value.push(newRule);
             saveRulesListToStorage();
-            showMessageSuccess(`规则"${ruleName}"已保存，旧规则"${existingSameContentRule.name}"已删除`);
+            showMessageSuccess(maskTxt.value.msgRuleSavedOldDeleted(ruleName, existingSameContentRule.name));
 
             // 标记规则为已保存
             currentRule.value.isSaved = true;
@@ -1117,7 +1333,7 @@ const saveCurrentRule = async () => {
 
     // 情况3：不存在同名规则，也不存在相同内容的规则，检查规则数量上限
     if (savedRulesList.value.length >= 5) {
-        showMessageWarning('脱敏规则数量已达上限（5条），无法保存新规则。请先删除旧规则后再保存。');
+        showMessageWarning(maskTxt.value.msgRuleLimitReached);
         return;
     }
 
@@ -1135,7 +1351,7 @@ const saveCurrentRule = async () => {
 
     savedRulesList.value.push(newRule);
     saveRulesListToStorage();
-    showMessageSuccess(`规则"${ruleName}"已保存`);
+    showMessageSuccess(maskTxt.value.msgRuleSaved(ruleName));
 
     // 标记规则为已保存
     currentRule.value.isSaved = true;
@@ -1151,7 +1367,7 @@ const openLoadRuleDialog = () => {
 // 加载规则（替换当前规则）
 const loadRule = (index: number) => {
     if (index < 0 || index >= savedRulesList.value.length) {
-        showMessageError('规则索引无效');
+        showMessageError(maskTxt.value.msgRuleIndexInvalid);
         return;
     }
 
@@ -1207,7 +1423,7 @@ const cancelDelete = () => {
 // 执行删除
 const executeDelete = (index: number) => {
     if (index < 0 || index >= savedRulesList.value.length) {
-        showMessageError('规则索引无效');
+        showMessageError(maskTxt.value.msgRuleIndexInvalid);
         return;
     }
 
@@ -1238,7 +1454,7 @@ const getAddFieldPathError = computed(() => {
     // 检查是否有未填写的字段路径
     const emptyIndex = currentRule.value.fieldPaths.findIndex(fieldPathConfig => fieldPathConfig.fieldPath.trim() === '');
     if (emptyIndex !== -1) {
-        return `请先填写字段路径 ${emptyIndex + 1}，才能添加新的字段路径`;
+        return maskTxt.value.msgAddFieldPathFirst(emptyIndex + 1);
     }
     return '';
 });
@@ -1266,14 +1482,14 @@ const removeFieldPath = (pathIndex: number) => {
 };
 
 // 处理策略变化
-const handleStrategyChange = (fieldPathConfig: FieldPathConfig, pathIndex: number) => {
+const handleStrategyChange = (fieldPathConfig: FieldPathConfig, _pathIndex: number) => {
     // 根据策略设置默认值
     if (fieldPathConfig.strategy === 'partial') {
         if (fieldPathConfig.prefixLength === undefined) fieldPathConfig.prefixLength = 3;
         if (fieldPathConfig.suffixLength === undefined) fieldPathConfig.suffixLength = 4;
         if (!fieldPathConfig.maskChar) fieldPathConfig.maskChar = '*';
     } else if (fieldPathConfig.strategy === 'fixed' && !fieldPathConfig.fixedValue) {
-        fieldPathConfig.fixedValue = '[已脱敏]';
+        fieldPathConfig.fixedValue = maskTxt.value.defaultMaskedValue;
     }
 };
 
@@ -2417,10 +2633,10 @@ const applyMaskingStrategy = (value: any, fieldPathConfig: FieldPathConfig): any
                 return isNaN(maskedNum) ? maskedNumStr : maskedNum;
             } else if (valueType === 'boolean') {
                 // 布尔类型：partial 策略对布尔值没有意义，使用 fixed 策略
-                return fieldPathConfig.fixedValue || '[已脱敏]';
+                return fieldPathConfig.fixedValue || maskTxt.value.defaultMaskedValue;
             } else if (isArray || isObject) {
                 // 对象/数组类型：partial 策略对对象/数组没有意义，使用 fixed 策略
-                return fieldPathConfig.fixedValue || '[已脱敏]';
+                return fieldPathConfig.fixedValue || maskTxt.value.defaultMaskedValue;
             } else {
                 // 其他类型（如 symbol、function 等）：转为字符串处理
                 const strValue = String(value);
@@ -2435,7 +2651,7 @@ const applyMaskingStrategy = (value: any, fieldPathConfig: FieldPathConfig): any
 
         case 'fixed':
             // 固定值策略：根据原始数据类型决定返回类型
-            const fixedValue = fieldPathConfig.fixedValue || '[已脱敏]';
+            const fixedValue = fieldPathConfig.fixedValue || maskTxt.value.defaultMaskedValue;
 
             if (valueType === 'number') {
                 // 如果原始值是数字，尝试将固定值转换为数字
@@ -2656,14 +2872,14 @@ const maskObject = (obj: any, rules: MaskingRule[], currentPath: string[] = []):
 // 确认应用
 const confirmApply = () => {
     if (!props.jsonData || !props.jsonData.trim()) {
-        showMessageWarning('JSON 数据不能为空');
+        showMessageWarning(maskTxt.value.msgJsonEmpty);
         return;
     }
 
     // 验证规则：至少有一个有效的字段路径
     const hasValidFieldPath = currentRule.value.fieldPaths.some(fieldPath => fieldPath.fieldPath.trim());
     if (!hasValidFieldPath) {
-        showMessageWarning('请至少配置一个有效的字段路径');
+        showMessageWarning(maskTxt.value.msgFieldPathRequired);
         return;
     }
 
@@ -2677,7 +2893,7 @@ const confirmApply = () => {
             const processedInput = markHighPrecisionNumbers(unicodePreserve.transformed);
             jsonObj = JSON5.parse(processedInput);
         } catch (error) {
-            showMessageError('JSON 数据格式不正确，请先格式化 JSON 数据');
+            showMessageError(maskTxt.value.msgInvalidJson);
             applying.value = false;
             return;
         }
@@ -2694,9 +2910,9 @@ const confirmApply = () => {
         handleDialogClose();
 
         // 显示脱敏结果弹窗
-        showMessageSuccess(`已成功脱敏 ${count} 个字段`);
+        showMessageSuccess(maskTxt.value.msgMaskSuccess(count));
     } catch (error: any) {
-        showMessageError('脱敏处理失败: ' + (error.message || '未知错误'));
+        showMessageError(maskTxt.value.msgMaskFail(error.message || maskTxt.value.msgUnknownError));
     } finally {
         applying.value = false;
     }
