@@ -1,24 +1,24 @@
 User-agent: *
+Disallow: /api/
+
+User-agent: Googlebot
 Allow: /
 Disallow: /api/
 
-# 静态资源缓存友好（确保 _nuxt/ 内容可被抓取）
-Allow: /_nuxt/
-
-# 主流搜索引擎单独声明（保险）
-User-agent: Googlebot
-Allow: /
-
 User-agent: Baiduspider
 Allow: /
+Disallow: /api/
 
 User-agent: Bingbot
 Allow: /
+Disallow: /api/
 
 User-agent: 360Spider
 Allow: /
+Disallow: /api/
 
 User-agent: Sogou web spider
 Allow: /
+Disallow: /api/
 
 Sitemap: https://liubing.xyz/sitemap.xml

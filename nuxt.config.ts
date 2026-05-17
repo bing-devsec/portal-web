@@ -4,6 +4,9 @@ import { resolve } from "path";
 export default defineNuxtConfig({
   // ==================== 核心配置 ====================
   devtools: { enabled: false },
+  site: {
+    url: "https://liubing.xyz",
+  },
   app: {
     head: {
       // 基础元信息
