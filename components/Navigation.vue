@@ -2,20 +2,20 @@
     <header class="navbar-wrapper">
         <div class="navbar navbar-fixed-top">
             <div class="container">
-                <el-dropdown class="logo navbar-logo-m visible-xs">
+                <el-dropdown ref="mobileDropdownRef" class="logo navbar-logo-m visible-xs">
                     <span class="el-dropdown-link">&ensp;&ensp;
                         <i class="iconfont icon-zhiyezigeqingdan"></i>
                     </span>
                     <template #dropdown>
                         <el-dropdown-menu>
                             <el-dropdown-item>
-                                <NuxtLink to="/" @click="resetPage" data-hover="首页">首页</NuxtLink>
+                                <NuxtLink to="/" @click="handleMobileNavClick(true)" data-hover="首页">首页</NuxtLink>
                             </el-dropdown-item>
                             <el-dropdown-item>
-                                <NuxtLink to="/time-line" data-hover="归档">归档</NuxtLink>
+                                <NuxtLink to="/time-line" @click="handleMobileNavClick()" data-hover="归档">归档</NuxtLink>
                             </el-dropdown-item>
                             <el-dropdown-item>
-                                <NuxtLink to="/about-me" data-hover="关于我">关于我</NuxtLink>
+                                <NuxtLink to="/about-me" @click="handleMobileNavClick()" data-hover="关于我">关于我</NuxtLink>
                             </el-dropdown-item>
                         </el-dropdown-menu>
                     </template>
@@ -56,8 +56,14 @@
 </template>
 
 <script setup lang="ts">
+import type { DropdownInstance } from 'element-plus'
+
 const showToolMenu = ref(false)
 const paginationStore = usePaginationStore()
+const route = useRoute()
+
+// 移动端 logo 下拉的实例引用，用于在选中导航项后主动收起浮层
+const mobileDropdownRef = ref<DropdownInstance | null>(null)
 
 interface ToolMenuItem {
     key: string
@@ -76,6 +82,21 @@ const toolMenuItems: ToolMenuItem[] = [
 const resetPage = () => {
     paginationStore.resetPagination()
 }
+
+/**
+ * 移动端 logo 下拉里点击任意 NuxtLink 时调用：
+ *   1. 可选地重置分页（仅"首页"传 true）；
+ *   2. 主动调用 el-dropdown 的 handleClose，避免路由切换后浮层不消失。
+ */
+const handleMobileNavClick = (shouldResetPage = false) => {
+    if (shouldResetPage) resetPage()
+    mobileDropdownRef.value?.handleClose?.()
+}
+
+// 兜底：路由变更时强制收起移动端下拉，防止任何遗漏场景导致浮层挂在屏幕上
+watch(() => route.fullPath, () => {
+    mobileDropdownRef.value?.handleClose?.()
+})
 
 const handleToolClick = (item: ToolMenuItem) => {
     showToolMenu.value = false

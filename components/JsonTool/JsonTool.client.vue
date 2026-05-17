@@ -1144,6 +1144,18 @@ const SETTINGS_TXT_ZH = {
     dialogSaveArchive: '保存存档',
     dialogRenameArchive: '重命名存档',
     placeholderArchiveName: '请输入存档名称',
+    ctxBase64Encode: 'Base64 编码',
+    ctxBase64Decode: 'Base64 解码',
+    ctxUrlEncode: 'URL 编码',
+    ctxUrlDecode: 'URL 解码',
+    msgBase64EncodeOk: '已完成 Base64 编码',
+    msgBase64EncodeFail: 'Base64 编码失败',
+    msgBase64DecodeOk: '已完成 Base64 解码',
+    msgBase64DecodeFail: 'Base64 解码失败，请检查选中的内容是否为有效的 Base64 字符串',
+    msgUrlEncodeOk: '已完成 URL 编码',
+    msgUrlEncodeFail: 'URL 编码失败',
+    msgUrlDecodeOk: '已完成 URL 解码',
+    msgUrlDecodeFail: 'URL 解码失败，请检查选中的内容是否为有效的 URL 编码字符串',
 };
 
 type SettingsTxt = typeof SETTINGS_TXT_ZH;
@@ -1407,6 +1419,18 @@ const SETTINGS_TXT_EN: SettingsTxt = {
     dialogSaveArchive: 'Save Snapshot',
     dialogRenameArchive: 'Rename Snapshot',
     placeholderArchiveName: 'Enter a snapshot name',
+    ctxBase64Encode: 'Base64 Encode',
+    ctxBase64Decode: 'Base64 Decode',
+    ctxUrlEncode: 'URL Encode',
+    ctxUrlDecode: 'URL Decode',
+    msgBase64EncodeOk: 'Base64 encoded',
+    msgBase64EncodeFail: 'Base64 encoding failed',
+    msgBase64DecodeOk: 'Base64 decoded',
+    msgBase64DecodeFail: 'Base64 decoding failed. Please make sure the selection is a valid Base64 string',
+    msgUrlEncodeOk: 'URL encoded',
+    msgUrlEncodeFail: 'URL encoding failed',
+    msgUrlDecodeOk: 'URL decoded',
+    msgUrlDecodeFail: 'URL decoding failed. Please make sure the selection is a valid URL-encoded string',
 };
 
 const settingsTxt = computed<SettingsTxt>(() => (props.locale === 'en' ? SETTINGS_TXT_EN : SETTINGS_TXT_ZH));
@@ -2213,6 +2237,13 @@ const createDiffEditor = () => {
         stickyScroll: { enabled: false },
         automaticLayout: false,
         renderLineHighlight: 'all',
+        // 与普通模式保持一致：禁用查找框打开时顶部预留的空行，
+        // 否则 Cmd/Ctrl+F 弹出查找框时第一行上方会出现一段无行号的空白。
+        find: {
+            addExtraSpaceOnTop: false,
+            autoFindInSelection: 'multiline' as const,
+            seedSearchStringFromSelection: 'always' as const,
+        },
         guides: {
             indentation: showIndentGuide.value,
             bracketPairs: showIndentGuide.value,
@@ -2233,6 +2264,18 @@ const createDiffEditor = () => {
     });
     updateLineNumberWidth(diffLeftEditor);
     updateLineNumberWidth(diffRightEditor);
+
+    // 跟踪左右 diff 编辑器的聚焦，让 Cmd/Ctrl+F 全局快捷键能正确定位到当前激活的一侧
+    trackEditorFocus(diffLeftEditor);
+    trackEditorFocus(diffRightEditor);
+
+    // 双击选中整段字符串（与普通模式 input 一致，仅选中不复制，方便就地修改）
+    setupDoubleClickSelectString(diffLeftEditor, false);
+    setupDoubleClickSelectString(diffRightEditor, false);
+
+    // 右键菜单：Base64 / URL 编解码（与普通模式 input 一致，使用同一份 i18n 文案）
+    registerEncodingActions(diffLeftEditor);
+    registerEncodingActions(diffRightEditor);
 
     diffContentDisposables.push(
         ...setupSelectionListener(diffLeftEditor, diffLeftEditorStatus),
@@ -2303,12 +2346,14 @@ const destroyDiffEditor = () => {
 
     if (diffLeftEditor) {
         const m = diffLeftEditor.getModel();
+        if (lastFocusedEditor === diffLeftEditor) lastFocusedEditor = null;
         diffLeftEditor.dispose();
         m?.dispose();
         diffLeftEditor = null;
     }
     if (diffRightEditor) {
         const m = diffRightEditor.getModel();
+        if (lastFocusedEditor === diffRightEditor) lastFocusedEditor = null;
         diffRightEditor.dispose();
         m?.dispose();
         diffRightEditor = null;
@@ -4285,10 +4330,25 @@ const handleGlobalFind = (event: KeyboardEvent) => {
 
     const inputPanel = inputEditorContainer.value?.closest('.editor-panel');
     const outputPanel = outputEditorContainer.value?.closest('.editor-panel');
+    const diffLeftHost = diffLeftEditorContainer.value?.closest('.diff-cell-left');
+    const diffRightHost = diffRightEditorContainer.value?.closest('.diff-cell-right');
 
     let targetEditor: monaco.editor.IStandaloneCodeEditor | null = null;
 
-    if (inputPanel && inputPanel.contains(target)) {
+    if (isDiffMode.value) {
+        // Diff 模式：根据点击/聚焦位置定位到左右 diff 编辑器，
+        // 兜底使用 lastFocusedEditor（已记录最近聚焦的 diff 编辑器），
+        // 再不行则默认使用左侧 diff 编辑器。
+        if (diffLeftHost && diffLeftHost.contains(target)) {
+            targetEditor = diffLeftEditor;
+        } else if (diffRightHost && diffRightHost.contains(target)) {
+            targetEditor = diffRightEditor;
+        } else if (lastFocusedEditor && (lastFocusedEditor === diffLeftEditor || lastFocusedEditor === diffRightEditor)) {
+            targetEditor = lastFocusedEditor;
+        } else {
+            targetEditor = diffLeftEditor || diffRightEditor;
+        }
+    } else if (inputPanel && inputPanel.contains(target)) {
         targetEditor = inputEditor;
     } else if (outputPanel && outputPanel.contains(target)) {
         targetEditor = outputEditor;
@@ -5179,6 +5239,105 @@ const setupDoubleClickSelectString = (editor: monaco.editor.IStandaloneCodeEdito
     });
 };
 
+/**
+ * 给编辑器注册「Base64 编解码 / URL 编解码」四个右键菜单 action。
+ * 普通模式与 Diff 模式（左右两个 Monaco）共用此函数，
+ * 文案使用 settingsTxt 计算属性，自动根据 props.locale 切换中英文。
+ */
+const registerEncodingActions = (editor: monaco.editor.IStandaloneCodeEditor) => {
+    editor.addAction({
+        id: 'base64-encode',
+        label: settingsTxt.value.ctxBase64Encode,
+        contextMenuGroupId: '9_base64',
+        contextMenuOrder: 1,
+        precondition: 'editorHasSelection',
+        run: (ed) => {
+            const selection = ed.getSelection();
+            if (!selection) return;
+            const model = ed.getModel();
+            if (!model) return;
+            const selectedText = model.getValueInRange(selection);
+            if (!selectedText) return;
+            try {
+                const encoded = Base64.encode(selectedText);
+                ed.executeEdits('base64-encode', [{ range: selection, text: encoded }]);
+                showMessageSuccess(settingsTxt.value.msgBase64EncodeOk);
+            } catch {
+                showMessageError(settingsTxt.value.msgBase64EncodeFail);
+            }
+        },
+    });
+
+    editor.addAction({
+        id: 'base64-decode',
+        label: settingsTxt.value.ctxBase64Decode,
+        contextMenuGroupId: '9_base64',
+        contextMenuOrder: 2,
+        precondition: 'editorHasSelection',
+        run: (ed) => {
+            const selection = ed.getSelection();
+            if (!selection) return;
+            const model = ed.getModel();
+            if (!model) return;
+            const selectedText = model.getValueInRange(selection);
+            if (!selectedText) return;
+            try {
+                const decoded = Base64.decode(selectedText);
+                ed.executeEdits('base64-decode', [{ range: selection, text: decoded }]);
+                showMessageSuccess(settingsTxt.value.msgBase64DecodeOk);
+            } catch {
+                showMessageError(settingsTxt.value.msgBase64DecodeFail);
+            }
+        },
+    });
+
+    editor.addAction({
+        id: 'url-encode',
+        label: settingsTxt.value.ctxUrlEncode,
+        contextMenuGroupId: '9_base64',
+        contextMenuOrder: 3,
+        precondition: 'editorHasSelection',
+        run: (ed) => {
+            const selection = ed.getSelection();
+            if (!selection) return;
+            const model = ed.getModel();
+            if (!model) return;
+            const selectedText = model.getValueInRange(selection);
+            if (!selectedText) return;
+            try {
+                const encoded = encodeURIComponent(selectedText);
+                ed.executeEdits('url-encode', [{ range: selection, text: encoded }]);
+                showMessageSuccess(settingsTxt.value.msgUrlEncodeOk);
+            } catch {
+                showMessageError(settingsTxt.value.msgUrlEncodeFail);
+            }
+        },
+    });
+
+    editor.addAction({
+        id: 'url-decode',
+        label: settingsTxt.value.ctxUrlDecode,
+        contextMenuGroupId: '9_base64',
+        contextMenuOrder: 4,
+        precondition: 'editorHasSelection',
+        run: (ed) => {
+            const selection = ed.getSelection();
+            if (!selection) return;
+            const model = ed.getModel();
+            if (!model) return;
+            const selectedText = model.getValueInRange(selection);
+            if (!selectedText) return;
+            try {
+                const decoded = decodeURIComponent(selectedText);
+                ed.executeEdits('url-decode', [{ range: selection, text: decoded }]);
+                showMessageSuccess(settingsTxt.value.msgUrlDecodeOk);
+            } catch {
+                showMessageError(settingsTxt.value.msgUrlDecodeFail);
+            }
+        },
+    });
+};
+
 // 添加窗口大小变化的处理函数
 const handleResize = () => {
     const container = document.querySelector('.editor-container');
@@ -5695,113 +5854,8 @@ const configureInputEditor: () => void = () => {
 
     trackEditorFocus(inputEditor);
 
-    // 右键菜单：Base64 编码
-    inputEditor.addAction({
-        id: 'base64-encode',
-        label: 'Base64 编码',
-        contextMenuGroupId: '9_base64',
-        contextMenuOrder: 1,
-        precondition: 'editorHasSelection',
-        run: (editor) => {
-            const selection = editor.getSelection();
-            if (!selection) return;
-            const model = editor.getModel();
-            if (!model) return;
-            const selectedText = model.getValueInRange(selection);
-            if (!selectedText) return;
-            try {
-                const encoded = Base64.encode(selectedText);
-                editor.executeEdits('base64-encode', [{
-                    range: selection,
-                    text: encoded,
-                }]);
-                showMessageSuccess('已完成 Base64 编码');
-            } catch {
-                showMessageError('Base64 编码失败');
-            }
-        },
-    });
-
-    // 右键菜单：Base64 解码
-    inputEditor.addAction({
-        id: 'base64-decode',
-        label: 'Base64 解码',
-        contextMenuGroupId: '9_base64',
-        contextMenuOrder: 2,
-        precondition: 'editorHasSelection',
-        run: (editor) => {
-            const selection = editor.getSelection();
-            if (!selection) return;
-            const model = editor.getModel();
-            if (!model) return;
-            const selectedText = model.getValueInRange(selection);
-            if (!selectedText) return;
-            try {
-                const decoded = Base64.decode(selectedText);
-                editor.executeEdits('base64-decode', [{
-                    range: selection,
-                    text: decoded,
-                }]);
-                showMessageSuccess('已完成 Base64 解码');
-            } catch {
-                showMessageError('Base64 解码失败，请检查选中的内容是否为有效的 Base64 字符串');
-            }
-        },
-    });
-
-    // 右键菜单：URL 编码
-    inputEditor.addAction({
-        id: 'url-encode',
-        label: 'URL 编码',
-        contextMenuGroupId: '9_base64',
-        contextMenuOrder: 3,
-        precondition: 'editorHasSelection',
-        run: (editor) => {
-            const selection = editor.getSelection();
-            if (!selection) return;
-            const model = editor.getModel();
-            if (!model) return;
-            const selectedText = model.getValueInRange(selection);
-            if (!selectedText) return;
-            try {
-                const encoded = encodeURIComponent(selectedText);
-                editor.executeEdits('url-encode', [{
-                    range: selection,
-                    text: encoded,
-                }]);
-                showMessageSuccess('已完成 URL 编码');
-            } catch {
-                showMessageError('URL 编码失败');
-            }
-        },
-    });
-
-    // 右键菜单：URL 解码
-    inputEditor.addAction({
-        id: 'url-decode',
-        label: 'URL 解码',
-        contextMenuGroupId: '9_base64',
-        contextMenuOrder: 4,
-        precondition: 'editorHasSelection',
-        run: (editor) => {
-            const selection = editor.getSelection();
-            if (!selection) return;
-            const model = editor.getModel();
-            if (!model) return;
-            const selectedText = model.getValueInRange(selection);
-            if (!selectedText) return;
-            try {
-                const decoded = decodeURIComponent(selectedText);
-                editor.executeEdits('url-decode', [{
-                    range: selection,
-                    text: decoded,
-                }]);
-                showMessageSuccess('已完成 URL 解码');
-            } catch {
-                showMessageError('URL 解码失败，请检查选中的内容是否为有效的 URL 编码字符串');
-            }
-        },
-    });
+    // 注册 Base64 / URL 编解码右键菜单（与 Diff 模式共用同一份注册逻辑）
+    registerEncodingActions(inputEditor);
 
     // 设置选择变化监听（输入编辑器启用匹配计数功能）
     setupSelectionListener(inputEditor, inputEditorStatus, true);

@@ -125,6 +125,7 @@ const ZH = {
                 '编辑区域双击字符串：仅选中，不复制（方便修改）',
                 '预览区域双击字符串：选中并自动复制到剪贴板（方便取值）',
                 '选中文本后右键菜单：可对选中内容进行 Base64 编码 / 解码、URL 编码 / 解码，原地替换 —— 处理 token、签名、URL 参数等场景无需切换其他工具。',
+                '对比（Diff）模式同样支持：左右编辑器都可以双击智能选中字符串、右键菜单一键编解码，排查接口前后差异时无需切回普通模式。',
             ],
         },
         {
@@ -304,6 +305,7 @@ const EN = {
                 'Double-click a string in the Editor pane: select only, no copy (handy for editing)',
                 'Double-click a string in the Preview pane: select and auto-copy to clipboard (handy for grabbing values)',
                 'Right-click on a selection: encode / decode the selected text in place as Base64 or URL — no need to switch to a separate tool when working with tokens, signatures, or URL params.',
+                'Available in Diff mode too: both the left and right editors support smart double-click selection plus right-click Base64 / URL encode-decode, so you can debug API request/response differences without leaving the diff view.',
             ],
         },
         {
