@@ -320,8 +320,7 @@
 
 <script setup lang="ts">
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue';
-import { ElMessage, ElMessageBox } from 'element-plus';
-import { showMessageSuccess as showSuccess, showMessageError as showError, showMessageWarning as showWarning } from '~/utils/api';
+import { ElMessageBox } from 'element-plus';
 import { Warning, ArrowRight, DocumentAdd, Folder, Delete } from '@element-plus/icons-vue';
 import type { UploadFile } from 'element-plus';
 import type * as monaco from 'monaco-editor';

@@ -158,6 +158,15 @@ export default defineNuxtConfig({
       minify: "terser",
       // 优化代码分割
       rollupOptions: {
+        // 抑制无害的第三方包警告：
+        // - @iarna/toml/lib/toml-parser.js 内部用 eval('require("util").inspect")') 主动避免
+        //   bundler 把 Node 的 util 模块拉进浏览器产物，浏览器侧落入 try/catch 静默失败，无功能影响。
+        onwarn(warning, defaultHandler) {
+          if (warning.code === 'EVAL' && warning.id?.includes('@iarna/toml')) {
+            return;
+          }
+          defaultHandler(warning);
+        },
         output: {
           manualChunks: {
             // 将 md-editor-v3 单独打包
