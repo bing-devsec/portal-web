@@ -570,6 +570,10 @@ export const useDiffEditors = (opts: UseDiffEditorsOptions): UseDiffEditorsRetur
                 bracketPairs: showIndentGuide.value,
                 highlightActiveIndentation: showIndentGuide.value,
             },
+            bracketPairColorization: {
+                enabled: true,
+                independentColorPoolPerBracketType: true,
+            },
         };
 
         const leftModel = monaco.editor.createModel('', 'json');
@@ -583,6 +587,20 @@ export const useDiffEditors = (opts: UseDiffEditorsOptions): UseDiffEditorsRetur
             ...baseOptions,
             model: rightModel,
         });
+
+        // Monaco 会为每个编辑器生成一个隐藏 textarea 作为真实输入控件。
+        // 给它补上稳定的 id/name，避免浏览器/DevTools 报“form field 缺少 id/name”警告。
+        const leftTextarea = leftContainerRef.value.querySelector<HTMLTextAreaElement>('textarea.inputarea');
+        if (leftTextarea) {
+            leftTextarea.setAttribute('id', 'monaco-diff-left-editor');
+            leftTextarea.setAttribute('name', 'monaco-diff-left-editor');
+        }
+        const rightTextarea = rightContainerRef.value.querySelector<HTMLTextAreaElement>('textarea.inputarea');
+        if (rightTextarea) {
+            rightTextarea.setAttribute('id', 'monaco-diff-right-editor');
+            rightTextarea.setAttribute('name', 'monaco-diff-right-editor');
+        }
+
         updateLineNumberWidth(diffLeftEditor);
         updateLineNumberWidth(diffRightEditor);
 

@@ -40,7 +40,9 @@ export const detectInputLanguage = (value: string): EditorContentLanguage => {
         return 'css';
     }
 
-    const looksLikeJson = /^[\[{]/.test(trimmed) || /^(true|false|null|-?\d)/.test(trimmed);
+    // JSON 顶层不只是对象/数组，也可以是字符串、数字、布尔值或 null。
+    // 例如输入 `"aa"` 时，依然应该走 JSON 语法高亮而不是 plaintext。
+    const looksLikeJson = /^[\[{"]/.test(trimmed) || /^(true|false|null|-?\d)/.test(trimmed);
     if (looksLikeJson) {
         return 'json';
     }

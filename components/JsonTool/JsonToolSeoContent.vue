@@ -154,7 +154,7 @@ const ZH = {
     shortcuts: [
         { action: '撤销', win: 'Ctrl+Z', mac: 'Cmd+Z' },
         { action: '查找', win: 'Ctrl+F', mac: 'Cmd+F' },
-        { action: '跳转到指定行号', win: 'Ctrl+G', mac: 'Cmd+G' },
+        { action: '跳转到指定行号', win: 'Ctrl+G', mac: 'Ctrl+G' },
         { action: '行内 / 块注释', win: 'Ctrl+/', mac: 'Cmd+/' },
         { action: '行上移 / 下移', win: 'Alt+<span class="kbd-arrow up">↓</span> / Alt+<span class="kbd-arrow down">↓</span>', mac: 'Option+<span class="kbd-arrow up">↓</span> / Option+<span class="kbd-arrow down">↓</span>' },
         { action: '多行光标编辑', win: 'Ctrl+Alt+<span class="kbd-arrow up">↓</span> / Ctrl+Alt+<span class="kbd-arrow down">↓</span>', mac: 'Cmd+Option+<span class="kbd-arrow up">↓</span> / Cmd+Option+<span class="kbd-arrow down">↓</span>' },
@@ -334,7 +334,7 @@ const EN = {
     shortcuts: [
         { action: 'Undo', win: 'Ctrl+Z', mac: 'Cmd+Z' },
         { action: 'Find', win: 'Ctrl+F', mac: 'Cmd+F' },
-        { action: 'Go to line number', win: 'Ctrl+G', mac: 'Cmd+G' },
+        { action: 'Go to line number', win: 'Ctrl+G', mac: 'Ctrl+G' },
         { action: 'Toggle line / block comment', win: 'Ctrl+/', mac: 'Cmd+/' },
         { action: 'Move line up / down', win: 'Alt+<span class="kbd-arrow up">↓</span> / Alt+<span class="kbd-arrow down">↓</span>', mac: 'Option+<span class="kbd-arrow up">↓</span> / Option+<span class="kbd-arrow down">↓</span>' },
         { action: 'Add multi-cursor above / below', win: 'Ctrl+Alt+<span class="kbd-arrow up">↓</span> / Ctrl+Alt+<span class="kbd-arrow down">↓</span>', mac: 'Cmd+Option+<span class="kbd-arrow up">↓</span> / Cmd+Option+<span class="kbd-arrow down">↓</span>' },

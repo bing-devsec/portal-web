@@ -875,10 +875,22 @@ import type { UploadFile } from 'element-plus';
 import { Loading, ArrowLeft, ArrowRight, ArrowDown, ArrowUp, CopyDocument, Download, Upload, Delete, Setting, WarningFilled, Document, Sort, Edit, Refresh } from '@element-plus/icons-vue';
 
 // Monaco Editor
-// Monaco 按需引入：只引入核心编辑器 + JSON 语言贡献。
+// Monaco 按需引入：只引入核心编辑器 + 必要 contribution。
 // 其他语言（yaml/xml/html/css/toml）下方通过 monaco.languages.register + Monarch 自行注册，
 // 不需要 monaco-editor 自带的 basic-languages 全家桶，可显著减少打包体积。
 import * as monaco from 'monaco-editor/esm/vs/editor/editor.api';
+import 'monaco-editor/esm/vs/editor/contrib/bracketMatching/browser/bracketMatching';
+import 'monaco-editor/esm/vs/editor/contrib/comment/browser/comment';
+import 'monaco-editor/esm/vs/editor/contrib/contextmenu/browser/contextmenu';
+import 'monaco-editor/esm/vs/editor/contrib/find/browser/findController';
+import 'monaco-editor/esm/vs/editor/contrib/folding/browser/folding';
+import 'monaco-editor/esm/vs/editor/contrib/longLinesHelper/browser/longLinesHelper';
+import 'monaco-editor/esm/vs/editor/contrib/multicursor/browser/multicursor';
+import 'monaco-editor/esm/vs/editor/contrib/smartSelect/browser/smartSelect';
+import 'monaco-editor/esm/vs/base/browser/ui/codicons/codicon/codicon.css';
+import 'monaco-editor/esm/vs/editor/contrib/folding/browser/folding.css';
+import 'monaco-editor/esm/vs/editor/standalone/browser/quickAccess/standaloneGotoLineQuickAccess';
+import 'monaco-editor/esm/vs/basic-languages/go/go.contribution';
 import 'monaco-editor/esm/vs/language/json/monaco.contribution';
 import editorWorker from 'monaco-editor/esm/vs/editor/editor.worker?worker';
 import jsonWorker from 'monaco-editor/esm/vs/language/json/json.worker?worker';
@@ -985,7 +997,6 @@ const toggleOutputMaximize = () => {
 
 // ==================== 设置管理（已抽离至 composables/useToolSettings） ====================
 // 所有持久化偏好（按钮可见性、字体、缩进、排序、minimap、stickyScroll 等）均由 useToolSettings
-// 维护：自动从 localStorage 读取、deep watch 自动保存、提供 markInitialized() 在 onMounted
 // 末尾解除初始化抑制。下方解构后的 ref 名称与原代码保持完全一致，模板与下游逻辑不需要修改。
 const {
     indentSize,
@@ -1237,7 +1248,7 @@ const enterDiffMode = () => {
     });
 };
 
-const exitDiffMode = () => {
+const exitDiffMode = async () => {
     captureDiffDraftFromEditors();
     void saveDiffDraft('退出 diff');
     destroyDiffEditor();
@@ -1245,7 +1256,7 @@ const exitDiffMode = () => {
     isFullscreen.value = wasFullscreenBeforeDiff;
     // diffCount 已由 destroyDiffEditor() 清零
 
-    void restoreNormalEditors();
+    await restoreNormalEditors();
 };
 
 const persistDiffDraftOnPageLeave = () => {
@@ -1500,6 +1511,8 @@ const savedInputContent = ref<string | null>(null);
 const demoResults = ref<any>({});
 const currentDemoStep = ref(0);
 const demoStepsCount = ref(0);
+const demoStartedFromDiff = ref(false);
+const demoFieldSortTargetBeforeStart = ref<'input' | 'diff-left' | 'diff-right'>('input');
 const demoData = ref(JSON.parse('[{"id":3,"name":"Emma Davis","education":[{"university":"Stanford University","graduationYear":2010},{"university":"Columbia University","graduationYear":2015}]},{"id":1,"name":"Dylan Mullins","education":[{"university":"MIT","graduationYear":2003},{"university":"Harvard University","graduationYear":1983}]},{"id":2,"name":"Logan Boyle","education":[{"university":"Yale University","graduationYear":2000},{"university":"University of Pennsylvania","graduationYear":2020}]}]'));
 const demoMapData = ref(JSON.parse('{"B":{"id":102,"key":"task-B","value":{"score":100}},"A":{"id":101,"key":"task-A","value":{"score":70}},"C":{"id":103,"key":"task-C","value":{"score":80}},"E":{"id":105,"key":"task-E","value":{"score":60}},"D":{"id":104,"key":"task-D","value":{"score":null}}}'));
 
@@ -2183,6 +2196,10 @@ const getEditorOptions = (
         indentation: showIndentGuide.value, // 根据设置显示缩进引导线
         bracketPairs: showIndentGuide.value, // 根据设置显示括号配对引导线
         highlightActiveIndentation: showIndentGuide.value, // 根据设置显示当前缩进高亮
+    },
+    bracketPairColorization: {
+        enabled: true,
+        independentColorPoolPerBracketType: true,
     },
 
     // 添加可访问性支持配置
@@ -3779,6 +3796,7 @@ const initializeMonacoEnvironment = () => {
             ],
         },
     });
+
     // TOML 主题样式（使用 vs theme 的基本样式）
     monaco.editor.defineTheme('toml-theme', {
         base: 'vs',
@@ -6427,6 +6445,7 @@ const handleLevelAction = () => {
 
         // 更新预览区域内容
         clearOutputFoldingInfo();
+        outputType.value = 'json';
         outputEditor.setValue(formatted);
 
         // 更新编辑器配置
@@ -6508,14 +6527,16 @@ const handleLevelAction = () => {
                             }
                         }
 
-                        // 启用折叠信息更新并立即刷新（使用现有数据）
-                        const refreshFunc = (outputEditor as any).__enableFoldingInfoUpdateAndRefresh;
-                        if (refreshFunc) {
-                            refreshFunc();
-                        }
-
-                        // 重新全量计算所有折叠区域的 n keys / n items
-                        precomputeFoldingInfo(formatted).catch(() => {});
+                        // 先重新建立折叠范围缓存，再刷新 n keys / n items，避免从非 JSON 输出收缩时无统计信息。
+                        precomputeFoldingInfo(formatted)
+                            .then(() => {
+                                const refreshFunc = (outputEditor as any).__enableFoldingInfoUpdateAndRefresh;
+                                if (refreshFunc) {
+                                    refreshFunc();
+                                    setTimeout(refreshFunc, 200);
+                                }
+                            })
+                            .catch(() => {});
                     } catch (e) {}
                 }, 300); // 等待折叠动画完成
             } finally {
@@ -8151,8 +8172,18 @@ const handleFieldPathKeydown = (event: KeyboardEvent) => {
 };
 
 // 显示字段排序演示
-const showFieldSortDemo = () => {
+const showFieldSortDemo = async () => {
     fieldSortDialogVisible.value = false;
+    demoFieldSortTargetBeforeStart.value = fieldSortTarget.value;
+    demoStartedFromDiff.value = isDiffMode.value;
+
+    // 字段排序演示只围绕普通模式的 input/output 双编辑器设计。
+    // 如果当前从 Diff 模式的字段排序弹窗进入演示，先退出 Diff 并恢复普通编辑器，
+    // 否则 demo 会因为 inputEditor/outputEditor 已被销毁而看起来"不生效"。
+    if (isDiffMode.value) {
+        await exitDiffMode();
+        fieldSortTarget.value = 'input';
+    }
 
     // 自动填入演示数据到输入框
     const demoJson = JSON.stringify(demoData.value, null, 2);
@@ -8458,6 +8489,15 @@ const endDemoMode = () => {
     }
     // 清除缓存的原始内容
     savedInputContent.value = null;
+
+    const shouldReturnToDiff = demoStartedFromDiff.value;
+    fieldSortTarget.value = demoFieldSortTargetBeforeStart.value;
+    demoStartedFromDiff.value = false;
+    demoFieldSortTargetBeforeStart.value = 'input';
+
+    if (shouldReturnToDiff) {
+        enterDiffMode();
+    }
 };
 
 // 执行字段排序的核心逻辑（提取为独立函数）

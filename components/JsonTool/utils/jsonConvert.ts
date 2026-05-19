@@ -160,6 +160,22 @@ export const convertToGo = (obj: any): string => {
         return typeof value === 'object' && value !== null && !Array.isArray(value);
     };
 
+    const isNumericKey = (key: string): boolean => /^\d+$/.test(key);
+
+    const isMapLikeObject = (value: Record<string, any>): boolean => {
+        const keys = Object.keys(value);
+        if (keys.length === 0) return false;
+
+        const numericKeyCount = keys.filter(isNumericKey).length;
+        if (numericKeyCount === 0) return false;
+        if (numericKeyCount === keys.length) return true;
+
+        const nonNumericKeyCount = keys.length - numericKeyCount;
+        return numericKeyCount >= 2 && numericKeyCount >= nonNumericKeyCount;
+    };
+
+    const getMapValueTypeName = (key: string): string => `${getStructName(key)}Value`;
+
     const ensureStructSchema = (structName: string): FieldSamples => {
         let schema = structSchemas.get(structName);
         if (!schema) {
@@ -170,11 +186,38 @@ export const convertToGo = (obj: any): string => {
         return schema;
     };
 
+    const collectMapValueSchemas = (values: any[], key: string) => {
+        const nonNullValues = values.filter(value => value !== null && value !== undefined);
+        const mapValueTypeName = getMapValueTypeName(key);
+
+        for (const value of nonNullValues) {
+            if (Array.isArray(value)) {
+                collectArrayElementSchemas(value, mapValueTypeName);
+            } else if (isPlainObject(value)) {
+                collectObjectSchemas([value], mapValueTypeName);
+            }
+        }
+    };
+
+    const collectObjectSchemas = (objects: Record<string, any>[], key: string) => {
+        const nonEmptyObjects = objects.filter(obj => Object.keys(obj).length > 0);
+        if (nonEmptyObjects.length === 0) return;
+
+        if (nonEmptyObjects.every(isMapLikeObject)) {
+            collectMapValueSchemas(nonEmptyObjects.flatMap(obj => Object.values(obj)), key);
+            return;
+        }
+
+        const structName = getStructName(key);
+        for (const objectValue of nonEmptyObjects) {
+            collectStructSchema(objectValue, structName);
+        }
+    };
+
     const collectArrayElementSchemas = (arrayValue: any[], key: string) => {
-        const itemType = getStructName(key);
         for (const item of arrayValue) {
             if (isPlainObject(item)) {
-                collectStructSchema(item, itemType);
+                collectObjectSchemas([item], key);
             } else if (Array.isArray(item)) {
                 collectArrayElementSchemas(item, key);
             }
@@ -192,7 +235,7 @@ export const convertToGo = (obj: any): string => {
             if (Array.isArray(fieldValue)) {
                 collectArrayElementSchemas(fieldValue, key);
             } else if (isPlainObject(fieldValue)) {
-                collectStructSchema(fieldValue, getStructName(key));
+                collectObjectSchemas([fieldValue], key);
             }
         }
     };
@@ -221,12 +264,16 @@ export const convertToGo = (obj: any): string => {
         if (elements.length === 0) return '[]any';
 
         const objectElements = elements.filter(isPlainObject);
+        const primitiveElements = elements.filter(value => !Array.isArray(value) && !isPlainObject(value));
+        const nestedArrays = elements.filter(Array.isArray);
+
         if (objectElements.length > 0) {
-            return `[]${getStructName(key)}`;
+            if (primitiveElements.length > 0 || nestedArrays.length > 0) return '[]any';
+            return `[]${inferObjectTypeFromSamples(objectElements, key)}`;
         }
 
-        const nestedArrays = elements.filter(Array.isArray);
         if (nestedArrays.length > 0) {
+            if (primitiveElements.length > 0) return '[]any';
             const nestedType = inferArrayType(nestedArrays, key);
             return `[]${nestedType}`;
         }
@@ -234,20 +281,43 @@ export const convertToGo = (obj: any): string => {
         return `[]${inferPrimitiveType(elements)}`;
     };
 
+    const inferObjectTypeFromSamples = (objects: Record<string, any>[], key: string): string => {
+        const nonEmptyObjects = objects.filter(obj => Object.keys(obj).length > 0);
+        if (nonEmptyObjects.length === 0) return getStructName(key);
+
+        if (nonEmptyObjects.every(isMapLikeObject)) {
+            const mapValueSamples = nonEmptyObjects.flatMap(obj => Object.values(obj));
+            if (mapValueSamples.length === 0) return 'map[string]any';
+            return `map[string]${inferGoTypeFromSamples(mapValueSamples, getMapValueTypeName(key))}`;
+        }
+
+        return getStructName(key);
+    };
+
     const inferGoTypeFromSamples = (samples: any[], key: string): string => {
         const nonNullSamples = samples.filter(value => value !== null && value !== undefined);
         if (nonNullSamples.length === 0) return 'any';
 
         const arraySamples = nonNullSamples.filter(Array.isArray);
+        const objectSamples = nonNullSamples.filter(isPlainObject);
+        const primitiveSamples = nonNullSamples.filter(value => !Array.isArray(value) && !isPlainObject(value));
+
+        if (
+            (arraySamples.length > 0 && (objectSamples.length > 0 || primitiveSamples.length > 0)) ||
+            (objectSamples.length > 0 && primitiveSamples.length > 0)
+        ) {
+            return 'any';
+        }
+
         if (arraySamples.length > 0) {
             return inferArrayType(arraySamples, key);
         }
 
-        if (nonNullSamples.some(isPlainObject)) {
-            return getStructName(key);
+        if (objectSamples.length > 0) {
+            return inferObjectTypeFromSamples(objectSamples, key);
         }
 
-        return inferPrimitiveType(nonNullSamples);
+        return inferPrimitiveType(primitiveSamples);
     };
 
     const buildStructDefinition = (structName: string, schema: FieldSamples): string => {
@@ -272,21 +342,13 @@ export const convertToGo = (obj: any): string => {
     };
 
     try {
-        // 如果顶层是数组，使用 'Root' 作为最终类型名，'Item' 作为元素类型名
         if (Array.isArray(obj)) {
-            if (obj.length > 0 && obj.some(isPlainObject)) {
-                obj.forEach(item => {
-                    if (isPlainObject(item)) {
-                        collectStructSchema(item, 'Item');
-                    }
-                });
-                result = buildStructDefinitions() + 'type Root []Item';
-            } else {
-                result = `type Root ${inferArrayType([obj], 'item')}`;
-            }
+            collectArrayElementSchemas(obj, 'Item');
+            result = buildStructDefinitions() + `type Root ${inferArrayType([obj], 'Item')}`;
         } else if (isPlainObject(obj)) {
-            collectStructSchema(obj, 'Root');
-            result = buildStructDefinitions();
+            collectObjectSchemas([obj], 'Root');
+            const rootType = inferObjectTypeFromSamples([obj], 'Root');
+            result = rootType === 'Root' ? buildStructDefinitions() : buildStructDefinitions() + `type Root ${rootType}`;
         } else {
             result = `type Root ${inferPrimitiveType([obj])}`;
         }
