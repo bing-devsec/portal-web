@@ -79,7 +79,9 @@ export interface UseDiffEditorsOptions {
     // 主文件提供的 editor 通用工具（注入，避免反向 import 主文件）
     trackEditorFocus: (editor: monaco.editor.IStandaloneCodeEditor) => void;
     setupDoubleClickSelectString: (editor: monaco.editor.IStandaloneCodeEditor, copy: boolean) => void;
+    registerClipboardActions: (editor: monaco.editor.IStandaloneCodeEditor) => void;
     registerEncodingActions: (editor: monaco.editor.IStandaloneCodeEditor) => void;
+    filterBuiltinContextMenuActions: (editor: monaco.editor.IStandaloneCodeEditor, hiddenIds: string[]) => void;
     setupSelectionListener: (
         editor: monaco.editor.IStandaloneCodeEditor,
         statusRef: Ref<string>,
@@ -145,7 +147,9 @@ export const useDiffEditors = (opts: UseDiffEditorsOptions): UseDiffEditorsRetur
         showIndentGuide,
         trackEditorFocus,
         setupDoubleClickSelectString,
+        registerClipboardActions,
         registerEncodingActions,
+        filterBuiltinContextMenuActions,
         setupSelectionListener,
         updateLineNumberWidth,
         detectIndentSize,
@@ -613,8 +617,22 @@ export const useDiffEditors = (opts: UseDiffEditorsOptions): UseDiffEditorsRetur
         setupDoubleClickSelectString(diffRightEditor, false);
 
         // 右键菜单：Base64 / URL 编解码（与普通模式 input 一致，使用同一份 i18n 文案）
+        registerClipboardActions(diffLeftEditor);
+        registerClipboardActions(diffRightEditor);
         registerEncodingActions(diffLeftEditor);
         registerEncodingActions(diffRightEditor);
+        filterBuiltinContextMenuActions(diffLeftEditor, [
+            'editor.action.changeAll',
+            'editor.action.clipboardCutAction',
+            'editor.action.clipboardCopyAction',
+            'editor.action.clipboardPasteAction',
+        ]);
+        filterBuiltinContextMenuActions(diffRightEditor, [
+            'editor.action.changeAll',
+            'editor.action.clipboardCutAction',
+            'editor.action.clipboardCopyAction',
+            'editor.action.clipboardPasteAction',
+        ]);
 
         diffContentDisposables.push(
             ...setupSelectionListener(diffLeftEditor, leftStatusRef),

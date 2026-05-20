@@ -71,6 +71,7 @@ export default defineNuxtConfig({
       baseURL: '/api-backend',
       // baseURL: "http://127.0.0.1:8080",
       siteUrl: "https://liubing.xyz",
+      // siteUrl: "http://127.0.0.1:8080",
     },
     ssrApiBase: 'http://meta-api:8080'
     // ssrApiBase: "http://127.0.0.1:8080",

@@ -880,6 +880,7 @@ import { Loading, ArrowLeft, ArrowRight, ArrowDown, ArrowUp, CopyDocument, Downl
 // 不需要 monaco-editor 自带的 basic-languages 全家桶，可显著减少打包体积。
 import * as monaco from 'monaco-editor/esm/vs/editor/editor.api';
 import 'monaco-editor/esm/vs/editor/contrib/bracketMatching/browser/bracketMatching';
+import 'monaco-editor/esm/vs/editor/contrib/clipboard/browser/clipboard';
 import 'monaco-editor/esm/vs/editor/contrib/comment/browser/comment';
 import 'monaco-editor/esm/vs/editor/contrib/contextmenu/browser/contextmenu';
 import 'monaco-editor/esm/vs/editor/contrib/find/browser/findController';
@@ -1189,7 +1190,7 @@ const restoreNormalEditors = async () => {
 // 字段排序（field-sort）以及对响应式状态的模板暴露。
 //
 // 注入 helpers 时使用箭头包装是为了延迟绑定：
-// trackEditorFocus / setupDoubleClickSelectString / registerEncodingActions / setupSelectionListener
+// trackEditorFocus / setupDoubleClickSelectString / registerClipboardActions / registerEncodingActions / filterBuiltinContextMenuActions / setupSelectionListener
 // / updateLineNumberWidth 这些 const 箭头函数都声明在本文件后面（约 L2436+），TS 在顶层立即引用会
 // 报 use-before-define；包一层 lambda 后引用发生在 createDiffEditor 实际被调用时（用户点击进入 diff 模式），
 // 那时 setup 已执行完，所有 const 都已就绪，运行时安全。
@@ -1226,7 +1227,9 @@ const {
     // 以下 helper 都声明在文件后段，用 lambda 包一层延迟绑定
     trackEditorFocus: editor => trackEditorFocus(editor),
     setupDoubleClickSelectString: (editor, copy) => setupDoubleClickSelectString(editor, copy),
+    registerClipboardActions: editor => registerClipboardActions(editor),
     registerEncodingActions: editor => registerEncodingActions(editor),
+    filterBuiltinContextMenuActions: (editor, hiddenIds) => filterBuiltinContextMenuActions(editor, hiddenIds),
     setupSelectionListener: (editor, statusRef) => setupSelectionListener(editor, statusRef),
     updateLineNumberWidth: editor => updateLineNumberWidth(editor),
     detectIndentSize: content => detectIndentSizeWrapper(content),
@@ -3362,6 +3365,48 @@ const setupDoubleClickSelectString = (editor: monaco.editor.IStandaloneCodeEdito
     });
 };
 
+const HIDDEN_CONTEXT_MENU_COMMAND_IDS = [
+    'editor.action.changeAll',
+    'editor.action.clipboardCutAction',
+    'editor.action.clipboardCopyAction',
+    'editor.action.clipboardPasteAction',
+];
+
+/**
+ * 注册始终显示的剪贴板菜单项，文案走本地 i18n；
+ * 实际执行仍复用 Monaco 内置 cut/copy/paste 命令，避免重复维护浏览器兼容细节。
+ */
+const registerClipboardActions = (editor: monaco.editor.IStandaloneCodeEditor) => {
+    const runClipboardCommand = (commandId: string) => {
+        editor.focus();
+        editor.trigger('json-tool-context-menu', commandId, null);
+    };
+
+    editor.addAction({
+        id: 'json-tool-cut',
+        label: settingsTxt.value.ctxCut,
+        contextMenuGroupId: '8_clipboard',
+        contextMenuOrder: 1,
+        run: () => runClipboardCommand('editor.action.clipboardCutAction'),
+    });
+
+    editor.addAction({
+        id: 'json-tool-copy',
+        label: settingsTxt.value.ctxCopy,
+        contextMenuGroupId: '8_clipboard',
+        contextMenuOrder: 2,
+        run: () => runClipboardCommand('editor.action.clipboardCopyAction'),
+    });
+
+    editor.addAction({
+        id: 'json-tool-paste',
+        label: settingsTxt.value.ctxPaste,
+        contextMenuGroupId: '8_clipboard',
+        contextMenuOrder: 3,
+        run: () => runClipboardCommand('editor.action.clipboardPasteAction'),
+    });
+};
+
 /**
  * 给编辑器注册「Base64 编解码 / URL 编解码」四个右键菜单 action。
  * 普通模式与 Diff 模式（左右两个 Monaco）共用此函数，
@@ -3459,6 +3504,81 @@ const registerEncodingActions = (editor: monaco.editor.IStandaloneCodeEditor) =>
             }
         },
     });
+};
+
+interface MonacoContextMenuActionLike {
+    id?: string;
+    label?: string;
+    class?: string;
+    actions?: MonacoContextMenuActionLike[];
+}
+
+interface MonacoContextMenuContributionLike {
+    _getMenuActions?: (model: monaco.editor.ITextModel, menuId: unknown) => MonacoContextMenuActionLike[];
+    __jsonToolHiddenCommandIds?: string[];
+}
+
+/**
+ * Monaco 暂无公开 API 可按命令 id 隐藏单个内置右键菜单项，
+ * 这里在 editor 实例级别包装私有 _getMenuActions，仅过滤指定命令。
+ */
+const filterBuiltinContextMenuActions = (
+    editor: monaco.editor.IStandaloneCodeEditor,
+    hiddenCommandIds: string[],
+) => {
+    if (hiddenCommandIds.length === 0) return;
+
+    const contribution = editor.getContribution('editor.contrib.contextmenu') as MonacoContextMenuContributionLike | null;
+    if (!contribution || typeof contribution._getMenuActions !== 'function') return;
+
+    const nextHiddenIds = Array.from(new Set([...(contribution.__jsonToolHiddenCommandIds ?? []), ...hiddenCommandIds]));
+    if (
+        contribution.__jsonToolHiddenCommandIds
+        && nextHiddenIds.length === contribution.__jsonToolHiddenCommandIds.length
+        && nextHiddenIds.every(id => contribution.__jsonToolHiddenCommandIds?.includes(id))
+    ) {
+        return;
+    }
+
+    const originalGetMenuActions = contribution._getMenuActions.bind(contribution);
+    contribution.__jsonToolHiddenCommandIds = nextHiddenIds;
+
+    const isSeparator = (action: MonacoContextMenuActionLike) => action.class === 'separator' || action.label === '';
+
+    const trimSeparators = (actions: MonacoContextMenuActionLike[]) => {
+        const trimmed: MonacoContextMenuActionLike[] = [];
+
+        actions.forEach(action => {
+            if (isSeparator(action)) {
+                if (trimmed.length === 0 || isSeparator(trimmed[trimmed.length - 1])) {
+                    return;
+                }
+            }
+            trimmed.push(action);
+        });
+
+        while (trimmed.length > 0 && isSeparator(trimmed[trimmed.length - 1])) {
+            trimmed.pop();
+        }
+
+        return trimmed;
+    };
+
+    const filterActions = (actions: MonacoContextMenuActionLike[]): MonacoContextMenuActionLike[] => {
+        const filtered = actions
+            .filter(action => !nextHiddenIds.includes(action.id ?? ''))
+            .map(action => {
+                if (!action.actions) return action;
+                return {
+                    ...action,
+                    actions: filterActions(action.actions),
+                };
+            });
+
+        return trimSeparators(filtered);
+    };
+
+    contribution._getMenuActions = (model, menuId) => filterActions(originalGetMenuActions(model, menuId));
 };
 
 // 添加窗口大小变化的处理函数
@@ -3939,6 +4059,8 @@ const configureInputEditor: () => void = () => {
 
     // 注册 Base64 / URL 编解码右键菜单（与 Diff 模式共用同一份注册逻辑）
     registerEncodingActions(inputEditor);
+    registerClipboardActions(inputEditor);
+    filterBuiltinContextMenuActions(inputEditor, HIDDEN_CONTEXT_MENU_COMMAND_IDS);
 
     // 设置选择变化监听（输入编辑器启用匹配计数功能）
     setupSelectionListener(inputEditor, inputEditorStatus, true);
