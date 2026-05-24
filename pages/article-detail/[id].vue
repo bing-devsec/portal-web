@@ -1,10 +1,10 @@
 <template>
-  <section class="container pt-20">
+  <section class="container pt-20 article-detail-section">
     <div class="row">
       <div class="col-sm-10 col-md-10 col-lg-10">
         <div class="panel panel-default mb-20">
           <div class="panel-body pt-10 pb-10">
-            <!-- 文章内容区域 - SSR + 客户端增强 -->
+            <!-- 文章内容区域 - SSR 直出 HTML，确保爬虫和无 JS 用户立即看到正文 -->
             <article v-if="article" :key="articleId" class="article-container">
               <h1 class="c_titile">{{ article.title }}</h1>
               <div class="box_c">
@@ -18,28 +18,20 @@
               </div>
 
               <div>
-                <!-- 统一使用 md-editor-v3 渲染，简化逻辑 -->
-                <ClientOnly>
-                  <MarkdownRenderer
-                    v-if="isContentReady && visibleContent"
-                    :content="visibleContent"
-                    :editor-id="editorId"
-                    :key="articleId"
-                  />
-                  <template #fallback>
-                    <div class="loading-skeleton">
-                      <div class="skeleton-line"></div>
-                      <div class="skeleton-line"></div>
-                      <div class="skeleton-line"></div>
-                    </div>
-                  </template>
-                </ClientOnly>
-
-                <!-- 数据加载前的骨架屏 -->
+                <!--
+                  纯 SSR 渲染：服务端用 markdown-it 把 markdown 渲染为 HTML，
+                  v-html 直出。无论是否水合、是否有 JS，DOM 永远只此一份，
+                  彻底避免"刷新瞬间样式抖动"以及客户端再次替换 DOM 带来的 hydration mismatch。
+                  富交互（代码块复制、行号、目录联动）由轻量的 SSR 友好方案单独承担。
+                -->
                 <div
-                  v-if="!isContentReady || !visibleContent"
-                  class="loading-skeleton"
-                >
+                  v-if="article.renderedHtml"
+                  class="article-body-ssr"
+                  v-html="article.renderedHtml"
+                ></div>
+
+                <!-- 数据加载前的骨架屏（SSR 没拿到内容时的兜底） -->
+                <div v-else class="loading-skeleton">
                   <div class="skeleton-line"></div>
                   <div class="skeleton-line"></div>
                   <div class="skeleton-line"></div>
@@ -63,30 +55,25 @@
       </div>
 
       <div class="col-sm-2 col-md-2 col-lg-2">
-        <ClientOnly>
-          <!-- 优化：目录组件延迟加载，使用 requestIdleCallback -->
-          <div
-            v-if="!isMobile && isContentReady && article"
-            class="catalog-wrapper"
-          >
-            <div class="catalog-content">
-              <Suspense>
-                <CatalogRenderer
-                  :editor-id="editorId"
-                  :scroll-element="scrollElement"
-                  :scroll-element-offset-top="45"
-                  :key="articleId"
-                />
-                <template #fallback>
-                  <div class="catalog-loading"></div>
-                </template>
-              </Suspense>
-            </div>
+        <!--
+          目录区域：headings 已在 SSR 阶段由父组件提取并通过 prop 传入，
+          组件本身能够在服务端直出 <ul>，首屏一次成型，零闪烁；
+          移动端隐藏交由组件内 @media (max-width:576px) display:none 控制，
+          这样 SSR/客户端的输出完全一致，没有水合差异。
+        -->
+        <div v-if="article && catalogHeadings.length" class="catalog-wrapper">
+          <div class="catalog-content">
+            <CatalogRenderer
+              :headings="catalogHeadings"
+              :article-id="articleId"
+              :scroll-element="scrollElement"
+              :scroll-element-offset-top="12"
+              :key="articleId"
+            />
           </div>
-        </ClientOnly>
+        </div>
       </div>
     </div>
-    <ReturnTop></ReturnTop>
   </section>
 </template>
 
@@ -94,38 +81,32 @@
 import {
   ref,
   computed,
-  defineAsyncComponent,
-  defineComponent,
   watch,
   onMounted,
   onBeforeUnmount,
+  nextTick,
 } from "vue";
 import {
   getUserAgentFromEvent,
   generateArticleStructuredData,
+  generateArticleBreadcrumb,
 } from "~/utils/seo";
+import {
+  renderMarkdownToHtml,
+  extractFirstImageUrl,
+  extractPlainTextDescription,
+  extractHeadingsFromHtml,
+} from "~/utils/markdown";
 import { ResponseCode } from "~/utils/api";
-
-const MarkdownRenderer = defineAsyncComponent({
-  loader: () => import("../../components/MarkdownRenderer.vue"),
-  loadingComponent: defineComponent({
-    template: '<div class="markdown-loading"></div>',
-  }),
-  errorComponent: defineComponent({
-    template: '<div class="markdown-error">加载失败</div>',
-  }),
-  delay: 0,
-  timeout: 10000,
-  suspensible: true,
-});
-
-// 目录组件 - 移动端延迟加载，减少初始JS bundle
-const CatalogRenderer = defineAsyncComponent({
-  loader: () => import("../../components/CatalogRenderer.vue"),
-  delay: 200, // 延迟更久，使用 requestIdleCallback 加载
-  timeout: 2000,
-  suspensible: true,
-});
+// 目录组件改为同步 import：
+// - SSR 阶段需要拿到组件实例直出 <ul>，不能再走 defineAsyncComponent 异步加载
+// - 组件 + 样式很小（一个 <ul> + 一个 IntersectionObserver），同步引入对首屏 JS 影响可忽略
+// - 同步 import 同时去掉了 <Suspense> + 骨架屏 + delay:200 引发的"骨架→列表→active"三段闪烁
+import CatalogRenderer from "../../components/CatalogRenderer.vue";
+// KaTeX 样式：SSR 阶段已经把 LaTeX 编译成 HTML 标签，
+// 此处只需引入官方 CSS 来提供字体/上下标尺寸/对齐的样式表，否则公式只是一团裸 span。
+// 全局只引入一次，CSS 体积约 70KB（gzip 后 ~20KB）—— 仅在文章详情页才会加载，可接受。
+import "katex/dist/katex.min.css";
 
 interface ArticleDetail {
   id: string;
@@ -134,21 +115,29 @@ interface ArticleDetail {
   content: string;
   createTime: string;
   updateTime: string;
+  // SSR 阶段预渲染好的 HTML 字符串，模板中 v-html 直出，确保爬虫立即拿到正文
+  renderedHtml?: string;
 }
 
 const route = useRoute();
 const runtimeConfig = useRuntimeConfig();
 const articleId = computed(() => route.params.id as string);
-const editorId = "my-editor";
 const scrollElement = ".scrollable-content";
 const article = ref<ArticleDetail | null>(null);
-const isContentReady = ref(false);
 const visibleContent = ref("");
 const isMobile = ref(false);
 const loadingState = ref<string>("正在加载文章...");
 const fingerprintReady = ref(false);
 const fingerprintValue = ref("");
 const pendingRequest = ref<Promise<any> | null>(null); // 请求去重
+
+// 目录列表：基于 SSR 渲染好的 HTML 用正则抽 heading（id/level/text），
+// SSR 阶段就能算出值并直出到 <ul>，避免客户端再 querySelectorAll 引发的闪烁。
+// renderedHtml 在 SSR 阶段（useAsyncData）已经填充，因此 SSR HTML 里就带着完整目录。
+const catalogHeadings = computed(() => {
+  const html = article.value?.renderedHtml || "";
+  return extractHeadingsFromHtml(html, 3);
+});
 
 // 防抖相关的变量
 let resizeTimer: ReturnType<typeof setTimeout> | null = null;
@@ -188,26 +177,27 @@ const { data: serverArticle } = await useAsyncData<ArticleDetail>(
       return emptyArticle;
     }
 
+    const event = useRequestEvent();
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+    };
+
+    // 透传 User-Agent 给后端，让后端识别搜索引擎爬虫
+    const userAgent = getUserAgentFromEvent(event);
+    if (userAgent) {
+      headers["user-agent"] = userAgent;
+    }
+
+    // 将请求中的 Cookie 透传给 Go 后端，让已登录/已有会话的用户 SSR 也能拿到文章内容
+    // 注意：搜索引擎爬虫通常没有 Cookie，后端应该识别 User-Agent 后直接返回内容
+    const cookie = event?.node.req.headers["cookie"];
+    if (cookie && typeof cookie === "string") {
+      headers["cookie"] = cookie;
+    }
+
+    let result: { code: number; data: ArticleDetail | null } | null = null;
     try {
-      const event = useRequestEvent();
-      const headers: Record<string, string> = {
-        "Content-Type": "application/json",
-      };
-
-      // 透传 User-Agent 给后端，让后端识别搜索引擎爬虫
-      const userAgent = getUserAgentFromEvent(event);
-      if (userAgent) {
-        headers["user-agent"] = userAgent;
-      }
-
-      // 将请求中的 Cookie 透传给 Go 后端，让已登录/已有会话的用户 SSR 也能拿到文章内容
-      // 注意：搜索引擎爬虫通常没有 Cookie，后端应该识别 User-Agent 后直接返回内容
-      const cookie = event?.node.req.headers["cookie"];
-      if (cookie && typeof cookie === "string") {
-        headers["cookie"] = cookie;
-      }
-
-      const result = await $fetch<{ code: number; data: ArticleDetail | null }>(
+      result = await $fetch<{ code: number; data: ArticleDetail | null }>(
         `${runtimeConfig.public.baseURL}/user/article/detail`,
         {
           method: "GET",
@@ -216,24 +206,33 @@ const { data: serverArticle } = await useAsyncData<ArticleDetail>(
           credentials: "include",
         }
       );
-
-      // SSR 阶段如果文章不存在，抛出 404 错误触发 Nuxt 404 页面
-      if (result.code === ResponseCode.NotFound) {
-        throw createError({
-          statusCode: 404,
-          statusMessage: "文章不存在",
-        });
-      }
-
-      if (result.code === 2000 && result.data) {
-        return result.data;
-      }
     } catch {
-      // SSR 获取失败时静默降级为客户端渲染，返回占位对象以避免客户端重复请求
+      // 网络异常：静默降级为客户端再尝试拉取，返回占位对象
       return emptyArticle;
     }
 
-    // 如果没有拿到有效数据，也返回占位对象
+    // 文章不存在：抛真 404，让 Nuxt 渲染 404 页并返回 HTTP 404，
+    // 避免 Googlebot 抓到"占位 HTML + 200"被打成软 404，影响整站权重。
+    if (result?.code === ResponseCode.NotFound) {
+      throw createError({
+        statusCode: 404,
+        statusMessage: "文章不存在",
+        fatal: true,
+      });
+    }
+
+    if (result?.code === 2000 && result.data) {
+      // SSR 阶段直接把 markdown 渲染成 HTML，挂在 renderedHtml 上。
+      // 这样模板里 v-html 直出，curl / Googlebot / Baiduspider 都能在 HTML
+      // 里立刻读到完整正文，是 SEO 优化的核心。
+      const renderedHtml = renderMarkdownToHtml(result.data.content);
+      return {
+        ...result.data,
+        renderedHtml,
+      };
+    }
+
+    // 业务码非 2000 但又不是 NotFound：保守处理，返回占位让客户端重试
     return emptyArticle;
   }
 );
@@ -247,38 +246,53 @@ if (serverArticle.value) {
 
 // SEO：根据文章内容动态设置页面标题和 meta 信息
 // 优化：使用 computed 缓存计算结果，避免重复计算
+const SITE_NAME = "冰冰同学的技术博客";
+const DEFAULT_OG_IMAGE = "https://liubing.xyz/favicon.ico";
+
 const seoData = computed(() => {
   const current = article.value || serverArticle.value;
-  if (!current) {
+  const siteUrl = runtimeConfig.public.siteUrl || "https://liubing.xyz";
+  if (!current || !current.id) {
     return {
-      title: "博客文章",
+      title: `博客文章 | ${SITE_NAME}`,
       description: "",
       tags: [],
       canonicalUrl: "",
       structuredData: null,
+      breadcrumb: null,
+      ogImage: DEFAULT_OG_IMAGE,
+      publishedTime: "",
+      modifiedTime: "",
+      current: null,
     };
   }
 
-  // 优化：只处理前5000字符用于生成描述，避免处理整个大内容
-  const contentForDesc = (current.content || "").slice(0, 5000);
-  const plainText = contentForDesc
-    .replace(/[`*_>#\-]+/g, " ")
-    .replace(/\[(.*?)\]\(.*?\)/g, "$1")
-    .replace(/<[^>]*>/g, "")
-    .replace(/\s+/g, " ")
-    .trim();
-  const description = plainText.slice(0, 160);
+  // 用统一的纯文本提取工具，跳过代码块/图片/链接 URL，描述更干净
+  const description = extractPlainTextDescription(current.content, 160);
   const tags = current.tag ? current.tag.split(/[,\s，]+/).filter(Boolean) : [];
-  const siteUrl = runtimeConfig.public.siteUrl || "https://liubing.xyz";
   const canonicalUrl = `${siteUrl}/article-detail/${current.id}`;
   const structuredData = generateArticleStructuredData(current, siteUrl);
+  const breadcrumb = generateArticleBreadcrumb(current, siteUrl);
+
+  // 提取首图作为 og:image，没有时回落到默认站点封面
+  const firstImage = extractFirstImageUrl(current.content);
+  const ogImage = firstImage
+    ? firstImage.startsWith("http")
+      ? firstImage
+      : `${siteUrl}${firstImage.startsWith("/") ? "" : "/"}${firstImage}`
+    : DEFAULT_OG_IMAGE;
 
   return {
-    title: `${current.title}`,
+    // title 追加站点名，利于品牌词收录与 SERP 展示
+    title: `${current.title} | ${SITE_NAME}`,
     description,
     tags,
     canonicalUrl,
     structuredData,
+    breadcrumb,
+    ogImage,
+    publishedTime: current.createTime || "",
+    modifiedTime: current.updateTime || "",
     current,
   };
 });
@@ -301,49 +315,53 @@ useHead(() => {
       },
     ],
     meta: [
-      {
-        name: "description",
-        content: data.description,
-      },
+      { name: "description", content: data.description },
       ...(data.tags.length
+        ? [{ name: "keywords", content: data.tags.join(",") }]
+        : []),
+      // Open Graph：Facebook / LinkedIn / 微信外链等通用社交协议
+      { property: "og:type", content: "article" },
+      { property: "og:title", content: data.current.title },
+      { property: "og:description", content: data.description },
+      { property: "og:url", content: data.canonicalUrl },
+      { property: "og:site_name", content: SITE_NAME },
+      { property: "og:image", content: data.ogImage },
+      { property: "og:locale", content: "zh_CN" },
+      // article:* 是 Open Graph 文章子协议，提供发布/修改时间与作者
+      ...(data.publishedTime
+        ? [{ property: "article:published_time", content: data.publishedTime }]
+        : []),
+      ...(data.modifiedTime
+        ? [{ property: "article:modified_time", content: data.modifiedTime }]
+        : []),
+      { property: "article:author", content: "冰冰同学" },
+      ...(data.tags.length
+        ? data.tags.map((tag) => ({ property: "article:tag", content: tag }))
+        : []),
+      // Twitter Card：Twitter / X 单独走 twitter: 命名空间，回落顺序优先于 og:
+      { name: "twitter:card", content: "summary_large_image" },
+      { name: "twitter:title", content: data.current.title },
+      { name: "twitter:description", content: data.description },
+      { name: "twitter:image", content: data.ogImage },
+    ],
+    script: [
+      ...(data.structuredData
         ? [
             {
-              name: "keywords",
-              content: data.tags.join(","),
+              type: "application/ld+json",
+              children: JSON.stringify(data.structuredData),
             },
           ]
         : []),
-      {
-        property: "og:type",
-        content: "article",
-      },
-      {
-        property: "og:title",
-        content: data.current.title,
-      },
-      {
-        property: "og:description",
-        content: data.description,
-      },
-      {
-        property: "og:url",
-        content: data.canonicalUrl,
-      },
-      ...(data.tags.length
-        ? data.tags.map((tag) => ({
-            property: "article:tag",
-            content: tag,
-          }))
+      ...(data.breadcrumb
+        ? [
+            {
+              type: "application/ld+json",
+              children: JSON.stringify(data.breadcrumb),
+            },
+          ]
         : []),
     ],
-    script: data.structuredData
-      ? [
-          {
-            type: "application/ld+json",
-            children: JSON.stringify(data.structuredData),
-          },
-        ]
-      : [],
   };
 });
 
@@ -407,10 +425,15 @@ const fetchArticleContent = async () => {
         }
 
         if (result.code === 2000 && result.data) {
-          article.value = result.data;
+          // SPA 路由切换 / 客户端兜底拉取：后端只返回原始 markdown content，
+          // 这里在客户端把它渲染成 HTML，统一交给模板的 v-html 输出，
+          // 与 SSR 走的是同一份排版规则（.article-body-ssr）。
+          const renderedHtml = renderMarkdownToHtml(result.data.content);
+          article.value = {
+            ...result.data,
+            renderedHtml,
+          };
           visibleContent.value = result.data.content || "";
-
-          isContentReady.value = true;
         } else {
           // API 返回其他错误码
           throw new Error(
@@ -445,7 +468,6 @@ const fetchArticleContent = async () => {
     if (serverArticle.value) {
       article.value = serverArticle.value;
       visibleContent.value = serverArticle.value.content || "";
-      isContentReady.value = true;
     }
 
     // 重新抛出错误，让调用方知道失败了
@@ -461,8 +483,6 @@ const initArticleContent = async () => {
   if (serverArticle.value && serverArticle.value.content) {
     article.value = serverArticle.value;
     visibleContent.value = serverArticle.value.content;
-
-    isContentReady.value = true;
     return;
   }
 
@@ -487,7 +507,6 @@ const initArticleContent = async () => {
         if (serverArticle.value) {
           article.value = serverArticle.value;
           visibleContent.value = serverArticle.value.content || "";
-          isContentReady.value = true;
         }
       }
     }
@@ -498,7 +517,1135 @@ const initArticleContent = async () => {
     if (serverArticle.value) {
       article.value = serverArticle.value;
       visibleContent.value = serverArticle.value.content || "";
-      isContentReady.value = true;
+    }
+  }
+};
+
+// 代码块全屏（移动端伪横屏）：事件委托统一处理 .ssr-code-fullscreen 点击
+// 设计要点：
+// 1) 全屏蒙层 DOM 不在 SSR HTML 中——SSR 仅渲染按钮，蒙层运行时动态创建/销毁，避免增加 SSR 体积
+// 2) 复用原代码块的 <code> innerHTML（含 hljs 高亮 + .ssr-code-line 行号占位结构），
+//    全屏态由 base.css 的 .ssr-code-fs-pre 重设样式，无需重新计算高亮
+// 3) "伪横屏"通过 CSS transform: rotate(90deg) 实现：
+//    - 蒙层占满 viewport
+//    - 内部 stage 宽=100dvh、高=100dvw、rotate 90 度后正好铺满
+//    - 用 dvh/dvw 而非 vh/vw，规避 iOS Safari 地址栏弹回带来的视口抖动
+// 4) 关闭路径：右上角 × / ESC 键 / 安卓返回键（通过 history.pushState + popstate 拦截）
+// 5) 进入时锁 body 滚动；退出时一并还原：overflow、history、键盘监听、按钮焦点
+const fullscreenState = {
+  overlay: null as HTMLElement | null,
+  prevBodyOverflow: "" as string,
+  triggerBtn: null as HTMLElement | null,
+  escHandler: null as ((e: KeyboardEvent) => void) | null,
+  popstateHandler: null as ((e: PopStateEvent) => void) | null,
+  pushedHistory: false,
+};
+
+const closeCodeFullscreen = () => {
+  const s = fullscreenState;
+  if (!s.overlay) return;
+  s.overlay.remove();
+  s.overlay = null;
+  document.body.style.overflow = s.prevBodyOverflow;
+  if (s.escHandler) {
+    document.removeEventListener("keydown", s.escHandler);
+    s.escHandler = null;
+  }
+  if (s.popstateHandler) {
+    window.removeEventListener("popstate", s.popstateHandler);
+    s.popstateHandler = null;
+  }
+  // 如果之前 push 了 history 但 popstate 没消费掉（用户点 × 关闭而非按返回键），需 back 一次平账
+  if (s.pushedHistory) {
+    s.pushedHistory = false;
+    try {
+      history.back();
+    } catch {
+      // 忽略
+    }
+  }
+  // 焦点归还触发按钮，无障碍体验
+  s.triggerBtn?.focus();
+  s.triggerBtn = null;
+};
+
+const handleCodeFullscreenClick = (event: Event) => {
+  const target = event.target as HTMLElement | null;
+  if (!target) return;
+  const btn = target.closest(
+    ".ssr-code-fullscreen"
+  ) as HTMLButtonElement | null;
+  if (!btn) return;
+
+  // 仅移动端响应（PC 端 CSS 已隐藏按钮，但 click 事件理论仍可触发——比如开发者工具调用）
+  if (window.innerWidth > 576) return;
+
+  const block = btn.closest(".ssr-code-block") as HTMLElement | null;
+  if (!block) return;
+  const codeEl = block.querySelector("pre code") as HTMLElement | null;
+  if (!codeEl) return;
+
+  const lang = block.getAttribute("data-lang") || "text";
+  const lineCount = block.getAttribute("data-line-count") || "";
+  const codeInnerHtml = codeEl.innerHTML;
+
+  // 构建蒙层 DOM
+  const overlay = document.createElement("div");
+  overlay.className = "ssr-code-fs-overlay";
+  overlay.setAttribute("role", "dialog");
+  overlay.setAttribute("aria-modal", "true");
+  overlay.setAttribute("aria-label", `代码全屏查看 ${lang}`);
+  overlay.innerHTML = `
+    <div class="ssr-code-fs-stage">
+      <div class="ssr-code-fs-head">
+        <span class="ssr-code-fs-info">${lang}${
+    lineCount ? ` · ${lineCount} 行` : ""
+  }</span>
+        <div class="ssr-code-fs-actions">
+          <button class="ssr-code-fs-copy ssr-code-copy ssr-code-iconbtn" type="button" aria-label="复制代码" title="复制">
+            <svg class="ssr-code-copy-icon ssr-code-copy-icon--default" viewBox="0 0 24 24" width="14" height="14" aria-hidden="true">
+              <path fill="currentColor" d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"/>
+            </svg>
+            <svg class="ssr-code-copy-icon ssr-code-copy-icon--success" viewBox="0 0 24 24" width="14" height="14" aria-hidden="true">
+              <path fill="currentColor" d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/>
+            </svg>
+            <svg class="ssr-code-copy-icon ssr-code-copy-icon--error" viewBox="0 0 24 24" width="14" height="14" aria-hidden="true">
+              <path fill="currentColor" d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/>
+            </svg>
+          </button>
+          <button class="ssr-code-fs-close ssr-code-iconbtn" type="button" aria-label="退出全屏" title="关闭">
+            <svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true">
+              <path fill="currentColor" d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/>
+            </svg>
+          </button>
+        </div>
+      </div>
+      <pre class="ssr-code-fs-pre"><code class="hljs language-${lang}">${codeInnerHtml}</code></pre>
+    </div>
+  `;
+  document.body.appendChild(overlay);
+
+  // 锁 body 滚动
+  fullscreenState.overlay = overlay;
+  fullscreenState.prevBodyOverflow = document.body.style.overflow;
+  fullscreenState.triggerBtn = btn;
+  document.body.style.overflow = "hidden";
+
+  // 关闭按钮
+  overlay
+    .querySelector(".ssr-code-fs-close")
+    ?.addEventListener("click", closeCodeFullscreen);
+
+  // ESC 关闭
+  fullscreenState.escHandler = (e: KeyboardEvent) => {
+    if (e.key === "Escape") closeCodeFullscreen();
+  };
+  document.addEventListener("keydown", fullscreenState.escHandler);
+
+  // 安卓返回键关闭：push 一条 history，监听 popstate
+  fullscreenState.popstateHandler = () => {
+    fullscreenState.pushedHistory = false; // popstate 已经消费了我们 push 的那条
+    closeCodeFullscreen();
+  };
+  try {
+    history.pushState({ ssrCodeFullscreen: true }, "");
+    fullscreenState.pushedHistory = true;
+    window.addEventListener("popstate", fullscreenState.popstateHandler);
+  } catch {
+    // 某些环境可能限制 pushState，忽略即可
+  }
+};
+
+// 代码块复制按钮：事件委托统一处理 .ssr-code-block 内的 .ssr-code-copy 点击
+// 设计要点：
+// 1) 仅在 onMounted 时挂一次到 document，卸载时移除，避免每个代码块单独绑事件
+// 2) 视觉状态切换走 [data-copy-state] 属性，CSS 通过属性选择器切显隐三个 SVG 图标
+//    （default / success ✓ / error ×），不需要操作子节点文本
+// 3) 优先 navigator.clipboard，无权限或老浏览器回落到 textarea + execCommand
+const setCopyState = (
+  btn: HTMLElement,
+  state: "success" | "error" | null
+) => {
+  if (state) {
+    btn.setAttribute("data-copy-state", state);
+  } else {
+    btn.removeAttribute("data-copy-state");
+  }
+};
+
+const fallbackCopy = (text: string): boolean => {
+  const textarea = document.createElement("textarea");
+  textarea.value = text;
+  textarea.style.position = "fixed";
+  textarea.style.left = "-9999px";
+  textarea.style.opacity = "0";
+  document.body.appendChild(textarea);
+  textarea.select();
+  let ok = false;
+  try {
+    ok = document.execCommand("copy");
+  } catch {
+    ok = false;
+  }
+  document.body.removeChild(textarea);
+  return ok;
+};
+
+const handleCodeCopyClick = (event: Event) => {
+  const target = event.target as HTMLElement | null;
+  if (!target) return;
+  const btn = target.closest(".ssr-code-copy") as HTMLButtonElement | null;
+  if (!btn) return;
+
+  // 兼容两种场景：① 普通文章内代码块 ② 全屏蒙层中的复制按钮
+  // 优先找 .ssr-code-block（文章内）；找不到再退而求其次找 .ssr-code-fs-stage（全屏内）
+  const container =
+    btn.closest(".ssr-code-block") || btn.closest(".ssr-code-fs-stage");
+  if (!container) return;
+  const codeEl = container.querySelector("pre code") as HTMLElement | null;
+  if (!codeEl) return;
+
+  // 直接读 textContent，行号等装饰性内容已经在 CSS 伪元素里、不会被读到
+  const code = codeEl.textContent || "";
+
+  const onSuccess = () => {
+    setCopyState(btn, "success");
+    window.setTimeout(() => setCopyState(btn, null), 1500);
+  };
+  const onError = () => {
+    setCopyState(btn, "error");
+    window.setTimeout(() => setCopyState(btn, null), 1500);
+  };
+
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(code).then(onSuccess, () => {
+      if (fallbackCopy(code)) onSuccess();
+      else onError();
+    });
+  } else if (fallbackCopy(code)) {
+    onSuccess();
+  } else {
+    onError();
+  }
+};
+
+// 代码块折叠按钮：事件委托统一处理 .ssr-code-toggle 点击
+// 设计要点：
+// 1) 折叠/展开仅切换 .ssr-code-block 的 data-collapsed 属性，所有视觉表现走 base.css
+// 2) 按钮文案是 SSR 写死的——头部按钮永远是"收起"、浮动按钮永远是"展开全部 (N 行)"，
+//    通过 base.css 的 attr selector 控制两枚按钮的显隐，handler 不需要改文案
+// 3) 收起时把代码块顶部 scrollIntoView，避免"代码消失但视口位置没动"造成的视觉跳跃
+//    （例：用户滚到代码块第 50 行点收起，如果不滚回顶部，视口里就只剩按钮、看起来像内容没了）
+const handleCodeToggleClick = (event: Event) => {
+  const target = event.target as HTMLElement | null;
+  if (!target) return;
+  const btn = target.closest(".ssr-code-toggle") as HTMLButtonElement | null;
+  if (!btn) return;
+
+  const block = btn.closest(".ssr-code-block") as HTMLElement | null;
+  if (!block) return;
+
+  const wasCollapsed = block.getAttribute("data-collapsed") === "true";
+  const nextCollapsed = !wasCollapsed;
+  block.setAttribute("data-collapsed", String(nextCollapsed));
+
+  // 收起时把代码块顶部对齐视口，避免视觉跳跃
+  if (nextCollapsed) {
+    window.requestAnimationFrame(() => {
+      const rect = block.getBoundingClientRect();
+      // 只有当代码块顶部已经被滚出视口（rect.top < 0）才需要对齐
+      if (rect.top < 0) {
+        block.scrollIntoView({ behavior: "auto", block: "start" });
+      }
+    });
+  }
+};
+
+// ============================================================
+// Mermaid 全屏查看（带缩放/拖拽）
+// ------------------------------------------------------------
+// 解决"复杂图表在文章里看不清"的问题。设计要点：
+// 1) 蒙层动态创建，不进 SSR HTML，节省体积；
+// 2) 内容来源：直接 cloneNode 当前 .mermaid-block 里渲染好的 svg，
+//    不重新调用 mermaid.render —— 既快、又能保证全屏内容与文章里一致；
+// 3) 缩放：scale 状态变量，组合了三种交互：
+//    - 顶部 + / - / 重置 按钮（PC 主用）
+//    - 鼠标滚轮（PC 进阶）
+//    - 双指 pinch（移动端主用）
+// 4) 平移：mousedown / touchstart 起步，记录 startX/Y + 初始 translate，
+//    move 时累加偏移，up/end 解除监听；
+// 5) 关闭路径：右上角 × / ESC / 安卓返回键（与代码块全屏蒙层共用同一套思路）；
+// 6) 缩放原点：通过 transform-origin: 0 0 配合手动计算的 translate 调整，
+//    保证以"光标/双指中点"为锚点，不会"放大了又跑偏"。
+// ============================================================
+const mermaidFsState = {
+  overlay: null as HTMLElement | null,
+  prevBodyOverflow: "" as string,
+  triggerBtn: null as HTMLElement | null,
+  escHandler: null as ((e: KeyboardEvent) => void) | null,
+  popstateHandler: null as ((e: PopStateEvent) => void) | null,
+  pushedHistory: false,
+  // 变换状态
+  scale: 1,
+  tx: 0,
+  ty: 0,
+  // pinch 起始两指距离与起始 scale
+  pinchStartDist: 0,
+  pinchStartScale: 1,
+};
+
+const closeMermaidFullscreen = () => {
+  const s = mermaidFsState;
+  if (!s.overlay) return;
+  s.overlay.remove();
+  s.overlay = null;
+  document.body.style.overflow = s.prevBodyOverflow;
+  if (s.escHandler) {
+    document.removeEventListener("keydown", s.escHandler);
+    s.escHandler = null;
+  }
+  if (s.popstateHandler) {
+    window.removeEventListener("popstate", s.popstateHandler);
+    s.popstateHandler = null;
+  }
+  if (s.pushedHistory) {
+    s.pushedHistory = false;
+    try {
+      history.back();
+    } catch {
+      // 忽略
+    }
+  }
+  s.triggerBtn?.focus();
+  s.triggerBtn = null;
+};
+
+const handleMermaidFullscreenClick = (event: Event) => {
+  const target = event.target as HTMLElement | null;
+  if (!target) return;
+  const btn = target.closest(
+    ".mermaid-fullscreen-btn"
+  ) as HTMLButtonElement | null;
+  if (!btn) return;
+
+  const block = btn.closest(".mermaid-block") as HTMLElement | null;
+  if (!block) return;
+
+  // 取出已经渲染好的 svg；如果尚未渲染（极端竞态：用户在首屏 idle 渲染前就点了按钮），
+  // 直接 fallback 到展示源码。
+  // ⚠ 必须 scope 到 .mermaid-content 内查询，不能直接 block.querySelector("svg")——
+  // 因为 block 里同时存在两个 svg：
+  //   1) .mermaid-fullscreen-btn 内的"全屏按钮 icon"SVG（DOM 顺序在前）
+  //   2) .mermaid-content 内真正的 mermaid 图表 SVG
+  // 不限定 scope 会命中第一个（即按钮 icon），导致全屏蒙层里只显示一个被放大的全屏图标。
+  const contentEl = block.querySelector(".mermaid-content");
+  const svgEl = contentEl
+    ? (contentEl.querySelector("svg") as SVGElement | null)
+    : null;
+  const sourceEl = (contentEl || block).querySelector(".mermaid-source");
+
+  const overlay = document.createElement("div");
+  overlay.className = "mermaid-fs-overlay";
+  overlay.setAttribute("role", "dialog");
+  overlay.setAttribute("aria-modal", "true");
+  overlay.setAttribute("aria-label", "图表全屏查看");
+
+  // 工具栏：缩小 / 重置 / 放大 / 关闭，全部 icon 按钮，与代码块全屏风格一致
+  overlay.innerHTML = `
+    <div class="mermaid-fs-toolbar">
+      <button class="mermaid-fs-btn" data-action="zoom-out" type="button" aria-label="缩小" title="缩小">
+        <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">
+          <path fill="currentColor" d="M19 13H5v-2h14v2z"/>
+        </svg>
+      </button>
+      <span class="mermaid-fs-scale" aria-live="polite">100%</span>
+      <button class="mermaid-fs-btn" data-action="reset" type="button" aria-label="重置" title="重置缩放">
+        <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">
+          <path fill="currentColor" d="M12 5V1L7 6l5 5V7c3.31 0 6 2.69 6 6s-2.69 6-6 6-6-2.69-6-6H4c0 4.42 3.58 8 8 8s8-3.58 8-8-3.58-8-8-8z"/>
+        </svg>
+      </button>
+      <button class="mermaid-fs-btn" data-action="zoom-in" type="button" aria-label="放大" title="放大">
+        <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">
+          <path fill="currentColor" d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/>
+        </svg>
+      </button>
+      <button class="mermaid-fs-btn mermaid-fs-close" data-action="close" type="button" aria-label="关闭" title="关闭">
+        <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">
+          <path fill="currentColor" d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/>
+        </svg>
+      </button>
+    </div>
+    <div class="mermaid-fs-stage">
+      <div class="mermaid-fs-canvas"></div>
+    </div>
+    <div class="mermaid-fs-tip">滚轮 / 双指缩放 · 拖拽平移</div>
+  `;
+
+  const canvas = overlay.querySelector(".mermaid-fs-canvas") as HTMLElement;
+  const stage = overlay.querySelector(".mermaid-fs-stage") as HTMLElement;
+  const scaleLabel = overlay.querySelector(
+    ".mermaid-fs-scale"
+  ) as HTMLElement;
+
+  // 把图表放进 canvas
+  if (svgEl) {
+    // 关键：在 clone 之前先读取原 svg 在文章里的实际渲染尺寸。
+    // 因为：
+    // 1) mermaid 输出的 svg 常带 style="max-width: ...px"，但不一定带显式 width/height attribute；
+    // 2) 我们的 .mermaid-fs-canvas 是 position: absolute + top:0/left:0，没有显式尺寸；
+    //    absolute 元素在内容没有内禀尺寸时会"shrink-to-fit"塌陷到 0×0；
+    // 3) 因此必须把 svg 的实际像素宽高显式写进去，让 canvas 能收缩包裹出正确尺寸，
+    //    否则 svg 会显示成 0×0、完全看不见——这就是用户反馈的 bug 现象。
+    const origRect = svgEl.getBoundingClientRect();
+    const baseW = origRect.width || 600; // 兜底：svg 已经被滚出视口或刚渲染完时 rect 可能为 0
+    const baseH = origRect.height || 400;
+
+    const cloned = svgEl.cloneNode(true) as SVGElement;
+    // 清掉可能限制 svg 自然展开的 max-* 约束
+    cloned.style.maxWidth = "none";
+    cloned.style.maxHeight = "none";
+    // 显式给出像素尺寸：让 canvas 撑出明确盒模型，缩放体验也从"现在看到的大小"出发
+    cloned.style.width = `${baseW}px`;
+    cloned.style.height = `${baseH}px`;
+    // svg 的 width/height attribute 保留 viewBox 自身的尺寸即可，
+    // 不去 removeAttribute 防止 viewBox 缺失时丢掉绘图基准
+    cloned.setAttribute("width", String(baseW));
+    cloned.setAttribute("height", String(baseH));
+    canvas.appendChild(cloned);
+  } else if (sourceEl) {
+    const pre = document.createElement("pre");
+    pre.className = "mermaid-source";
+    pre.textContent = sourceEl.textContent || "";
+    canvas.appendChild(pre);
+  }
+
+  document.body.appendChild(overlay);
+
+  // 初始化变换状态
+  const s = mermaidFsState;
+  s.scale = 1;
+  s.tx = 0;
+  s.ty = 0;
+  s.overlay = overlay;
+  s.prevBodyOverflow = document.body.style.overflow;
+  s.triggerBtn = btn;
+  document.body.style.overflow = "hidden";
+
+  const MIN_SCALE = 0.2;
+  const MAX_SCALE = 6;
+  const applyTransform = () => {
+    canvas.style.transform = `translate(${s.tx}px, ${s.ty}px) scale(${s.scale})`;
+    scaleLabel.textContent = `${Math.round(s.scale * 100)}%`;
+  };
+
+  // 以"舞台中某点"为锚点缩放：保证锚点在屏幕坐标不动
+  // 推导：屏幕坐标 P = T + S * P_local；要保证缩放前后 P 不变，
+  // T_new = P - S_new * P_local = P - (S_new / S_old) * (P - T_old)
+  const zoomAtPoint = (
+    pointX: number,
+    pointY: number,
+    nextScale: number
+  ) => {
+    const clamped = Math.max(MIN_SCALE, Math.min(MAX_SCALE, nextScale));
+    const ratio = clamped / s.scale;
+    const rect = stage.getBoundingClientRect();
+    const localX = pointX - rect.left;
+    const localY = pointY - rect.top;
+    s.tx = localX - ratio * (localX - s.tx);
+    s.ty = localY - ratio * (localY - s.ty);
+    s.scale = clamped;
+    applyTransform();
+  };
+
+  applyTransform();
+
+  // 把 canvas 中心对齐到 stage 中心。
+  // 抽成函数是因为：① 初始挂载需要居中；② reset 按钮也需要复用同一套逻辑，
+  // 不能简单 tx=0/ty=0——那只是把 canvas 左上角钉在 stage 左上角，svg 会跑到左上角而非正中。
+  // 必须在 layout 完成后才能 getBoundingClientRect，所以包一层 rAF。
+  const centerCanvas = () => {
+    requestAnimationFrame(() => {
+      const stageRect = stage.getBoundingClientRect();
+      const canvasRect = canvas.getBoundingClientRect();
+      // 偏移增量 = stage 中心 − canvas 当前中心
+      // 注意是 += 而非 =，因为 canvas 当前已经按 (s.tx, s.ty, s.scale) 变换过，
+      // canvasRect 反映的是变换后的位置；只需在此基础上再补一个 delta 即可对齐
+      s.tx +=
+        stageRect.left +
+        stageRect.width / 2 -
+        (canvasRect.left + canvasRect.width / 2);
+      s.ty +=
+        stageRect.top +
+        stageRect.height / 2 -
+        (canvasRect.top + canvasRect.height / 2);
+      applyTransform();
+    });
+  };
+
+  // 初始居中
+  centerCanvas();
+
+  // 工具栏按钮（事件代理在 overlay 内部，关闭时随 overlay 一起销毁，无需手动解绑）
+  overlay.addEventListener("click", (e) => {
+    const t = (e.target as HTMLElement).closest(
+      ".mermaid-fs-btn"
+    ) as HTMLButtonElement | null;
+    if (!t) return;
+    const action = t.getAttribute("data-action");
+    const rect = stage.getBoundingClientRect();
+    const cx = rect.left + rect.width / 2;
+    const cy = rect.top + rect.height / 2;
+    if (action === "zoom-in") {
+      zoomAtPoint(cx, cy, s.scale * 1.25);
+    } else if (action === "zoom-out") {
+      zoomAtPoint(cx, cy, s.scale / 1.25);
+    } else if (action === "reset") {
+      // 重置：scale 回到 1，再走一次居中（不能简单 tx=0/ty=0，
+      // 那是 canvas 左上角对齐 stage 左上角，会让 svg 跑到左上角）
+      s.scale = 1;
+      s.tx = 0;
+      s.ty = 0;
+      applyTransform();
+      centerCanvas();
+    } else if (action === "close") {
+      closeMermaidFullscreen();
+    }
+  });
+
+  // 鼠标滚轮缩放（PC）
+  // 注意：必须 preventDefault 阻止页面整体滚动；passive: false 才能 preventDefault
+  stage.addEventListener(
+    "wheel",
+    (e) => {
+      e.preventDefault();
+      // deltaY > 0 → 向下滚 → 缩小；反之放大。比例 1.1 较温和
+      const factor = e.deltaY > 0 ? 1 / 1.1 : 1.1;
+      zoomAtPoint(e.clientX, e.clientY, s.scale * factor);
+    },
+    { passive: false }
+  );
+
+  // 鼠标拖拽平移（PC）
+  let dragging = false;
+  let lastX = 0;
+  let lastY = 0;
+  stage.addEventListener("mousedown", (e) => {
+    // 只响应左键
+    if (e.button !== 0) return;
+    dragging = true;
+    lastX = e.clientX;
+    lastY = e.clientY;
+    stage.style.cursor = "grabbing";
+  });
+  const onMouseMove = (e: MouseEvent) => {
+    if (!dragging) return;
+    s.tx += e.clientX - lastX;
+    s.ty += e.clientY - lastY;
+    lastX = e.clientX;
+    lastY = e.clientY;
+    applyTransform();
+  };
+  const onMouseUp = () => {
+    dragging = false;
+    stage.style.cursor = "";
+  };
+  document.addEventListener("mousemove", onMouseMove);
+  document.addEventListener("mouseup", onMouseUp);
+
+  // 触屏交互（移动端）：单指拖拽 / 双指 pinch 缩放
+  let touchMode: "none" | "drag" | "pinch" = "none";
+  let touchStartX = 0;
+  let touchStartY = 0;
+  stage.addEventListener(
+    "touchstart",
+    (e) => {
+      if (e.touches.length === 1) {
+        touchMode = "drag";
+        touchStartX = e.touches[0].clientX;
+        touchStartY = e.touches[0].clientY;
+      } else if (e.touches.length === 2) {
+        touchMode = "pinch";
+        const dx = e.touches[0].clientX - e.touches[1].clientX;
+        const dy = e.touches[0].clientY - e.touches[1].clientY;
+        s.pinchStartDist = Math.hypot(dx, dy);
+        s.pinchStartScale = s.scale;
+      }
+    },
+    { passive: false }
+  );
+  stage.addEventListener(
+    "touchmove",
+    (e) => {
+      if (touchMode === "drag" && e.touches.length === 1) {
+        e.preventDefault();
+        const t = e.touches[0];
+        s.tx += t.clientX - touchStartX;
+        s.ty += t.clientY - touchStartY;
+        touchStartX = t.clientX;
+        touchStartY = t.clientY;
+        applyTransform();
+      } else if (touchMode === "pinch" && e.touches.length === 2) {
+        e.preventDefault();
+        const dx = e.touches[0].clientX - e.touches[1].clientX;
+        const dy = e.touches[0].clientY - e.touches[1].clientY;
+        const dist = Math.hypot(dx, dy);
+        if (s.pinchStartDist === 0) return;
+        const nextScale =
+          (s.pinchStartScale * dist) / s.pinchStartDist;
+        const cx = (e.touches[0].clientX + e.touches[1].clientX) / 2;
+        const cy = (e.touches[0].clientY + e.touches[1].clientY) / 2;
+        zoomAtPoint(cx, cy, nextScale);
+      }
+    },
+    { passive: false }
+  );
+  stage.addEventListener("touchend", (e) => {
+    if (e.touches.length === 0) {
+      touchMode = "none";
+    } else if (e.touches.length === 1) {
+      touchMode = "drag";
+      touchStartX = e.touches[0].clientX;
+      touchStartY = e.touches[0].clientY;
+    }
+  });
+
+  // 在 overlay remove 时统一清理 document 级监听
+  // 用 MutationObserver 监控 overlay 是否被移除（closeMermaidFullscreen 会调用 .remove()）
+  const cleanup = () => {
+    document.removeEventListener("mousemove", onMouseMove);
+    document.removeEventListener("mouseup", onMouseUp);
+  };
+  const mo = new MutationObserver(() => {
+    if (!document.body.contains(overlay)) {
+      cleanup();
+      mo.disconnect();
+    }
+  });
+  mo.observe(document.body, { childList: true });
+
+  // ESC 关闭
+  s.escHandler = (e: KeyboardEvent) => {
+    if (e.key === "Escape") closeMermaidFullscreen();
+  };
+  document.addEventListener("keydown", s.escHandler);
+
+  // 安卓返回键关闭
+  s.popstateHandler = () => {
+    s.pushedHistory = false;
+    closeMermaidFullscreen();
+  };
+  try {
+    history.pushState({ mermaidFullscreen: true }, "");
+    s.pushedHistory = true;
+    window.addEventListener("popstate", s.popstateHandler);
+  } catch {
+    // 忽略
+  }
+};
+
+// ============================================================
+// 图片全屏查看（点击文章图片放大、缩放、平移、相册式前后切换）
+// ------------------------------------------------------------
+// 设计：复用 mermaid 全屏的"舞台 + canvas + 工具栏"骨架，
+// 数据源由 cloneNode(svg) 改为新建 <img>，其余缩放/平移/关闭路径一致。
+// 触发条件：点击 .article-img-zoomable（仅正文 markdown 图片，避免误伤头像/icon）。
+// 初始呈现：contain 适配视口，centerCanvas 居中（小图也能看清）。
+//
+// 图集模式：进入全屏时一次性收集所有 .article-img-zoomable，
+// 记录当前 index，提供左右箭头按钮 + 键盘 ←/→ 在前后图片间切换。
+// 切换图片时：
+//   1) 重置 transform（scale=1, tx=0, ty=0）→ 否则上一张缩放后的状态会带到新图；
+//   2) 通过预创建好的 imgEl.src = newSrc 复用同一个 <img> 节点（减少 DOM 抖动）；
+//   3) 等新图 load 后再调用 fitContain（缓存命中时 img.complete 已 true，需走 rAF 兜底）。
+// 单张图片时左右按钮 + 计数器自动隐藏，UI 更干净。
+// ============================================================
+const imageFsState = {
+  overlay: null as HTMLElement | null,
+  prevBodyOverflow: "" as string,
+  triggerImg: null as HTMLImageElement | null,
+  escHandler: null as ((e: KeyboardEvent) => void) | null,
+  popstateHandler: null as ((e: PopStateEvent) => void) | null,
+  pushedHistory: false,
+  scale: 1,
+  tx: 0,
+  ty: 0,
+  pinchStartDist: 0,
+  pinchStartScale: 1,
+};
+
+const closeImageFullscreen = () => {
+  const s = imageFsState;
+  if (!s.overlay) return;
+  s.overlay.remove();
+  s.overlay = null;
+  document.body.style.overflow = s.prevBodyOverflow;
+  if (s.escHandler) {
+    document.removeEventListener("keydown", s.escHandler);
+    s.escHandler = null;
+  }
+  if (s.popstateHandler) {
+    window.removeEventListener("popstate", s.popstateHandler);
+    s.popstateHandler = null;
+  }
+  if (s.pushedHistory) {
+    s.pushedHistory = false;
+    try {
+      history.back();
+    } catch {
+      // 忽略
+    }
+  }
+  s.triggerImg?.focus?.();
+  s.triggerImg = null;
+};
+
+const handleImageClick = (event: Event) => {
+  const target = event.target as HTMLElement | null;
+  if (!target) return;
+  // 严格匹配：必须命中 .article-img-zoomable，避免误中头像、icon
+  if (!(target instanceof HTMLImageElement)) return;
+  if (!target.classList.contains("article-img-zoomable")) return;
+  // 已在全屏态时忽略二次点击
+  if (imageFsState.overlay) return;
+
+  const triggerImg = target;
+
+  // 收集文章里所有可放大图片，组成图集；DOM 顺序就是文章里的展示顺序，符合阅读直觉。
+  // 用 currentSrc 解析 srcset 后的真实资源地址，alt 用于无障碍。
+  const allImgs = Array.from(
+    document.querySelectorAll<HTMLImageElement>(
+      ".article-body-ssr .article-img-zoomable"
+    )
+  );
+  const gallery = allImgs.map((el) => ({
+    src: el.currentSrc || el.src,
+    alt: el.alt || "",
+  }));
+  let index = allImgs.indexOf(triggerImg);
+  if (index < 0) index = 0;
+  const total = gallery.length;
+  if (total === 0) return;
+
+  const overlay = document.createElement("div");
+  overlay.className = "image-fs-overlay";
+  overlay.setAttribute("role", "dialog");
+  overlay.setAttribute("aria-modal", "true");
+  overlay.setAttribute("aria-label", "图片全屏查看");
+
+  // 工具栏：左右箭头 + 计数器集中放左侧，缩放/关闭放右侧。
+  // 单张时左右按钮和计数器加 .is-single 隐藏，避免空 UI。
+  const isSingle = total <= 1;
+  overlay.innerHTML = `
+    <div class="image-fs-toolbar${isSingle ? ' is-single' : ''}">
+      <button class="image-fs-btn image-fs-prev" data-action="prev" type="button" aria-label="上一张" title="上一张 (←)">
+        <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">
+          <path fill="currentColor" d="M15.41 16.59L10.83 12l4.58-4.59L14 6l-6 6 6 6 1.41-1.41z"/>
+        </svg>
+      </button>
+      <span class="image-fs-counter" aria-live="polite">${index + 1} / ${total}</span>
+      <button class="image-fs-btn image-fs-next" data-action="next" type="button" aria-label="下一张" title="下一张 (→)">
+        <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">
+          <path fill="currentColor" d="M8.59 16.59L13.17 12 8.59 7.41 10 6l6 6-6 6-1.41-1.41z"/>
+        </svg>
+      </button>
+      <span class="image-fs-spacer"></span>
+      <button class="image-fs-btn" data-action="zoom-out" type="button" aria-label="缩小" title="缩小">
+        <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">
+          <path fill="currentColor" d="M19 13H5v-2h14v2z"/>
+        </svg>
+      </button>
+      <span class="image-fs-scale" aria-live="polite">100%</span>
+      <button class="image-fs-btn" data-action="reset" type="button" aria-label="重置" title="重置缩放">
+        <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">
+          <path fill="currentColor" d="M12 5V1L7 6l5 5V7c3.31 0 6 2.69 6 6s-2.69 6-6 6-6-2.69-6-6H4c0 4.42 3.58 8 8 8s8-3.58 8-8-3.58-8-8-8z"/>
+        </svg>
+      </button>
+      <button class="image-fs-btn" data-action="zoom-in" type="button" aria-label="放大" title="放大">
+        <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">
+          <path fill="currentColor" d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/>
+        </svg>
+      </button>
+      <button class="image-fs-btn image-fs-close" data-action="close" type="button" aria-label="关闭" title="关闭">
+        <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">
+          <path fill="currentColor" d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/>
+        </svg>
+      </button>
+    </div>
+    <div class="image-fs-stage">
+      <button class="image-fs-edge image-fs-edge--prev${isSingle ? ' is-hidden' : ''}" data-action="prev" type="button" aria-label="上一张">
+        <svg viewBox="0 0 24 24" width="28" height="28" aria-hidden="true">
+          <path fill="currentColor" d="M15.41 16.59L10.83 12l4.58-4.59L14 6l-6 6 6 6 1.41-1.41z"/>
+        </svg>
+      </button>
+      <div class="image-fs-canvas"></div>
+      <button class="image-fs-edge image-fs-edge--next${isSingle ? ' is-hidden' : ''}" data-action="next" type="button" aria-label="下一张">
+        <svg viewBox="0 0 24 24" width="28" height="28" aria-hidden="true">
+          <path fill="currentColor" d="M8.59 16.59L13.17 12 8.59 7.41 10 6l6 6-6 6-1.41-1.41z"/>
+        </svg>
+      </button>
+    </div>
+    <div class="image-fs-tip">滚轮 / 双指缩放 · 拖拽平移${isSingle ? '' : ' · ←/→ 切换'}</div>
+  `;
+
+  const canvas = overlay.querySelector(".image-fs-canvas") as HTMLElement;
+  const stage = overlay.querySelector(".image-fs-stage") as HTMLElement;
+  const scaleLabel = overlay.querySelector(".image-fs-scale") as HTMLElement;
+  const counterEl = overlay.querySelector(
+    ".image-fs-counter"
+  ) as HTMLElement | null;
+  const prevBtns = overlay.querySelectorAll<HTMLButtonElement>(
+    "[data-action='prev']"
+  );
+  const nextBtns = overlay.querySelectorAll<HTMLButtonElement>(
+    "[data-action='next']"
+  );
+
+  // 复用同一个 <img> 节点：切换图片时只换 src，DOM 节点不重建——
+  // 这样 transform 状态 reset 与 load 监听都更可控。
+  const img = new Image();
+  img.draggable = false;
+  img.className = "image-fs-img";
+  canvas.appendChild(img);
+
+  document.body.appendChild(overlay);
+
+  const s = imageFsState;
+  s.scale = 1;
+  s.tx = 0;
+  s.ty = 0;
+  s.overlay = overlay;
+  s.prevBodyOverflow = document.body.style.overflow;
+  s.triggerImg = triggerImg;
+  document.body.style.overflow = "hidden";
+
+  const MIN_SCALE = 0.2;
+  const MAX_SCALE = 8;
+  const applyTransform = () => {
+    canvas.style.transform = `translate(${s.tx}px, ${s.ty}px) scale(${s.scale})`;
+    scaleLabel.textContent = `${Math.round(s.scale * 100)}%`;
+  };
+  const zoomAtPoint = (
+    pointX: number,
+    pointY: number,
+    nextScale: number
+  ) => {
+    const clamped = Math.max(MIN_SCALE, Math.min(MAX_SCALE, nextScale));
+    const ratio = clamped / s.scale;
+    const rect = stage.getBoundingClientRect();
+    const localX = pointX - rect.left;
+    const localY = pointY - rect.top;
+    s.tx = localX - ratio * (localX - s.tx);
+    s.ty = localY - ratio * (localY - s.ty);
+    s.scale = clamped;
+    applyTransform();
+  };
+
+  // 适配视口：根据图片自然宽高与 stage 尺寸算 contain 比例。
+  // 必须等图片 decode 完成才有 naturalWidth/Height；如果是缓存图片可能已 complete。
+  // ⚠ 关键：tx/ty 居中量必须和 scale 一起一次性算出，不能"先 applyTransform 再 rAF 补 delta"——
+  // 那种两步法会让图片先在 stage 左上角显示一帧再跳到中央，
+  // 在快速切换图片时表现为"左上角闪一下"。
+  // 几何推导：canvas 用 transform-origin: 0 0 + translate(tx, ty) scale(s)，
+  // 所以渲染盒子 = [tx, ty, tx + naturalW*s, ty + naturalH*s]。
+  // 要让 canvas 中心对齐 stage 中心：
+  //   tx = (stageW - naturalW * s) / 2
+  //   ty = (stageH - naturalH * s) / 2
+  const fitContain = () => {
+    const stageRect = stage.getBoundingClientRect();
+    const naturalW = img.naturalWidth || img.width || 0;
+    const naturalH = img.naturalHeight || img.height || 0;
+    if (!naturalW || !naturalH) return;
+    img.style.width = `${naturalW}px`;
+    img.style.height = `${naturalH}px`;
+    const fitRatio = Math.min(
+      (stageRect.width * 0.95) / naturalW,
+      (stageRect.height * 0.95) / naturalH,
+      1 // 不上采样，小图保持原始 1:1，避免糊
+    );
+    s.scale = fitRatio;
+    s.tx = (stageRect.width - naturalW * fitRatio) / 2;
+    s.ty = (stageRect.height - naturalH * fitRatio) / 2;
+    applyTransform();
+  };
+
+  // 加载第 i 张：用 once load 监听确保切图后才 fitContain；
+  // 缓存图片可能瞬间 complete，需走 rAF 兜底（监听不会触发）。
+  const loadIndex = (i: number) => {
+    if (i < 0 || i >= total) return;
+    index = i;
+    const item = gallery[i];
+    img.alt = item.alt;
+    if (counterEl) counterEl.textContent = `${i + 1} / ${total}`;
+    // 重置变换：上一张如果被缩放过，不能带状态进新图
+    s.scale = 1;
+    s.tx = 0;
+    s.ty = 0;
+    img.style.width = "0px";
+    img.style.height = "0px";
+    applyTransform();
+    overlay.classList.add("is-loading");
+
+    const onLoaded = () => {
+      overlay.classList.remove("is-loading");
+      fitContain();
+    };
+    if (img.src === item.src && img.complete && img.naturalWidth) {
+      // 同一张图片重新触发（理论上不会发生，做个兜底）
+      requestAnimationFrame(onLoaded);
+      return;
+    }
+    img.onload = onLoaded;
+    img.onerror = () => {
+      overlay.classList.remove("is-loading");
+    };
+    img.src = item.src;
+    // 缓存图片：设置 src 后 complete 立刻为 true，此时 onload 不会再触发，
+    // 用 rAF 兜底保证仍能跑 fitContain。
+    if (img.complete && img.naturalWidth) {
+      requestAnimationFrame(onLoaded);
+    }
+  };
+
+  const goPrev = () => {
+    if (total <= 1) return;
+    loadIndex((index - 1 + total) % total);
+  };
+  const goNext = () => {
+    if (total <= 1) return;
+    loadIndex((index + 1) % total);
+  };
+
+  // 首次加载当前图
+  loadIndex(index);
+
+  overlay.addEventListener("click", (e) => {
+    const t = (e.target as HTMLElement).closest(
+      "[data-action]"
+    ) as HTMLButtonElement | null;
+    if (t) {
+      const action = t.getAttribute("data-action");
+      const rect = stage.getBoundingClientRect();
+      const cx = rect.left + rect.width / 2;
+      const cy = rect.top + rect.height / 2;
+      if (action === "zoom-in") {
+        zoomAtPoint(cx, cy, s.scale * 1.25);
+      } else if (action === "zoom-out") {
+        zoomAtPoint(cx, cy, s.scale / 1.25);
+      } else if (action === "reset") {
+        fitContain();
+      } else if (action === "prev") {
+        goPrev();
+      } else if (action === "next") {
+        goNext();
+      } else if (action === "close") {
+        closeImageFullscreen();
+      }
+      e.stopPropagation();
+      return;
+    }
+    // 点击蒙层空白处（不是 stage 内的图片或工具栏）也关闭
+    if (e.target === overlay) {
+      closeImageFullscreen();
+    }
+  });
+
+  // 鼠标滚轮缩放
+  stage.addEventListener(
+    "wheel",
+    (e) => {
+      e.preventDefault();
+      const factor = e.deltaY > 0 ? 1 / 1.1 : 1.1;
+      zoomAtPoint(e.clientX, e.clientY, s.scale * factor);
+    },
+    { passive: false }
+  );
+
+  // 鼠标拖拽
+  let dragging = false;
+  let lastX = 0;
+  let lastY = 0;
+  stage.addEventListener("mousedown", (e) => {
+    if (e.button !== 0) return;
+    // 边缘按钮上 mousedown 不进入拖拽（避免点箭头误触拖拽）
+    if ((e.target as HTMLElement).closest(".image-fs-edge")) return;
+    dragging = true;
+    lastX = e.clientX;
+    lastY = e.clientY;
+    stage.style.cursor = "grabbing";
+  });
+  const onMouseMove = (e: MouseEvent) => {
+    if (!dragging) return;
+    s.tx += e.clientX - lastX;
+    s.ty += e.clientY - lastY;
+    lastX = e.clientX;
+    lastY = e.clientY;
+    applyTransform();
+  };
+  const onMouseUp = () => {
+    dragging = false;
+    stage.style.cursor = "";
+  };
+  document.addEventListener("mousemove", onMouseMove);
+  document.addEventListener("mouseup", onMouseUp);
+
+  // 触屏：单指拖拽 / 双指 pinch
+  let touchMode: "none" | "drag" | "pinch" = "none";
+  let touchStartX = 0;
+  let touchStartY = 0;
+  stage.addEventListener(
+    "touchstart",
+    (e) => {
+      if (e.touches.length === 1) {
+        touchMode = "drag";
+        touchStartX = e.touches[0].clientX;
+        touchStartY = e.touches[0].clientY;
+      } else if (e.touches.length === 2) {
+        touchMode = "pinch";
+        const dx = e.touches[0].clientX - e.touches[1].clientX;
+        const dy = e.touches[0].clientY - e.touches[1].clientY;
+        s.pinchStartDist = Math.hypot(dx, dy);
+        s.pinchStartScale = s.scale;
+      }
+    },
+    { passive: false }
+  );
+  stage.addEventListener(
+    "touchmove",
+    (e) => {
+      if (touchMode === "drag" && e.touches.length === 1) {
+        e.preventDefault();
+        const t = e.touches[0];
+        s.tx += t.clientX - touchStartX;
+        s.ty += t.clientY - touchStartY;
+        touchStartX = t.clientX;
+        touchStartY = t.clientY;
+        applyTransform();
+      } else if (touchMode === "pinch" && e.touches.length === 2) {
+        e.preventDefault();
+        const dx = e.touches[0].clientX - e.touches[1].clientX;
+        const dy = e.touches[0].clientY - e.touches[1].clientY;
+        const dist = Math.hypot(dx, dy);
+        if (s.pinchStartDist === 0) return;
+        const nextScale =
+          (s.pinchStartScale * dist) / s.pinchStartDist;
+        const cx = (e.touches[0].clientX + e.touches[1].clientX) / 2;
+        const cy = (e.touches[0].clientY + e.touches[1].clientY) / 2;
+        zoomAtPoint(cx, cy, nextScale);
+      }
+    },
+    { passive: false }
+  );
+  stage.addEventListener("touchend", (e) => {
+    if (e.touches.length === 0) {
+      touchMode = "none";
+    } else if (e.touches.length === 1) {
+      touchMode = "drag";
+      touchStartX = e.touches[0].clientX;
+      touchStartY = e.touches[0].clientY;
+    }
+  });
+
+  const cleanup = () => {
+    document.removeEventListener("mousemove", onMouseMove);
+    document.removeEventListener("mouseup", onMouseUp);
+  };
+  const mo = new MutationObserver(() => {
+    if (!document.body.contains(overlay)) {
+      cleanup();
+      mo.disconnect();
+    }
+  });
+  mo.observe(document.body, { childList: true });
+
+  // 键盘：ESC 关闭，←/→ 切换图片
+  s.escHandler = (e: KeyboardEvent) => {
+    if (e.key === "Escape") {
+      closeImageFullscreen();
+    } else if (e.key === "ArrowLeft") {
+      e.preventDefault();
+      goPrev();
+    } else if (e.key === "ArrowRight") {
+      e.preventDefault();
+      goNext();
+    }
+  };
+  document.addEventListener("keydown", s.escHandler);
+
+  s.popstateHandler = () => {
+    s.pushedHistory = false;
+    closeImageFullscreen();
+  };
+  try {
+    history.pushState({ imageFullscreen: true }, "");
+    s.pushedHistory = true;
+    window.addEventListener("popstate", s.popstateHandler);
+  } catch {
+    // 忽略
+  }
+  // 标记 prev/next 引用使用，避免编译器报"未使用"警告（实际通过 data-action 委托触发）
+  void prevBtns;
+  void nextBtns;
+};
+
+// ============================================================
+// Mermaid 客户端渲染
+// ------------------------------------------------------------
+// SSR 阶段把 ```mermaid``` 代码块输出为：
+//   <div class="mermaid-block" data-mermaid-rendered="false">
+//     <pre class="mermaid-source">原始源码</pre>
+//   </div>
+// 客户端要做的：
+// 1) 动态 import('mermaid')，避免给非数学/图表页面也加载这个 ~700KB 的库
+// 2) 找到所有未渲染的 .mermaid-block，调用 mermaid.render(id, source) 拿到 svg
+// 3) 把 .mermaid-source 替换为 svg，并打 data-mermaid-rendered="true" 防止重复渲染
+// 路由切换时（同一组件实例），watch route 后会重新调用一次，覆盖新文章里的 mermaid 块。
+// ============================================================
+let mermaidLib: typeof import("mermaid").default | null = null;
+let mermaidIdCounter = 0;
+const renderMermaidBlocks = async () => {
+  if (typeof document === "undefined") return;
+  const blocks = document.querySelectorAll<HTMLDivElement>(
+    '.mermaid-block[data-mermaid-rendered="false"]'
+  );
+  if (blocks.length === 0) return;
+
+  if (!mermaidLib) {
+    try {
+      const mod = await import("mermaid");
+      mermaidLib = mod.default;
+      mermaidLib.initialize({
+        startOnLoad: false,
+        theme: "default",
+        // 一些常用图表的安全开关
+        securityLevel: "loose",
+        flowchart: { htmlLabels: true, curve: "basis" },
+      });
+    } catch (err) {
+      console.error("[mermaid] 加载失败", err);
+      return;
+    }
+  }
+
+  for (const block of Array.from(blocks)) {
+    // 渲染目标：内层 .mermaid-content；写到内层而不是 block 自身，
+    // 是为了保留外层右上角的"全屏按钮"——SSR 已经把它渲染好了，
+    // 客户端只负责把 svg 填进容器，按钮永远在原位，事件委托一次挂载即可。
+    const content = block.querySelector(".mermaid-content") as HTMLElement | null;
+    const target = content || block;
+    const source = target.querySelector(".mermaid-source")?.textContent || "";
+    if (!source.trim()) {
+      block.setAttribute("data-mermaid-rendered", "true");
+      continue;
+    }
+    const id = `mermaid-${Date.now()}-${mermaidIdCounter++}`;
+    try {
+      const { svg } = await mermaidLib.render(id, source);
+      target.innerHTML = svg;
+      block.setAttribute("data-mermaid-rendered", "true");
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      target.innerHTML = `<pre class="mermaid-error">[Mermaid 渲染失败] ${msg}\n\n${source.replace(/[<&]/g, (c) => (c === "<" ? "&lt;" : "&amp;"))}</pre>`;
+      block.setAttribute("data-mermaid-rendered", "true");
     }
   }
 };
@@ -510,7 +1657,36 @@ onMounted(() => {
     // 立即检测设备类型
     isMobile.value = window.innerWidth < 576;
 
-    initArticleContent();
+    // SSR 已经把正文直出到页面，客户端只在"SSR 没有拿到内容"时兜底拉取，
+    // 不再切换到 md-editor-v3 替换 DOM，避免样式抖动与 hydration 二次渲染。
+    if (!article.value || !article.value.renderedHtml) {
+      initArticleContent();
+    }
+
+    // 代码块复制按钮：通过事件委托一次性挂载到 document.body，
+    // 避免每个 .ssr-code-block 单独绑事件；点击后从对应 <pre><code> 读 textContent，
+    // 再写入剪贴板。优先用 navigator.clipboard，回落到 execCommand。
+    document.addEventListener("click", handleCodeCopyClick);
+    // 代码块折叠按钮：同样事件委托
+    document.addEventListener("click", handleCodeToggleClick);
+    // 代码块全屏按钮：同样事件委托（仅移动端响应）
+    document.addEventListener("click", handleCodeFullscreenClick);
+    // Mermaid 图表全屏按钮：事件委托，PC + 移动端都响应
+    document.addEventListener("click", handleMermaidFullscreenClick);
+    // 文章图片点击全屏：事件委托
+    document.addEventListener("click", handleImageClick);
+
+    // 首屏激活：把 SSR 输出的 .mermaid-block 占位 div 渲染成 svg。
+    // 放到 nextTick 之后等水合完成，避免与 Vue 的水合写 DOM 抢同一帧。
+    // requestIdleCallback 兜底降级 setTimeout，确保非关键路径不阻塞 LCP。
+    const triggerMermaid = () => {
+      void renderMermaidBlocks();
+    };
+    if (typeof window.requestIdleCallback === "function") {
+      window.requestIdleCallback(triggerMermaid, { timeout: 1500 });
+    } else {
+      setTimeout(triggerMermaid, 0);
+    }
   }
 });
 
@@ -518,6 +1694,15 @@ onMounted(() => {
 onBeforeUnmount(() => {
   if (import.meta.client) {
     window.removeEventListener("resize", handleResize);
+    document.removeEventListener("click", handleCodeCopyClick);
+    document.removeEventListener("click", handleCodeToggleClick);
+    document.removeEventListener("click", handleCodeFullscreenClick);
+    document.removeEventListener("click", handleMermaidFullscreenClick);
+    document.removeEventListener("click", handleImageClick);
+    // 如果用户路由切走时全屏蒙层还在，需要主动清理
+    closeCodeFullscreen();
+    closeMermaidFullscreen();
+    closeImageFullscreen();
     if (resizeTimer) {
       clearTimeout(resizeTimer);
       resizeTimer = null;
@@ -532,9 +1717,8 @@ watch(
   () => route.params.id,
   async (newId, oldId) => {
     if (newId && newId !== oldId) {
-      // 重置状态
+      // 重置状态：路由切换时把内容相关字段清空，等新文章加载完毕再渲染
       article.value = null;
-      isContentReady.value = false;
       visibleContent.value = "";
       pendingRequest.value = null;
       loadingState.value = "正在加载文章...";
@@ -550,6 +1734,13 @@ watch(
             await initArticleContent();
           } catch (error) {}
         }
+
+        // 新文章 HTML 替换完毕后，重新跑一次 mermaid 渲染。
+        // SPA 路由切换不会重新 mount 组件，onMounted 不会再触发，
+        // 因此必须在 watch 里手动 trigger 一次。
+        // 用 nextTick 确保 v-html 已经把新 DOM 写入页面。
+        await nextTick();
+        void renderMermaidBlocks();
       }
     }
   }

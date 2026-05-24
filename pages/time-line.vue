@@ -19,7 +19,6 @@
             <TagCard :tags="tags" />
             <LinkCard :friend-links="friendLinks" />
         </div>
-        <returnTop></returnTop>
     </section>
 </template>
 
@@ -79,6 +78,13 @@ const { hotArticles, tags, friendLinks } = useSidebarData();
     .my-custom-timeline-item .el-timeline-item__wrapper {
         padding-left: 15px;
         top: -5px;
+    }
+
+    /* Element Plus 的 .el-timeline.is-start 默认 padding-left: 40px，
+       移动端屏幕窄，这 40px 顶距占用了内容横向空间，去掉让时间线贴左排布。
+       padding-right 保持 0 不变（Element Plus 默认值）。 */
+    .el-timeline.is-start {
+        padding-left: 0;
     }
 }
 </style>

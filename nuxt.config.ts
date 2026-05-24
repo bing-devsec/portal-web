@@ -98,6 +98,31 @@ export default defineNuxtConfig({
       siteUrl: endpoints.siteUrl,
     },
     ssrApiBase: endpoints.ssrApiBase,
+    // ISR 主动失效接口的鉴权密钥
+    // 部署时通过环境变量 NUXT_REVALIDATE_SECRET 注入
+    // 后端（Go）调用 /api/_revalidate 时必须在 x-revalidate-secret 头里带相同值
+    revalidateSecret: process.env.NUXT_REVALIDATE_SECRET || "",
+  },
+
+  // ==================== 路由规则（ISR + 主动失效）====================
+  // 设计：
+  //   - 文章详情：ISR 7 天，依赖 Go 后端在文章变更时调用 /api/_revalidate 主动失效
+  //   - 列表/工具页等保持默认 SSR（内容相对动态、变更频繁，靠主动失效成本高）
+  //   - /api/_revalidate 自身不允许被搜索引擎索引
+  routeRules: {
+    "/article-detail/**": {
+      isr: 60 * 60 * 24 * 7,
+      headers: {
+        "Cache-Control":
+          "public, s-maxage=86400, stale-while-revalidate=604800",
+      },
+    },
+    "/api/_revalidate": {
+      headers: {
+        "Cache-Control": "no-store",
+        "X-Robots-Tag": "noindex, nofollow",
+      },
+    },
   },
 
   // ==================== 样式配置 ====================

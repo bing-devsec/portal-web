@@ -304,6 +304,48 @@ export function generateJsonToolFaqStructuredData(locale: 'zh' | 'en' = 'zh') {
 }
 
 /**
+ * 生成文章详情页的 BreadcrumbList JSON-LD 结构化数据。
+ * Google 在 SERP 中会用这个数据展示"首页 → 标签 → 文章标题"路径，CTR 更高。
+ */
+export function generateArticleBreadcrumb(
+    article: { id: string; title: string; tag?: string },
+    siteUrl: string
+) {
+    const items: Array<{ '@type': 'ListItem'; position: number; name: string; item: string }> = [
+        {
+            '@type': 'ListItem',
+            position: 1,
+            name: '首页',
+            item: siteUrl,
+        },
+    ];
+
+    // 标签层（如果文章有标签则取第一个作为主分类）
+    const firstTag = article.tag ? article.tag.split(/[,\s，]+/).filter(Boolean)[0] : '';
+    if (firstTag) {
+        items.push({
+            '@type': 'ListItem',
+            position: items.length + 1,
+            name: firstTag,
+            item: `${siteUrl}/tag?tag=${encodeURIComponent(firstTag)}`,
+        });
+    }
+
+    items.push({
+        '@type': 'ListItem',
+        position: items.length + 1,
+        name: article.title,
+        item: `${siteUrl}/article-detail/${article.id}`,
+    });
+
+    return {
+        '@context': 'https://schema.org',
+        '@type': 'BreadcrumbList',
+        itemListElement: items,
+    };
+}
+
+/**
  * 生成 JSON 工具页面的 BreadcrumbList 结构化数据
  */
 export function generateJsonToolBreadcrumb(siteUrl: string, locale: 'zh' | 'en' = 'zh') {

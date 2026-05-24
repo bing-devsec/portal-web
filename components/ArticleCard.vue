@@ -1,8 +1,8 @@
 <template>
     <li class="no_pic" @dblclick="navigateToArticle">
-        <h4 class="title">
+        <h2 class="title">
             <NuxtLink :to="articleLink">{{ articleInfo.title }}</NuxtLink>
-        </h4>
+        </h2>
         <div class="desc">{{ articleInfo.describe }}</div>
         <div class="date_hits">
             <span>
@@ -35,6 +35,16 @@ const navigateToArticle = () => {navigateTo(articleLink.value)}
 <style scoped>
 .no_pic {
     cursor: pointer;
+}
+
+/* 标题：从 SEO 角度用 h2（h1 留给站点/页面主标题），
+   但视觉上保持原 h4 的 18px 大小（全局 h2 默认 30px 在卡片里太大）。
+   line-height 跟随项目原 h2/h4 共享的 1（来自 base.css 的 h1~h6 重置）。 */
+li .title {
+    font-size: 18px;
+    margin-top: 10px;
+    margin-bottom: 10px;
+    font-weight: 400;
 }
 
 li .desc {

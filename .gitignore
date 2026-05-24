@@ -23,6 +23,8 @@ logs
 .env.*
 !.env.example
 
+.dbg/
+
 # SSL certificates for local development
 certs/
 *.pem

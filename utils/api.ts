@@ -73,7 +73,13 @@ export function useApiData<T>(url: string, options: any = {}) {
 	const { params: initialParams, key, debounceTime = 300, ...restOptions } = options;
 
 	// 存储当前参数
-	const currentParams = ref(initialParams);
+	// ⚠ 关键修复：调用方可能传 ComputedRef / Ref 进来（如 tag.vue、search-result.vue 用 computed 包装 params）。
+	// 直接 `ref(initialParams)` 在 Vue 3 里**不会再嵌一层**，而是让 currentParams 直接持有那个 ref，
+	// 后续 `currentParams.value = xxx` 会等价于 `originalComputedRef.value = xxx`，
+	// 而 computed 没有 setter，于是抛 [Vue warn] "Write operation failed: computed value is readonly"。
+	// 修复方式：初始化时主动解包一次，把 ComputedRef/Ref 的当前值取出来后再装进新的可写 ref，
+	// 这样 currentParams 永远是"普通可写 ref"，refresh({ params }) 时不会回写到外部只读 computed。
+	const currentParams = ref(isRef(initialParams) ? initialParams.value : initialParams);
 	// 强制所有请求都使用include模式，确保cookie能够被发送
 	const credentials = 'include';
 
