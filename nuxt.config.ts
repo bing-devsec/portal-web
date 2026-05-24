@@ -1,6 +1,32 @@
 import { copyFileSync, mkdirSync, existsSync } from "fs";
 import { resolve } from "path";
 
+// ==================== 环境与运行时地址 ====================
+// 生产构建（nuxt build / nuxt generate）时 NODE_ENV 会被自动置为 production
+const isProd = process.env.NODE_ENV === "production";
+
+// 线上地址：上线时使用，禁止与本地调试地址混用
+const PROD_ENDPOINTS = {
+  baseURL: "/api-backend",
+  siteUrl: "https://liubing.xyz",
+  ssrApiBase: "http://meta-api:8080",
+};
+
+// 本地地址：本机开发与调试使用
+const LOCAL_ENDPOINTS = {
+  baseURL: "http://127.0.0.1:8080",
+  siteUrl: "http://127.0.0.1:8080",
+  ssrApiBase: "http://127.0.0.1:8080",
+};
+
+// 本地调试开关：仅在非生产环境下读取，确保线上构建产物不会暴露任何本地调试入口与地址
+// 用法：
+//   - 本地默认即为本地地址，无需任何环境变量
+//   - 本地想接生产 API 调试时：LOCAL_DEBUG=false npm run dev
+//   - 线上：该变量被强制忽略，始终走 PROD_ENDPOINTS
+const useLocal = !isProd && process.env.LOCAL_DEBUG !== "false";
+const endpoints = useLocal ? LOCAL_ENDPOINTS : PROD_ENDPOINTS;
+
 export default defineNuxtConfig({
   // ==================== 核心配置 ====================
   devtools: { enabled: false },
@@ -68,13 +94,10 @@ export default defineNuxtConfig({
   // ==================== 运行时配置 ====================
   runtimeConfig: {
     public: {
-      baseURL: '/api-backend',
-      // baseURL: "http://127.0.0.1:8080",
-      siteUrl: "https://liubing.xyz",
-      // siteUrl: "http://127.0.0.1:8080",
+      baseURL: endpoints.baseURL,
+      siteUrl: endpoints.siteUrl,
     },
-    ssrApiBase: 'http://meta-api:8080'
-    // ssrApiBase: "http://127.0.0.1:8080",
+    ssrApiBase: endpoints.ssrApiBase,
   },
 
   // ==================== 样式配置 ====================
@@ -169,14 +192,7 @@ export default defineNuxtConfig({
           defaultHandler(warning);
         },
         output: {
-          manualChunks: {
-            // 将 md-editor-v3 单独打包
-            'md-editor': ['md-editor-v3'],
-            // 注意：JsonTool 这类含 Monaco ?worker 导入的组件不要放进 manualChunks，
-            // 否则 worker chunk 的产物路径会和强制分包冲突，导致生产环境 worker 请求
-            // 被路由兜底为 HTML（Uncaught SyntaxError: Unexpected token '<'）。
-            // Vite 默认的基于动态 import 的代码分割就足以让它单独成 chunk。
-          },
+          manualChunks: {'md-editor': ['md-editor-v3']},
         },
       },
       terserOptions: {

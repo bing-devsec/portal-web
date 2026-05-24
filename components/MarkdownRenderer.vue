@@ -17,7 +17,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, onMounted, onBeforeUnmount, watch, nextTick } from "vue";
+import { computed, ref, onMounted, onBeforeUnmount } from "vue";
 import { MdPreview, config } from "md-editor-v3";
 import "md-editor-v3/lib/preview.css";
 import mermaid from "mermaid";
@@ -72,38 +72,36 @@ const hasKatex = computed(() => {
   return /\$\$[\s\S]*?\$\$|\$[^$\n]+\$/.test(props.content);
 });
 
+// 移动端不显示代码行号；平板与 PC（视口宽度 ≥ 768px）显示行号
+// 使用业界常见的移动端断点 768px：低于该宽度统一视为移动端
+const MOBILE_BREAKPOINT = 768;
+
+// 计算"当前是否应显示行号"的工具函数：
+// 在 SSR 阶段没有 window，统一返回 false（与移动端表现一致，避免水合差异）
+const shouldShowCodeRowNumber = () =>
+  typeof window !== "undefined" && window.innerWidth >= MOBILE_BREAKPOINT;
+
 // 响应式控制代码行号显示
-const showCodeRowNumber = ref(true);
-// 渲染 key，用于强制重新渲染组件
+// 直接用首次计算结果作为初始值：避免组件挂载后再翻转一次值并强制 renderKey 重建 MdPreview，
+// 那种"先 false 再 true"的二次重建在 SPA 路由切换时会与 md-editor-v3 内部异步任务竞态，
+// 导致 querySelectorAll on null 报错以及行号渲染丢失。
+const showCodeRowNumber = ref(shouldShowCodeRowNumber());
+// 渲染 key，用于在跨断点 resize 时强制重新渲染组件
 const renderKey = ref(`${props.editorId}-${Date.now()}`);
 
-const hljsLoaded = ref(false);
+// 注意：md-editor-v3 的 <MdPreview> 内部已经集成了 highlight.js，
+// 会异步完成"代码高亮 + 行号包裹结构"的整套渲染，并给 <code> 打上 data-highlighted="yes"。
+// 此前我们在 onMounted 里又调用 hljs.highlightElement 做"兜底高亮"，
+// 在 SPA 路由进入这种没有 ClientOnly 延迟的路径下，会比 md-editor-v3 内部任务更早跑，
+// 抢先把节点标记为已高亮，导致 md-editor-v3 的高亮 + 行号渲染整段被跳过 ——
+// 表现就是"PC 端进入文章详情没有行号，切换断点重建后才有行号"。
+// 因此这里彻底移除外部的兜底高亮逻辑，把代码高亮完全交回给 md-editor-v3 处理。
 
-const initHighlight = async () => {
-  if (!import.meta.client) return;
-
-  try {
-    const hljsMod = await import("highlight.js");
-    const hljs = (hljsMod && (hljsMod as any).default) || hljsMod;
-    if (hljs) {
-      if (typeof (hljs as any).configure === "function") {
-        try {
-          (hljs as any).configure({ ignoreUnescapedHTML: true });
-        } catch (e) {}
-      }
-      if (typeof (hljs as any).highlightAll === "function") {
-        (hljs as any).highlightAll();
-        hljsLoaded.value = true;
-      }
-    }
-  } catch (e) {}
-};
-
+// updateCodeRowNumber：resize 时跨越断点才会真正切换行号显示并通过 renderKey 触发一次重建
 const updateCodeRowNumber = () => {
   if (typeof window === "undefined") return;
-  const isLargeScreen = window.innerWidth > 576;
-  const newShowCodeRowNumber = isLargeScreen;
-  
+  const newShowCodeRowNumber = shouldShowCodeRowNumber();
+
   // 如果值发生变化，需要重新渲染
   if (showCodeRowNumber.value !== newShowCodeRowNumber) {
     showCodeRowNumber.value = newShowCodeRowNumber;
@@ -122,9 +120,10 @@ const handleResize = () => {
 
 onMounted(() => {
   if (typeof window === "undefined") return;
-  updateCodeRowNumber();
+  // 不再在挂载时强制翻转 showCodeRowNumber：初始值已经按视口宽度计算好，
+  // 避免"挂载后立刻改 renderKey 重建 MdPreview"与 md-editor-v3 内部异步渲染竞态，
+  // 那个竞态曾经导致 SPA 路由进入时 PC 端缺失代码行号。
   window.addEventListener("resize", handleResize, { passive: true });
-  initHighlight();
 });
 
 onBeforeUnmount(() => {
@@ -133,13 +132,6 @@ onBeforeUnmount(() => {
   if (resizeTimer) {
     clearTimeout(resizeTimer);
     resizeTimer = null;
-  }
-});
-
-watch([() => renderKey.value, () => props.content], async () => {
-  if (import.meta.client) {
-    await nextTick();
-    initHighlight();
   }
 });
 </script>
