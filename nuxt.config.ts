@@ -131,12 +131,22 @@ export default defineNuxtConfig({
 
   // ==================== 路由规则（ISR + 主动失效）====================
   // 设计：
-  //   - 文章详情：ISR 7 天，依赖 Go 后端在文章变更时调用 /api/_revalidate 主动失效
+  //   - 文章详情：缓存 7 天，依赖 Go 后端在文章变更时调用 /api/_revalidate 主动失效
   //   - 列表/工具页等保持默认 SSR（内容相对动态、变更频繁，靠主动失效成本高）
   //   - /api/_revalidate 自身不允许被搜索引擎索引
+  //
+  // 为什么用 swr 而不是 isr：
+  //   Nitro 2.13 + Nuxt 3.21 这个组合下，`isr: number` 只生效响应头，不会触发运行时
+  //   缓存（落 useStorage("cache")）。本地实测 isr 配置下 cache/ 目录始终为空。
+  //   `swr: number` 和 `cache.maxAge` 是 Nitro 1.x 时代就稳定的 API，跨版本表现一致。
   routeRules: {
     "/article-detail/**": {
-      isr: 60 * 60 * 24 * 7,
+      // swr: 启用 stale-while-revalidate 模式，请求会通过 cachedEventHandler 包装。
+      // Nitro 会把渲染结果写入 useStorage("cache") 持久化（fs driver 落盘到 ./cache）。
+      swr: 60 * 60 * 24 * 7,
+      // 不再显式设 staleMaxAge: -1：
+      //   - Nitro 会把它原样输出到 cache-control: stale-while-revalidate=-1（HTTP 非法值）
+      //   - 我们用下面的 headers 直接写 Cache-Control，覆盖框架默认值
       headers: {
         "Cache-Control":
           "public, s-maxage=86400, stale-while-revalidate=604800",

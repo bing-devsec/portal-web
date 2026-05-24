@@ -12,8 +12,7 @@ import {
  *
  * 设计目标：
  *   - 后端（Go）在文章新增/更新/删除、或前端发版时调用本接口
- *   - Nuxt Nitro 把 ISR 渲染结果存在 useStorage('cache') 下，前缀 nitro:routes
- *   - 我们用 getKeys(prefix) + removeItem 批量清理，避免硬编码 Nitro 内部 key 编码规则
+ *   - Nuxt Nitro 把 swr 渲染结果存在 useStorage('cache') 下，前缀 nitro:routes
  *
  * 鉴权：
  *   - 通过 x-revalidate-secret 请求头携带共享密钥
@@ -30,6 +29,21 @@ import {
  *   400 { error: "paths or all required" }
  *   401 { error: "unauthorized" }
  *   500 { error: "revalidate secret not configured" }
+ *
+ * Nitro cache key 算法说明：
+ *   实测 Nitro 2.13 的 swr key 形如 "nitro:routes:_:articledetail457:sF3Pma8D95"
+ *   - 路径中的 / 被替换成 :
+ *   - 路径段会做长度截断（约前 16~20 个字符）
+ *   - 末尾带原始 URL 的短哈希避免冲突
+ *   - 落盘文件名进一步把 : 替换成 / 形成目录树（fs driver 行为）
+ *
+ *   这意味着不能用"精确路径"匹配。我们改用：
+ *     1) 把路径标准化（去掉 / 等特殊字符），生成"slug 关键字"
+ *     2) 列出全部 nitro:routes 下的 keys
+ *     3) 关键字命中（contains）的 key 全部清理
+ *
+ *   这种"按子串筛选"的方式有少量副作用（不同文章 ID 前缀相同会被一起清），
+ *   但对博客场景影响微乎其微：清错最多导致下次访问回源一次，不会造成数据错误。
  */
 
 interface RevalidateBody {
@@ -40,14 +54,36 @@ interface RevalidateBody {
 const ROUTE_CACHE_PREFIX = "nitro:routes";
 
 /**
- * 把一个 URL path 转成 Nitro 的 cache key 前缀
- * Nitro 的 cache key 形如：nitro:routes:article-detail:123.json
- * 把开头的 / 去掉，再把剩余 / 替换成 :
+ * 把 URL path 转成"用于子串匹配的 slug 片段"
+ *
+ * Nitro 2.13 + unstorage fs driver 实测的 key 形如：
+ *   nitro:routes:_:articledetail504.2c1G7yFDYW.json
+ *
+ * 关键观察：
+ *   - 路径片段会被截断到 **16 个字母数字字符**，再加 10 字节的 base32 哈希
+ *   - slug 前以 `:` 分隔（来自 nitro 内部 key），后以 `.` 分隔哈希（fs driver 文件名规则）
+ *   - getKeys() 返回的 key 直接带 `.json` 后缀（fs driver 不剥离扩展名）
+ *
+ * 因此匹配策略：
+ *   - 取 path 的 slug 前 16 字符（与 Nitro 截断对齐）
+ *   - 用 `:slug.` 作为子串模式（前 `:` 边界 + slug + 后 `.` 边界），不会误匹配其他路径
+ *
+ * 例：
+ *   /article-detail/50474370602109964  →  slug = "articledetail504"
+ *   匹配模式: ":articledetail504." 命中 "nitro:routes:_:articledetail504.HASH.json"
+ *
+ * 副作用提示：
+ *   如果两篇文章 ID 前几位相同（如 /article-detail/50474... 和 /article-detail/50412...），
+ *   它们的 slug 截断后都是 "articledetail504"，会被一起清理。
+ *   这是 Nitro key 算法的固有限制；博客场景下影响极小（最多多一次回源），
+ *   不会造成数据正确性问题。
  */
-function pathToKeyPrefix(path: string): string {
+function pathToSlugMatcher(path: string): string {
   const trimmed = path.replace(/^\/+/, "").replace(/\/+$/, "");
-  const normalized = trimmed.replace(/\//g, ":");
-  return `${ROUTE_CACHE_PREFIX}:${normalized}`;
+  // 移除所有非字母数字字符（与 Nitro 内部 slug 化规则对齐）
+  const slug = trimmed.replace(/[^a-zA-Z0-9]/g, "").slice(0, 16);
+  if (!slug) return "";
+  return `:${slug}.`;
 }
 
 export default defineEventHandler(async (event: H3Event) => {
@@ -80,15 +116,23 @@ export default defineEventHandler(async (event: H3Event) => {
     await Promise.all(keys.map((k: string) => storage.removeItem(k)));
     cleared["*"] = keys.length;
   } else {
+    // 一次性列出所有 route cache keys，避免在每个 path 循环里重复扫描
+    const allKeys = await storage.getKeys(ROUTE_CACHE_PREFIX);
+
     for (const path of body.paths!) {
       if (typeof path !== "string" || !path.startsWith("/")) {
         cleared[String(path)] = 0;
         continue;
       }
-      const prefix = pathToKeyPrefix(path);
-      const keys = await storage.getKeys(prefix);
-      await Promise.all(keys.map((k: string) => storage.removeItem(k)));
-      cleared[path] = keys.length;
+      const slug = pathToSlugMatcher(path);
+      if (!slug) {
+        cleared[path] = 0;
+        continue;
+      }
+      // 子串匹配：key 里包含 ":slug." 即视为该路径相关的缓存
+      const matched = allKeys.filter((k: string) => k.includes(slug));
+      await Promise.all(matched.map((k: string) => storage.removeItem(k)));
+      cleared[path] = matched.length;
     }
   }
 
