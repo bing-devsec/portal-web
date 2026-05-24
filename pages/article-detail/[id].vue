@@ -195,10 +195,17 @@ const { data: serverArticle } = await useAsyncData<ArticleDetail>(
       headers["cookie"] = cookie;
     }
 
+    // SSR 必须用 ssrApiBase 直连后端：
+    //   - 生产 public.baseURL="/api-backend" 是给浏览器走 nginx 代理用的相对路径，
+    //     在 Node 进程内 $fetch 会请求 http://localhost:3000/api-backend/...（自请自身），
+    //     拿不到文章数据，导致 SSR 渲染出来是空标题 + 默认 meta，SEO 完全失效。
+    //   - 本地环境两个地址恰好相同（都是 http://127.0.0.1:8080），所以本地无感知。
+    // 与 utils/api.ts 中 `import.meta.server ? config.ssrApiBase : config.public.baseURL` 保持一致。
+    const ssrBaseURL = runtimeConfig.ssrApiBase as string;
     let result: { code: number; data: ArticleDetail | null } | null = null;
     try {
       result = await $fetch<{ code: number; data: ArticleDetail | null }>(
-        `${runtimeConfig.public.baseURL}/user/article/detail`,
+        `${ssrBaseURL}/user/article/detail`,
         {
           method: "GET",
           query: { id: articleId.value },
