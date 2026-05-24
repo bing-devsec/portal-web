@@ -1,4 +1,4 @@
-import { copyFileSync, mkdirSync, existsSync } from "fs";
+import { copyFileSync, mkdirSync, existsSync, readFileSync } from "fs";
 import { resolve } from "path";
 
 // ==================== 环境与运行时地址 ====================
@@ -26,6 +26,29 @@ const LOCAL_ENDPOINTS = {
 //   - 线上：该变量被强制忽略，始终走 PROD_ENDPOINTS
 const useLocal = !isProd && process.env.LOCAL_DEBUG !== "false";
 const endpoints = useLocal ? LOCAL_ENDPOINTS : PROD_ENDPOINTS;
+
+/**
+ * 读取 ISR 主动失效接口的共享密钥
+ *
+ * 支持两种注入方式（按优先级）：
+ *   1) NUXT_REVALIDATE_SECRET_FILE：指向密钥文件的绝对路径
+ *      → 用于 docker-compose secrets 注入（生产推荐，与 secrets/ 命名一致）
+ *      → 容器内通常是 /run/secrets/nuxt_revalidate_secret
+ *   2) NUXT_REVALIDATE_SECRET：直接传值
+ *      → 用于本地开发（.env 文件）或简单 docker 部署
+ *
+ * 两者都没设置时返回空字符串，运行期 server/api/_revalidate.post.ts 会主动 500，
+ * 强制提醒部署时必须配置。
+ */
+function readRevalidateSecret(): string {
+  const secretFile = process.env.NUXT_REVALIDATE_SECRET_FILE;
+  if (secretFile && existsSync(secretFile)) {
+    // trim 处理：手动 echo > file 时容易尾部带换行符，
+    // 与后端发送的 header 不一致就会导致 401，所以这里统一去掉首尾空白
+    return readFileSync(secretFile, "utf-8").trim();
+  }
+  return process.env.NUXT_REVALIDATE_SECRET || "";
+}
 
 export default defineNuxtConfig({
   // ==================== 核心配置 ====================
@@ -99,9 +122,11 @@ export default defineNuxtConfig({
     },
     ssrApiBase: endpoints.ssrApiBase,
     // ISR 主动失效接口的鉴权密钥
-    // 部署时通过环境变量 NUXT_REVALIDATE_SECRET 注入
+    // 部署时支持两种注入：
+    //   - 推荐：NUXT_REVALIDATE_SECRET_FILE=/run/secrets/nuxt_revalidate_secret（docker-compose secrets）
+    //   - 兼容：NUXT_REVALIDATE_SECRET=xxx（环境变量直传，本地或简单部署）
     // 后端（Go）调用 /api/_revalidate 时必须在 x-revalidate-secret 头里带相同值
-    revalidateSecret: process.env.NUXT_REVALIDATE_SECRET || "",
+    revalidateSecret: readRevalidateSecret(),
   },
 
   // ==================== 路由规则（ISR + 主动失效）====================
@@ -275,6 +300,17 @@ export default defineNuxtConfig({
   nitro: {
     prerender: {
       crawlLinks: false,
+    },
+    // ISR 缓存目录显式锚定，避免依赖 Nitro 默认行为（不同版本可能不一致）。
+    // 生产部署时 docker volume 挂载到此路径即可实现重启不丢缓存：
+    //   volumes:
+    //     - ./portal-web/cache:/home/node/portal-web/cache
+    // 本地开发时该目录会自动创建在项目根目录下。
+    storage: {
+      cache: {
+        driver: "fs",
+        base: process.env.NITRO_CACHE_DIR || "./cache",
+      },
     },
   },
 
