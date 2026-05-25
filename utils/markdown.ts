@@ -630,7 +630,47 @@ md.renderer.rules.heading_open = function (tokens, idx, options, env, self) {
 };
 
 /**
- * 对最终 HTML 做一次后处理：给所有 <img> 补上文章图片应有的 class 与懒加载属性。
+ * 为腾讯云 COS 图片 URL 生成 srcset 候选列表（响应式图片改造的核心工具函数）。
+ *
+ * 背景与原理：
+ *   1) 当前文章正文里的 <img> 是单尺寸交付：一张 1920 宽的原图同时给 PC 和手机。
+ *      iPhone 屏宽只有 ~390 CSS px（DPR=3 时 1170 物理像素就够），下载 1920 宽的原图
+ *      会浪费 60%~80% 的字节，直接拉高移动端 LCP。
+ *   2) srcset 是浏览器原生能力：列出多个候选尺寸，浏览器结合 sizes + DPR 自己挑最合适的下载，
+ *      纯静态 HTML 即可生效，无需 JS、无需服务端 UA 嗅探。
+ *   3) 腾讯云 COS 数据万象（imageMogr2）支持通过 URL 参数实时缩图 + 转 WebP + 压缩质量，
+ *      原图存一份，N 个尺寸由 COS 实时生成并由 CDN 缓存，业务侧零存储成本。
+ *
+ * 设计决策：
+ *   1) 仅对 *.myqcloud.com / *.tencentcos.com 域名（自有 COS 图床）注入 srcset，
+ *      避免对掘金/知乎等外链图拼参数导致 404
+ *   2) 原 URL 已带 ? 查询参数则放弃注入，避免和作者手写的处理参数冲突（作者优先）
+ *   3) 候选尺寸覆盖 400 / 800 / 1200 / 1920，匹配从低端机到 4K 屏的 DPR×CSS 宽度
+ *   4) 叠加 format/webp + quality/85：视觉无损，体积比 PNG 原图再省 30%~60%
+ *   5) 失败时返回 null，调用方走原 src 兜底，不影响渲染正确性
+ */
+const COS_HOSTS = /\.(myqcloud|tencentcos)\.com$/i;
+const COS_SRCSET_WIDTHS = [400, 800, 1200, 1920];
+
+function buildCosSrcset(rawUrl: string): string | null {
+    let parsed: URL;
+    try {
+        // 用占位 base 兼容协议相对 URL（//xxx.com/...）和绝对 URL
+        parsed = new URL(rawUrl, 'https://placeholder.local');
+    } catch {
+        return null;
+    }
+    if (!COS_HOSTS.test(parsed.hostname)) return null;
+    // 已有处理参数则让位给作者手写
+    if (parsed.search) return null;
+
+    return COS_SRCSET_WIDTHS
+        .map(w => `${rawUrl}?imageMogr2/thumbnail/${w}x/format/webp/quality/85 ${w}w`)
+        .join(', ');
+}
+
+/**
+ * 对最终 HTML 做一次后处理：给所有 <img> 补上文章图片应有的 class、懒加载与响应式 srcset。
  *
  * 为什么必须做：
  *   md 实例开了 html: true，markdown 正文里直接写的原生 <img>（比如 Typora 导出的
@@ -644,6 +684,8 @@ md.renderer.rules.heading_open = function (tokens, idx, options, env, self) {
  *   3) 同时补 loading="lazy" / decoding="async"，与 md.renderer.rules.image 的输出对齐
  *   4) 不动 fence 占位符（占位符是 HTML 注释 <!--shiki-placeholder:xxx-->，正则只匹配 <img>）
  *   5) 故意不替换内联 style：保留作者通过 style="zoom:67%" 等手段控制的尺寸意图
+ *   6) 自有 COS 图床的图片自动注入 srcset + sizes，让浏览器按设备挑最合适的尺寸下载，
+ *      移动端 LCP 直降；作者已手写 srcset 的不覆盖
  */
 function ensureImgAttributes(html: string): string {
     return html.replace(/<img\b([^>]*)>/gi, (_full, attrs: string) => {
@@ -667,6 +709,21 @@ function ensureImgAttributes(html: string): string {
         }
         if (!/\bdecoding\s*=/i.test(next)) {
             next += ' decoding="async"';
+        }
+
+        // 3) 响应式 srcset：仅对自有 COS 图床注入，作者已写 srcset 的不覆盖
+        //    sizes 提示：移动端（≤576px）满视口、平板（≤992px）90vw、PC 端文章正文约 720px
+        if (!/\bsrcset\s*=/i.test(next)) {
+            const srcMatch = next.match(/\bsrc\s*=\s*("|')([^"']+)\1/i);
+            if (srcMatch) {
+                const srcset = buildCosSrcset(srcMatch[2]);
+                if (srcset) {
+                    next += ` srcset="${srcset}"`;
+                    if (!/\bsizes\s*=/i.test(next)) {
+                        next += ` sizes="(max-width: 576px) 100vw, (max-width: 992px) 90vw, 720px"`;
+                    }
+                }
+            }
         }
 
         return `<img${next}>`;
