@@ -1,7 +1,6 @@
 <template>
-  <section class="container pt-20 article-detail-section">
-    <div class="row">
-      <div class="col-sm-10 col-md-10 col-lg-10">
+  <section class="l-container l-article pt-20 article-detail-section">
+    <div class="l-article-main">
         <div class="panel panel-default mb-20">
           <div class="panel-body pt-10 pb-10">
             <!-- 文章内容区域 - SSR 直出 HTML，确保爬虫和无 JS 用户立即看到正文 -->
@@ -52,9 +51,9 @@
             </div>
           </div>
         </div>
-      </div>
+    </div>
 
-      <div class="col-sm-2 col-md-2 col-lg-2">
+    <aside class="l-article-aside">
         <!--
           目录区域：headings 已在 SSR 阶段由父组件提取并通过 prop 传入，
           组件本身能够在服务端直出 <ul>，首屏一次成型，零闪烁；
@@ -72,8 +71,7 @@
             />
           </div>
         </div>
-      </div>
-    </div>
+    </aside>
   </section>
 </template>
 
@@ -125,7 +123,6 @@ const articleId = computed(() => route.params.id as string);
 const scrollElement = ".scrollable-content";
 const article = ref<ArticleDetail | null>(null);
 const visibleContent = ref("");
-const isMobile = ref(false);
 const loadingState = ref<string>("正在加载文章...");
 const fingerprintReady = ref(false);
 const fingerprintValue = ref("");
@@ -138,17 +135,6 @@ const catalogHeadings = computed(() => {
   const html = article.value?.renderedHtml || "";
   return extractHeadingsFromHtml(html, 3);
 });
-
-// 防抖相关的变量
-let resizeTimer: ReturnType<typeof setTimeout> | null = null;
-const handleResize = () => {
-  if (resizeTimer) clearTimeout(resizeTimer);
-  resizeTimer = setTimeout(() => {
-    if (import.meta.client) {
-      isMobile.value = window.innerWidth < 576;
-    }
-  }, 150); // 防抖150ms
-};
 
 // 从cookie中读取session_id的辅助函数
 function getSessionIdFromCookie(): string | null {
@@ -1773,9 +1759,6 @@ const renderMermaidBlocks = async () => {
 // 优化：使用 requestIdleCallback 延迟非关键操作，减少TBT
 onMounted(() => {
   if (import.meta.client) {
-    // 立即检测设备类型
-    isMobile.value = window.innerWidth < 576;
-
     // SSR 已经把正文直出到页面，客户端只在"SSR 没有拿到内容"时兜底拉取，
     // 不会再做任何客户端二次渲染来替换 DOM，避免样式抖动与 hydration mismatch。
     if (!article.value || !article.value.renderedHtml) {
@@ -1812,7 +1795,6 @@ onMounted(() => {
 // 组件卸载时清理数据
 onBeforeUnmount(() => {
   if (import.meta.client) {
-    window.removeEventListener("resize", handleResize);
     document.removeEventListener("click", handleCodeCopyClick);
     document.removeEventListener("click", handleCodeToggleClick);
     document.removeEventListener("click", handleCodeFullscreenClick);
@@ -1822,10 +1804,6 @@ onBeforeUnmount(() => {
     closeCodeFullscreen();
     closeMermaidFullscreen();
     closeImageFullscreen();
-    if (resizeTimer) {
-      clearTimeout(resizeTimer);
-      resizeTimer = null;
-    }
     // 取消待处理的请求
     pendingRequest.value = null;
   }
@@ -1897,7 +1875,7 @@ watch(
 
 /* 移动端特别优化 */
 @media (max-width: 576px) {
-  .col-sm-10 {
+  .l-article-main {
     padding-left: 0px;
     padding-right: 0px;
   }
@@ -1913,14 +1891,19 @@ watch(
 }
 
 .catalog-wrapper {
-  position: fixed;
+  position: sticky;
+  top: 12px;
   background-color: #fff;
-  max-height: 80vh;
-  min-width: 100px;
-  width: fit-content;
+  max-height: calc(100vh - 80px);
   overflow-y: auto;
   padding: 10px;
   display: none;
+}
+
+@media (min-width: 768px) {
+  .catalog-wrapper {
+    display: block;
+  }
 }
 
 .catalog-content {
@@ -1988,14 +1971,6 @@ watch(
   100% {
     transform: rotate(360deg);
   }
-}
-
-.catalog-wrapper {
-  display: block;
-  border: none;
-  max-width: 200px;
-  min-width: 100px;
-  width: clamp(100px, 12vw, 200px);
 }
 
 .w_main_left {
@@ -2071,16 +2046,9 @@ watch(
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
   }
-
-  /* 移动端隐藏目录区域，减少布局计算 */
-  .col-sm-2 {
-    display: none;
-  }
-
-  .col-sm-10 {
-    width: 100%;
-    max-width: 100%;
-  }
+  /* 移动端目录的隐藏与 FAB 切换由 CatalogRenderer 自身在 991px 断点接管，
+     此处不再硬编码侧栏 / 主栏的覆盖；
+     Grid 在 < 992px 自动堆叠为单列，主内容自然满宽。 */
 }
 
 @media (max-width: 576px) {

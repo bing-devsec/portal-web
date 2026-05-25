@@ -1,6 +1,6 @@
 <template>
-    <section class="container pt-20">
-        <div class="col-sm-9 col-md-9">
+    <section class="l-container l-main-aside pt-20">
+        <div class="l-main">
             <TipCard :tip-msg="searchMsg" class="tipCard" />
             <ul class="index_arc">
                 <ArticleCard v-for="article in searchResults" :key="article.id" :article-info="article" />
@@ -9,11 +9,11 @@
                 @update:current-page="handleCurrentChange" />
         </div>
 
-        <div class="col-sm-3 col-md-3">
+        <aside class="l-aside">
 			<HotListCard :hot-articles="hotArticles" />
 			<TagCard :tags="tags" />
 			<LinkCard :friend-links="friendLinks" />
-        </div>
+        </aside>
     </section>
 </template>
 

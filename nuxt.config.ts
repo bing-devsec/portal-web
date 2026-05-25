@@ -62,7 +62,7 @@ export default defineNuxtConfig({
       charset: "utf-8",
       htmlAttrs: { lang: "zh-Hans" },
       viewport:
-        "width=device-width, initial-scale=1.0, maximum-scale=2.0, user-scalable=yes",
+        "width=device-width, initial-scale=1.0",
       title: "冰冰同学的技术博客 | C语言、Go语言、后端开发、网络安全",
       // SEO配置
       meta: [

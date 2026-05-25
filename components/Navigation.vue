@@ -1,8 +1,8 @@
 <template>
     <header class="navbar-wrapper">
         <div class="navbar navbar-fixed-top">
-            <div class="container">
-                <el-dropdown ref="mobileDropdownRef" class="logo navbar-logo-m visible-xs">
+            <div class="l-container">
+                <el-dropdown ref="mobileDropdownRef" class="logo navbar-logo-m u-hide-desktop">
                     <span class="el-dropdown-link">&ensp;&ensp;
                         <i class="iconfont icon-zhiyezigeqingdan"></i>
                     </span>

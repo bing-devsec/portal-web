@@ -156,272 +156,99 @@ nav {
 
 /* ===========================
    布局：容器与栅格系统
+   说明：旧 float 栅格（.container / .col-* / .visible-xs / .hidden-xs）已下线，
+        统一改用下方"现代布局：CSS Grid 系统"小节中的语义化布局类。
    =========================== */
 
+
+/* ===========================
+   现代布局：CSS Grid 系统
+   说明：用于替换上方旧的 float 栅格，仅保留 2 种语义化布局原型
+   - .l-container ：响应式容器（替代 .container）
+   - .l-main-aside：主内容 + 侧栏（用于首页/标签/时间轴/搜索结果）
+   - .l-article   ：文章 + 目录（用于文章详情页）
+   - .u-hide-*    ：显隐工具类（替代 .visible-xs/.hidden-xs）
+   =========================== */
+
+.l-container {
+    width: min(100% - 32px, 1270px);
+    margin-inline: auto;
+    display: flow-root;
+}
+
+@media (max-width: 575px) {
+    .l-container {
+        width: min(100% - 16px, 1270px);
+    }
+}
+
+.l-main-aside,
+.l-article {
+    display: grid;
+    gap: clamp(16px, 2vw, 32px);
+    grid-template-columns: 1fr;
+}
+
+@media (min-width: 992px) {
+    .l-main-aside {
+        grid-template-columns: minmax(0, 3fr) minmax(240px, 1fr);
+    }
+    .l-article {
+        grid-template-columns: minmax(0, 5fr) minmax(180px, 1fr);
+    }
+}
+
+.l-main,
+.l-article-main {
+    min-width: 0;
+}
+
+.l-aside,
+.l-article-aside {
+    min-width: 0;
+}
+
+.u-hide-mobile {
+    display: none !important;
+}
+
+@media (min-width: 992px) {
+    .u-hide-desktop {
+        display: none !important;
+    }
+    .u-hide-mobile {
+        display: block !important;
+    }
+}
+
 .container {
-    margin-right: auto;
-    margin-left: auto
+    width: min(100% - 32px, 1270px);
+    margin-inline: auto;
+    display: flow-root;
 }
 
-.container:after {
-    content: "";
-    display: block;
-    clear: both
-}
-
-
-/* 中等以上屏幕：容器宽度 */
-
-@media(min-width :992px) {
+@media (max-width: 575px) {
     .container {
-        width: 960px
+        width: min(100% - 16px, 1270px);
     }
 }
 
-@media(min-width :1200px) {
+@media (min-width: 768px) and (max-width: 991px) {
     .container {
-        width: 1170px
+        width: min(100% - 48px, 1270px);
     }
 }
-
-@media(min-width :1300px) {
-    .container {
-        width: 1270px
-    }
-}
-
-
-/* 栅格系统：列基础样式 */
-
-.col-1,
-.col-2,
-.col-3,
-.col-4,
-.col-5,
-.col-6,
-.col-7,
-.col-8,
-.col-9,
-.col-10,
-.col-11,
-.col-12,
-.col-xs-1,
-.col-sm-1,
-.col-md-1,
-.col-lg-1,
-.col-xs-2,
-.col-sm-2,
-.col-md-2,
-.col-lg-2,
-.col-xs-3,
-.col-sm-3,
-.col-md-3,
-.col-lg-3,
-.col-xs-4,
-.col-sm-4,
-.col-md-4,
-.col-lg-4,
-.col-xs-5,
-.col-sm-5,
-.col-md-5,
-.col-lg-5,
-.col-xs-6,
-.col-sm-6,
-.col-md-6,
-.col-lg-6,
-.col-xs-7,
-.col-sm-7,
-.col-md-7,
-.col-lg-7,
-.col-xs-8,
-.col-sm-8,
-.col-md-8,
-.col-lg-8,
-.col-xs-9,
-.col-sm-9,
-.col-md-9,
-.col-lg-9,
-.col-xs-10,
-.col-sm-10,
-.col-md-10,
-.col-lg-10,
-.col-xs-11,
-.col-sm-11,
-.col-md-11,
-.col-lg-11,
-.col-xs-12,
-.col-sm-12,
-.col-md-12,
-.col-lg-12 {
-    min-height: 1px;
-    position: relative;
-    padding-left: 15px;
-    padding-right: 15px;
-    box-sizing: border-box;
-    -webkit-transition: all .3s ease-in;
-    -moz-transition: all .3s ease-in;
-    -o-transition: all .3s ease-in;
-    transition: all .3s ease-in
-}
-
-
-/* 中等屏幕及以上：栅格宽度定义（.col-sm-*) */
-
-@media(min-width:992px) {
-    .col-sm-1,
-    .col-sm-10,
-    .col-sm-11,
-    .col-sm-12,
-    .col-sm-2,
-    .col-sm-3,
-    .col-sm-4,
-    .col-sm-5,
-    .col-sm-6,
-    .col-sm-7,
-    .col-sm-8,
-    .col-sm-9 {
-        float: left
-    }
-    .col-sm-12 {
-        width: 100%
-    }
-    .col-sm-11 {
-        width: 91.66666666666666%
-    }
-    .col-sm-10 {
-        width: 83.33333333333334%
-    }
-    .col-sm-9 {
-        width: 75%
-    }
-    .col-sm-8 {
-        width: 66.66666666666666%
-    }
-    .col-sm-7 {
-        width: 58.333333333333336%
-    }
-    .col-sm-6 {
-        width: 50%
-    }
-    .col-sm-5 {
-        width: 41.66666666666667%
-    }
-    .col-sm-4 {
-        width: 33.33333333333333%
-    }
-    .col-sm-3 {
-        width: 25%
-    }
-    .col-sm-2 {
-        width: 16.666666666666664%
-    }
-    .col-sm-1 {
-        width: 8.333333333333332%
-    }
-}
-
-@media(max-width:576px) {
-    .col-sm-9 {
-        padding-left: 4px;
-        padding-right: 4px
-    }
-    .col-sm-3 {
-        padding-left: 4px;
-        padding-right: 4px
-    }
-    .col-sm-10 {
-        font-size: 14px !important
-    }
-    .col-sm-10 p {
-        font-size: 14px !important;
-        word-break: normal
-    }
-    .col-sm-10 li {
-        font-size: 14px !important;
-        word-break: normal
-    }
-    .col-sm-10 H2 {
-        font-size: 1.4rem !important
-    }
-    .col-sm-10 H3 {
-        font-size: 1.2rem !important
-    }
-    .col-sm-10 H4 {
-        font-size: 1.0rem !important;
-        color: #4dd0e1 !important
-    }
-    .col-sm-10 H5 {
-        font-size: 1.0rem !important;
-        color: #4dd0e1 !important
-    }
-}
-
-@media(min-width:992px) {
-    .col-md-1,
-    .col-md-2,
-    .col-md-3,
-    .col-md-4,
-    .col-md-5,
-    .col-md-6,
-    .col-md-7,
-    .col-md-8,
-    .col-md-9,
-    .col-md-10,
-    .col-md-11,
-    .col-md-12 {
-        float: left
-    }
-    .col-md-12 {
-        width: 100%
-    }
-    .col-md-11 {
-        width: 91.66666666666666%
-    }
-    .col-md-10 {
-        width: 83.33333333333334%
-    }
-    .col-md-9 {
-        width: 75%
-    }
-    .col-md-8 {
-        width: 66.66666666666666%
-    }
-    .col-md-7 {
-        width: 58.333333333333336%
-    }
-    .col-md-6 {
-        width: 50%
-    }
-    .col-md-5 {
-        width: 41.66666666666667%
-    }
-    .col-md-4 {
-        width: 33.33333333333333%
-    }
-    .col-md-3 {
-        width: 25%
-    }
-    .col-md-2 {
-        width: 16.666666666666664%
-    }
-    .col-md-1 {
-        width: 8.333333333333332%
-    }
-}
-
-
-/* 显隐控制 */
 
 .visible-xs {
-    display: none !important
+    display: none !important;
 }
 
-@media(max-width :992px) {
+@media (max-width: 991px) {
     .visible-xs {
-        display: block !important
+        display: block !important;
     }
     .hidden-xs {
-        display: none !important
+        display: none !important;
     }
 }
 
@@ -873,14 +700,11 @@ a {
     word-break: normal;
     line-height: 1.6;
     color: #333;
-    font-size: 16px;
-}
-
-/* PC 端文章正文容器左右内边距，迁移自原 .markdown-preview-wrapper 的视觉留白 */
-@media (min-width: 577px) {
-    .article-body-ssr {
-        padding: 10px 20px;
-    }
+    /* 流式字号：320px 屏 ≈ 14px，640px+ 屏 ≈ 16px，平滑过渡，不再用 media query 跳变 */
+    font-size: clamp(14px, 13px + 0.3vw, 16px);
+    /* 流式左右内边距：手机 0、平板 ~10px、PC 20px，连续过渡，
+       替代原 `@media (min-width:577px) { padding:10px 20px }` 的硬跳 */
+    padding: clamp(0px, -10px + 3vw, 10px) clamp(0px, -20px + 6vw, 20px);
 }
 
 /* 段落与基础排版 */
@@ -930,8 +754,10 @@ a {
 .article-body-ssr h2 {
     display: block;
     border-bottom: 4px solid #4dd0e1;
-    font-size: 1.6rem;
-    padding: 7px 32px;
+    /* 流式：手机 1.4rem，平板 ~1.5rem，PC 1.6rem */
+    font-size: clamp(1.4rem, 1.3rem + 0.5vw, 1.6rem);
+    /* 流式 padding：手机 5px/24px，PC 7px/32px */
+    padding: clamp(5px, 4px + 0.3vw, 7px) clamp(24px, 20px + 1vw, 32px);
 }
 
 .article-body-ssr h2::before,
@@ -967,9 +793,11 @@ a {
 /* H3：左侧顶置图 + 右侧旋转动画图（迁移自 md-editor-v3 自定义样式） */
 .article-body-ssr h3 {
     margin: 8px 0;
-    font-size: 1.3rem;
+    /* 流式：手机 1.2rem，PC 1.3rem */
+    font-size: clamp(1.2rem, 1.15rem + 0.25vw, 1.3rem);
     position: relative;
-    padding: 4px 32px;
+    /* 流式 padding：手机 24px，PC 32px */
+    padding: 4px clamp(24px, 20px + 1vw, 32px);
     width: max-content;
 }
 
@@ -1053,16 +881,8 @@ a {
     color: #777;
 }
 
-/* 移动端：禁用动画 + 标题字号缩小 */
+/* 移动端：禁用 H3 动画（性能优化 + 减少视觉打扰，保留 media query 因为这是结构性二选一） */
 @media (max-width: 576px) {
-    .article-body-ssr h2 {
-        font-size: 1.4rem;
-        padding: 5px 24px;
-    }
-    .article-body-ssr h3 {
-        font-size: 1.2rem;
-        padding: 4px 24px;
-    }
     .article-body-ssr h3::before,
     .article-body-ssr h3::after {
         animation: none !important;
@@ -1072,7 +892,8 @@ a {
 /* 列表 */
 .article-body-ssr ul,
 .article-body-ssr ol {
-    padding-left: 2.35em;
+    /* 流式缩进：手机 1.4em，PC 2.35em，连续过渡，替代原 @media (max-width:576px) 跳变 */
+    padding-left: clamp(1.4em, 0.6em + 2.5vw, 2.35em);
     margin: 0.6em 0;
 }
 
@@ -1101,13 +922,6 @@ a {
 .article-body-ssr li p {
     margin: 0;
     line-height: 1.8;
-}
-
-@media (max-width: 576px) {
-    .article-body-ssr ul,
-    .article-body-ssr ol {
-        padding-left: 1.4em;
-    }
 }
 
 /* 引用块 */
@@ -1772,25 +1586,40 @@ a {
     margin: 2em 0;
 }
 
-/* 移动端额外微调 */
+/* ============================================================
+   文章正文与代码块的"渐变量"流式排版
+   ------------------------------------------------------------
+   p / li / pre / 代码块 head/gutter 的字号、padding 全部走 clamp，
+   320px ~ 1280px 平滑过渡，删除原"576px 跳变"的 media query。
+   只有"PC 默认隐藏全屏按钮 / 移动端显示"这一类二选一的结构性切换才保留下方 @media。
+   ============================================================ */
+.article-body-ssr p,
+.article-body-ssr li {
+    /* 流式：手机 14px，PC 16px */
+    font-size: clamp(14px, 13px + 0.3vw, 16px);
+    word-break: normal;
+}
+.article-body-ssr pre {
+    /* 流式：手机 12px padding + 13px 字号，PC 16px padding + 14px 字号 */
+    padding: clamp(12px, 8px + 1vw, 16px);
+    font-size: clamp(13px, 12px + 0.3vw, 14px);
+}
+.article-body-ssr .ssr-code-head {
+    padding: clamp(5px, 3px + 0.5vw, 8px) clamp(10px, 6px + 1vw, 14px);
+    font-size: clamp(11px, 10px + 0.3vw, 13px);
+}
+.article-body-ssr .ssr-code-block .ssr-code-pre {
+    padding: clamp(10px, 8px + 0.5vw, 14px) clamp(12px, 10px + 0.5vw, 16px) clamp(16px, 14px + 0.5vw, 20px) 0;
+    font-size: clamp(13px, 12px + 0.3vw, 14px);
+}
+.article-body-ssr .ssr-code-gutter {
+    padding: clamp(10px, 8px + 0.5vw, 14px) clamp(6px, 5px + 0.3vw, 8px) clamp(10px, 8px + 0.5vw, 14px) clamp(10px, 8px + 0.5vw, 14px);
+    width: clamp(34px, 30px + 1vw, 42px);
+    font-size: clamp(13px, 12px + 0.3vw, 14px);
+}
+
+/* 仅保留"结构性"二选一规则：移动端打开代码块全屏按钮 + 收紧折叠行数 */
 @media (max-width: 576px) {
-    .article-body-ssr {
-        font-size: 14px;
-    }
-    .article-body-ssr p,
-    .article-body-ssr li {
-        font-size: 14px;
-        word-break: normal;
-    }
-    .article-body-ssr pre {
-        padding: 12px;
-        font-size: 13px;
-    }
-    /* 代码块容器移动端：缩小内外边距，行号宽度也收一点 */
-    .article-body-ssr .ssr-code-head {
-        padding: 5px 10px;
-        font-size: 11px;
-    }
     /* 移动端开启全屏按钮显示
        全屏按钮 icon 比其他按钮大一档（17px vs 14px），按钮容器同步撑大到 30×26，
        让点击热区更大、视觉权重更突出，符合"全屏=主操作"的语义。 */
@@ -1798,16 +1627,6 @@ a {
         display: inline-flex;
         width: 30px;
         height: 26px;
-    }
-    .article-body-ssr .ssr-code-block .ssr-code-pre {
-        padding: 10px 12px 16px 0;
-        font-size: 13px;
-    }
-    /* 移动端行号槽收窄 */
-    .article-body-ssr .ssr-code-gutter {
-        padding: 10px 6px 10px 10px;
-        width: 34px;
-        font-size: 13px;
     }
     /* 移动端折叠态展示更少行（避免占满屏幕） */
     .article-body-ssr .ssr-code-block[data-collapsible="true"] {
@@ -1832,7 +1651,8 @@ a {
 .article-body-ssr .mermaid-block {
     position: relative;
     margin: 1em 0;
-    padding: 8px;
+    /* 流式 padding：手机 8px ~ PC 12px，连续过渡 */
+    padding: clamp(8px, 6px + 0.5vw, 12px);
     background-color: #fafbfc;
     border: 1px solid #e1e4e8;
     border-radius: 6px;
@@ -1879,7 +1699,8 @@ a {
     color: #abb2bf;
     border-radius: 4px;
     font-family: SFMono-Regular, Consolas, "Liberation Mono", Menlo, monospace;
-    font-size: 13px;
+    /* 流式：手机 12px ~ PC 13px */
+    font-size: clamp(12px, 11px + 0.3vw, 13px);
     line-height: 1.55;
     white-space: pre;
     overflow-x: auto;
@@ -1908,14 +1729,7 @@ a {
     word-break: break-word;
 }
 
-@media (max-width: 576px) {
-    .article-body-ssr .mermaid-block {
-        padding: 10px;
-    }
-    .article-body-ssr .mermaid-block[data-mermaid-rendered="false"] .mermaid-source {
-        font-size: 12px;
-    }
-}
+/* （原 mermaid 移动端微调已并入流式 clamp，无需 media query） */
 
 /* ============================================================
    数学公式（KaTeX）
@@ -1970,8 +1784,10 @@ a {
     flex: 0 0 auto;
     display: flex;
     align-items: center;
-    gap: 8px;
-    padding: 10px 14px;
+    /* 流式 gap：手机 6px，PC 8px */
+    gap: clamp(6px, 5px + 0.3vw, 8px);
+    /* 流式 padding：手机 8px/10px，PC 10px/14px */
+    padding: clamp(8px, 7px + 0.3vw, 10px) clamp(10px, 8px + 0.5vw, 14px);
     background-color: #f6f8fa;
     border-bottom: 1px solid #e1e4e8;
     user-select: none;
@@ -1981,8 +1797,9 @@ a {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    width: 36px;
-    height: 36px;
+    /* 流式按钮尺寸：手机 34px，PC 36px */
+    width: clamp(34px, 33px + 0.3vw, 36px);
+    height: clamp(34px, 33px + 0.3vw, 36px);
     padding: 0;
     border: 1px solid #d1d5da;
     border-radius: 4px;
@@ -2005,10 +1822,12 @@ a {
 
 /* 缩放比例文字：等宽数字，避免抖动 */
 .mermaid-fs-scale {
-    min-width: 56px;
+    /* 流式 min-width：手机 48px，PC 56px */
+    min-width: clamp(48px, 44px + 1vw, 56px);
     text-align: center;
     font-family: SFMono-Regular, Consolas, "Liberation Mono", Menlo, monospace;
-    font-size: 13px;
+    /* 流式 font-size：手机 12px，PC 13px */
+    font-size: clamp(12px, 11px + 0.3vw, 13px);
     color: #24292e;
     font-variant-numeric: tabular-nums;
 }
@@ -2050,37 +1869,21 @@ a {
 /* 底部右下角的提示文字 */
 .mermaid-fs-tip {
     position: absolute;
-    right: 14px;
-    bottom: 12px;
-    padding: 4px 10px;
+    /* 流式定位：手机距边 8px，PC 14px */
+    right: clamp(8px, 6px + 0.5vw, 14px);
+    bottom: clamp(8px, 6px + 0.5vw, 12px);
+    /* 流式 padding：手机 3px/8px，PC 4px/10px */
+    padding: clamp(3px, 2px + 0.2vw, 4px) clamp(8px, 6px + 0.5vw, 10px);
     background-color: rgba(36, 41, 46, 0.78);
     color: #fff;
     border-radius: 4px;
-    font-size: 12px;
+    /* 流式：手机 11px ~ PC 12px */
+    font-size: clamp(11px, 10px + 0.3vw, 12px);
     pointer-events: none;
     user-select: none;
 }
 
-@media (max-width: 576px) {
-    .mermaid-fs-toolbar {
-        padding: 8px 10px;
-        gap: 6px;
-    }
-    .mermaid-fs-btn {
-        width: 34px;
-        height: 34px;
-    }
-    .mermaid-fs-scale {
-        min-width: 48px;
-        font-size: 12px;
-    }
-    .mermaid-fs-tip {
-        right: 8px;
-        bottom: 8px;
-        font-size: 11px;
-        padding: 3px 8px;
-    }
-}
+/* （原 mermaid-fs 的 @media (max-width:576px) 已并入流式 clamp，无需 media query） */
 
 /* ============================================================
  * 文章图片：点击全屏暗示
@@ -2115,8 +1918,10 @@ a {
     flex: 0 0 auto;
     display: flex;
     align-items: center;
-    gap: 8px;
-    padding: 10px 14px;
+    /* 流式：手机 6px，PC 8px */
+    gap: clamp(6px, 5px + 0.3vw, 8px);
+    /* 流式 padding：手机 8px/10px，PC 10px/14px */
+    padding: clamp(8px, 7px + 0.3vw, 10px) clamp(10px, 8px + 0.5vw, 14px);
     background-color: rgba(20, 22, 26, 0.95);
     border-bottom: 1px solid rgba(255, 255, 255, 0.08);
     user-select: none;
@@ -2126,8 +1931,9 @@ a {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    width: 36px;
-    height: 36px;
+    /* 流式按钮尺寸：手机 34px，PC 36px */
+    width: clamp(34px, 33px + 0.3vw, 36px);
+    height: clamp(34px, 33px + 0.3vw, 36px);
     padding: 0;
     border: 1px solid rgba(255, 255, 255, 0.18);
     border-radius: 4px;
@@ -2157,10 +1963,12 @@ a {
 
 /* 计数器："1 / 8" 风格，等宽数字防抖动 */
 .image-fs-counter {
-    min-width: 56px;
+    /* 流式：手机 44px，PC 56px */
+    min-width: clamp(44px, 38px + 1.5vw, 56px);
     text-align: center;
     font-family: SFMono-Regular, Consolas, "Liberation Mono", Menlo, monospace;
-    font-size: 13px;
+    /* 流式：手机 12px，PC 13px */
+    font-size: clamp(12px, 11px + 0.3vw, 13px);
     color: #e5e7eb;
     font-variant-numeric: tabular-nums;
     user-select: none;
@@ -2174,10 +1982,12 @@ a {
 }
 
 .image-fs-scale {
-    min-width: 56px;
+    /* 流式：手机 48px，PC 56px */
+    min-width: clamp(48px, 44px + 1vw, 56px);
     text-align: center;
     font-family: SFMono-Regular, Consolas, "Liberation Mono", Menlo, monospace;
-    font-size: 13px;
+    /* 流式：手机 12px，PC 13px */
+    font-size: clamp(12px, 11px + 0.3vw, 13px);
     color: #e5e7eb;
     font-variant-numeric: tabular-nums;
 }
@@ -2198,8 +2008,9 @@ a {
     position: absolute;
     top: 50%;
     transform: translateY(-50%);
-    width: 48px;
-    height: 48px;
+    /* 流式按钮尺寸：手机 40px，PC 48px */
+    width: clamp(40px, 36px + 1vw, 48px);
+    height: clamp(40px, 36px + 1vw, 48px);
     display: inline-flex;
     align-items: center;
     justify-content: center;
@@ -2221,10 +2032,11 @@ a {
     transform: translateY(-50%) scale(0.95);
 }
 .image-fs-edge--prev {
-    left: 16px;
+    /* 流式：手机距边 8px，PC 16px */
+    left: clamp(8px, 4px + 1vw, 16px);
 }
 .image-fs-edge--next {
-    right: 16px;
+    right: clamp(8px, 4px + 1vw, 16px);
 }
 .image-fs-edge.is-hidden {
     display: none;
@@ -2252,49 +2064,16 @@ a {
 
 .image-fs-tip {
     position: absolute;
-    right: 14px;
-    bottom: 12px;
-    padding: 4px 10px;
+    /* 流式定位：手机距边 8px，PC 14px */
+    right: clamp(8px, 6px + 0.5vw, 14px);
+    bottom: clamp(8px, 6px + 0.5vw, 12px);
+    /* 流式 padding：手机 3px/8px，PC 4px/10px */
+    padding: clamp(3px, 2px + 0.2vw, 4px) clamp(8px, 6px + 0.5vw, 10px);
     background-color: rgba(255, 255, 255, 0.12);
     color: #e5e7eb;
     border-radius: 4px;
-    font-size: 12px;
+    /* 流式：手机 11px ~ PC 12px */
+    font-size: clamp(11px, 10px + 0.3vw, 12px);
     pointer-events: none;
     user-select: none;
 }
-
-@media (max-width: 576px) {
-    .image-fs-toolbar {
-        padding: 8px 10px;
-        gap: 6px;
-    }
-    .image-fs-btn {
-        width: 34px;
-        height: 34px;
-    }
-    .image-fs-scale {
-        min-width: 48px;
-        font-size: 12px;
-    }
-    .image-fs-counter {
-        min-width: 44px;
-        font-size: 12px;
-    }
-    .image-fs-edge {
-        width: 40px;
-        height: 40px;
-    }
-    .image-fs-edge--prev {
-        left: 8px;
-    }
-    .image-fs-edge--next {
-        right: 8px;
-    }
-    .image-fs-tip {
-        right: 8px;
-        bottom: 8px;
-        font-size: 11px;
-        padding: 3px 8px;
-    }
-}
-

@@ -1,6 +1,6 @@
 <template>
-    <section class="container pt-20">
-        <div class="col-sm-9 col-md-9">
+    <section class="l-container l-main-aside pt-20">
+        <div class="l-main">
             <el-timeline>
                 <el-timeline-item class="my-custom-timeline-item" v-for="(item, index) in articleList" :key="index"
                     :timestamp="item.time" type="success" placement="top" size="large">
@@ -14,11 +14,11 @@
             </el-timeline>
         </div>
 
-        <div class="col-sm-3 col-md-3">
+        <aside class="l-aside">
             <HotListCard :hot-articles="hotArticles" />
             <TagCard :tags="tags" />
             <LinkCard :friend-links="friendLinks" />
-        </div>
+        </aside>
     </section>
 </template>
 

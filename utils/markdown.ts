@@ -233,10 +233,16 @@ interface PendingHighlight {
 let pendingHighlights = new Map<string, PendingHighlight>();
 let pendingCounter = 0;
 
+// 进程级随机 salt：仅生成一次，避免同一次渲染入口里多个 fence 的 Date.now() 落在
+// 同一毫秒导致 token 后缀完全相同（虽然前缀 pendingCounter 已经唯一，
+// 但额外加一段随机 salt 让占位符在 markdown 正文中绝不可能被误匹配）。
+const PLACEHOLDER_SALT =
+    Math.random().toString(36).slice(2, 8) + Date.now().toString(36);
+
 function nextPlaceholderToken(): string {
     pendingCounter += 1;
-    // 用零宽字符 + 计数器构造唯一 token，避免与正文 markdown 内容碰撞
-    return `${pendingCounter.toString(36)}-${Date.now().toString(36)}`;
+    // 计数器单调递增 + 进程级 salt，保证同一次渲染内 token 唯一且不依赖时钟分辨率
+    return `${pendingCounter.toString(36)}-${PLACEHOLDER_SALT}`;
 }
 
 /**
@@ -248,11 +254,31 @@ function nextPlaceholderToken(): string {
  *
  * 这样 base.css 里基于 .ssr-code-line 的所有规则（行号对齐、空行兜底、
  * 全屏复用 innerHTML 等）完全无需改动。
+ *
+ * ⚠ 关键健壮性兜底（修复 Chrome/Edge/移动端 SPA 路由切换"代码块变空行"的 bug）：
+ *   Shiki 在 Chromium 系浏览器客户端首次调用时，oniguruma-to-es 的初始化与
+ *   codeToTokens 之间存在一个微任务竞态——某些版本下 codeToTokens 会同步返回
+ *   "tokens 数组结构正常但每行 visibleLength=0"的"伪空"结果，且不抛异常。
+ *   原实现把每个空行兜底成 \u200B，最终用户看到 5 行代码变 5 行空白。
+ *   这里做"全空检测"：当传入的所有行 visibleLength 全为 0 但 lineCount > 0 时，
+ *   返回 null 让上层走 rawCode 文本兜底分支，至少保证内容可见。
  */
-function tokenizedLinesToHtml(linesTokens: ThemedToken[][]): string {
+function tokenizedLinesToHtml(linesTokens: ThemedToken[][]): string | null {
     if (linesTokens.length === 0) {
         return '<span class="ssr-code-line">\u200B</span>';
     }
+
+    // 全空检测：所有行的 visibleLength 都为 0，说明 Shiki 高亮失败但没抛错
+    // —— 让调用方拿 rawCode 直接重新生成可见内容（不上色但不会丢内容）
+    let totalVisible = 0;
+    for (const line of linesTokens) {
+        for (const t of line) totalVisible += t.content.length;
+        if (totalVisible > 0) break;
+    }
+    if (totalVisible === 0) {
+        return null;
+    }
+
     const out: string[] = [];
     for (const line of linesTokens) {
         // 空行：Shiki 会输出空数组或单个空文本 token；直接给零宽空格撑行高
@@ -276,6 +302,27 @@ function tokenizedLinesToHtml(linesTokens: ThemedToken[][]): string {
     return out.join('');
 }
 
+/**
+ * 把原始 rawCode 直接转换成与 tokenizedLinesToHtml 结构兼容的逐行 HTML
+ * （仅转义、无颜色），用于 Shiki 失败时的最终兜底。
+ *
+ * 用户体验考量：丢颜色 >> 丢内容。即便没有语法高亮，用户至少能看到代码、
+ * 能复制走、能阅读；后续刷新页面（走 SSR）就能拿到带颜色的版本。
+ */
+function rawCodeToLinesHtml(rawCode: string): string {
+    const lines = rawCode.replace(/\n$/, '').split('\n');
+    if (lines.length === 0) {
+        return '<span class="ssr-code-line">\u200B</span>';
+    }
+    return lines
+        .map((l) =>
+            l.length === 0
+                ? '<span class="ssr-code-line">\u200B</span>'
+                : `<span class="ssr-code-line">${escapeHtml(l)}</span>`,
+        )
+        .join('');
+}
+
 function escapeHtml(input: string): string {
     return input
         .replace(/&/g, '&amp;')
@@ -288,35 +335,79 @@ function escapeHtml(input: string): string {
 /**
  * 异步消费收集到的 fence，调用 Shiki 高亮并把占位符替换成最终 HTML。
  * 返回一份新的 HTML 字符串，pendingHighlights / pendingCounter 在每次渲染入口处都会重置。
+ *
+ * ⚠ 客户端兜底策略（保留高亮颜色 + 修复"空行 bug"）：
+ *   1) Shiki 在 Chromium 系（Chrome/Edge/移动端）首次客户端调用时，存在
+ *      oniguruma-to-es 异步初始化与 codeToTokens 同步调用之间的竞态——
+ *      表现为 codeToTokens 返回结构正常但每行 visibleLength=0 的"伪空"结果。
+ *   2) 当 tokenizedLinesToHtml 返回 null（全空检测命中）时，先在客户端做一次
+ *      微任务级重试（await Promise.resolve），让 oniguruma 内部初始化完成，
+ *      绝大多数情况第二次就能拿到正确高亮结果。
+ *   3) 仍然失败时（极端场景 / SSR 不应进入这里）再降级到 rawCodeToLinesHtml，
+ *      保证用户至少能看到代码内容（用户体验：丢颜色 >> 丢内容）。
+ *   4) Safari 不会触发该 race，原本就走正常分支。
  */
 async function resolveShikiPlaceholders(html: string): Promise<string> {
     if (pendingHighlights.size === 0) return html;
     const highlighter = await getHighlighter();
 
+    // 在客户端首次进入时，多让出一次微任务，给 Shiki 内部异步资源留时间结算
+    // —— 这是修复 Chrome/Edge SPA 路由切换 race 的关键一步，对 SSR 几乎零成本
+    if (import.meta.client) {
+        await Promise.resolve();
+    }
+
+    const tryHighlight = (lang: string, rawCode: string): ThemedToken[][] | null => {
+        try {
+            const result = highlighter.codeToTokens(rawCode, {
+                lang: lang as keyof typeof bundledLanguages,
+                theme: SHIKI_THEME,
+            });
+            return result.tokens;
+        } catch {
+            return null;
+        }
+    };
+
     // 串行 loadLanguage 即可（重复语言走缓存），保持低内存峰值
     const replacements = new Map<string, string>();
     for (const [token, { lang, rawCode }] of pendingHighlights) {
         const supported = await ensureLanguageLoaded(highlighter, lang);
-        let linesTokens: ThemedToken[][];
+        let highlighted: string | null = null;
+
         if (supported) {
-            try {
-                const result = highlighter.codeToTokens(rawCode, {
-                    lang: lang as keyof typeof bundledLanguages,
-                    theme: SHIKI_THEME,
-                });
-                linesTokens = result.tokens;
-            } catch {
-                linesTokens = rawCode.split('\n').map((l) => [{ content: l, offset: 0 } as ThemedToken]);
+            let linesTokens = tryHighlight(lang, rawCode);
+            if (linesTokens) {
+                if (linesTokens.length > 0 && linesTokens[linesTokens.length - 1].length === 0) {
+                    linesTokens.pop();
+                }
+                highlighted = tokenizedLinesToHtml(linesTokens);
             }
-        } else {
-            // 未识别语言：保留行结构但不上色（与原 hljs 行为一致）
-            linesTokens = rawCode.split('\n').map((l) => [{ content: l, offset: 0 } as ThemedToken]);
+
+            // 客户端首次 race：null 说明全空，等一下再来一次（给 oniguruma 收敛时间）
+            if (highlighted === null && import.meta.client) {
+                await new Promise<void>((resolve) => {
+                    if (typeof queueMicrotask === 'function') {
+                        queueMicrotask(resolve);
+                    } else {
+                        Promise.resolve().then(resolve);
+                    }
+                });
+                linesTokens = tryHighlight(lang, rawCode);
+                if (linesTokens) {
+                    if (linesTokens.length > 0 && linesTokens[linesTokens.length - 1].length === 0) {
+                        linesTokens.pop();
+                    }
+                    highlighted = tokenizedLinesToHtml(linesTokens);
+                }
+            }
         }
-        // 与原行为对齐：去掉末尾空行，避免多一个"空行号"
-        if (linesTokens.length > 0 && linesTokens[linesTokens.length - 1].length === 0) {
-            linesTokens.pop();
+
+        // 终极兜底：未识别语言 / Shiki 抛错 / 重试后仍全空 → 用 rawCode 直出可见内容
+        if (highlighted === null) {
+            highlighted = rawCodeToLinesHtml(rawCode);
         }
-        replacements.set(token, tokenizedLinesToHtml(linesTokens));
+        replacements.set(token, highlighted);
     }
 
     // 一次性正则替换：占位符里嵌的 token 都是 [a-z0-9-]，模式简单
@@ -539,6 +630,50 @@ md.renderer.rules.heading_open = function (tokens, idx, options, env, self) {
 };
 
 /**
+ * 对最终 HTML 做一次后处理：给所有 <img> 补上文章图片应有的 class 与懒加载属性。
+ *
+ * 为什么必须做：
+ *   md 实例开了 html: true，markdown 正文里直接写的原生 <img>（比如 Typora 导出的
+ *   `<img src="..." style="zoom:67%" />`）会作为 raw HTML 整段透传，
+ *   不经过 md.renderer.rules.image，导致没有 .article-img-zoomable class，
+ *   而 [id].vue 里的 handleImageClick 严格按 class 匹配，于是这类图片点击无法全屏。
+ *
+ * 实现要点：
+ *   1) 仅对 <img ...> 起始标签做正则改写，不动 src/alt/title 等已有属性，避免破坏用户 HTML
+ *   2) 已有 article-img-zoomable class 的不重复添加（幂等）
+ *   3) 同时补 loading="lazy" / decoding="async"，与 md.renderer.rules.image 的输出对齐
+ *   4) 不动 fence 占位符（占位符是 HTML 注释 <!--shiki-placeholder:xxx-->，正则只匹配 <img>）
+ *   5) 故意不替换内联 style：保留作者通过 style="zoom:67%" 等手段控制的尺寸意图
+ */
+function ensureImgAttributes(html: string): string {
+    return html.replace(/<img\b([^>]*)>/gi, (_full, attrs: string) => {
+        let next = attrs;
+
+        // 1) 处理 class：已有则确保包含 article-img / article-img-zoomable，没有则新增
+        if (/\bclass\s*=\s*("|')/i.test(next)) {
+            next = next.replace(/\bclass\s*=\s*("|')([^"']*)\1/i, (_m, quote: string, value: string) => {
+                const classes = new Set(value.split(/\s+/).filter(Boolean));
+                classes.add('article-img');
+                classes.add('article-img-zoomable');
+                return `class=${quote}${Array.from(classes).join(' ')}${quote}`;
+            });
+        } else {
+            next = ` class="article-img article-img-zoomable"` + next;
+        }
+
+        // 2) loading="lazy" 与 decoding="async"：缺则补，不覆盖作者已有声明
+        if (!/\bloading\s*=/i.test(next)) {
+            next += ' loading="lazy"';
+        }
+        if (!/\bdecoding\s*=/i.test(next)) {
+            next += ' decoding="async"';
+        }
+
+        return `<img${next}>`;
+    });
+}
+
+/**
  * 将 Markdown 文本渲染为 HTML 字符串
  * 该方法可在 Nuxt3 的 SSR 阶段安全调用，用于生成 SEO 友好的文章内容 HTML。
  *
@@ -563,7 +698,10 @@ export async function renderMarkdownToHtml(markdown: string | undefined | null, 
         pendingHighlights = new Map();
         pendingCounter = 0;
         const html = md.render(contentToRender);
-        return await resolveShikiPlaceholders(html);
+        const resolved = await resolveShikiPlaceholders(html);
+        // 后处理：原生 <img> 透传写法（如 Typora 的 <img style="zoom:67%">）
+        // 在这里统一补 class，让点击全屏功能对所有图片一视同仁
+        return ensureImgAttributes(resolved);
     } catch (error) {
         return `<pre>${md.utils.escapeHtml(contentToRender)}</pre>`;
     }

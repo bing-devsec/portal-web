@@ -592,7 +592,8 @@ const onViewportResize = () => {
 
 <style scoped>
 .ssr-catalog {
-  font-size: 13px;
+  /* PC 端字号偏小问题修复：13px → 流式 14~15px，更适合长时间阅读 */
+  font-size: clamp(14px, 13px + 0.2vw, 15px);
   line-height: 1.6;
 }
 
@@ -642,11 +643,11 @@ const onViewportResize = () => {
 
 .ssr-catalog-item.level-3 {
   padding-left: 22px;
-  font-size: 12px;
+  /* 与父级 ssr-catalog 字号对齐：略小于父级（13~14px），避免视觉太密 */
+  font-size: clamp(13px, 12px + 0.2vw, 14px);
 }
 
-/* 移动端隐藏 PC 版内联目录：纯 CSS，避免依赖 JS 状态切换造成 SSR/客户端不一致 */
-@media (max-width: 576px) {
+@media (max-width: 767px) {
   .ssr-catalog {
     display: none;
   }
@@ -665,9 +666,13 @@ const onViewportResize = () => {
 -->
 <style>
 /* ==========================================================
-   移动端 FAB + 抽屉
+   移动端 / 平板 FAB + 抽屉
    ----------------------------------------------------------
-   策略：仅在 max-width: 576px 下显示 FAB / 抽屉相关节点，
+   策略：在 max-width: 991px 下显示 FAB / 抽屉相关节点，与文章详情页 Grid
+   布局（.l-article）双列切换边界（min-width: 992px）严格对齐。
+   ≥992px：PC 内联目录直出在右侧 .l-article-aside 槽位
+   ≤991px：Grid 塌成单列，PC 目录会出现在文章正文下方（视觉割裂），
+           改走 FAB + 抽屉，平板和手机体验一致。
    PC 端即使 v-if 渲染了 ClientOnly 内部 DOM，也用 display:none 隐藏，
    避免双端共存造成的视觉冲突。
    ========================================================== */
@@ -676,7 +681,7 @@ const onViewportResize = () => {
   display: none;
 }
 
-@media (max-width: 576px) {
+@media (max-width: 991px) {
   .ssr-catalog-fab {
     display: inline-flex;
     align-items: center;

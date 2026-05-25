@@ -1,18 +1,18 @@
 <template>
-	<section class="container">
-		<div class="col-sm-9 col-md-9">
+	<section class="l-container l-main-aside">
+		<div class="l-main">
 			<TipCard v-if="currentPage === 1" :tip-msg="'最新发布'" />
 			<ArticleList 
 				:articles="articles" 
 				:total="total"
 			/>
 		</div>
-		<div class="col-sm-3 col-md-3">
+		<aside class="l-aside">
 			<Search />
 			<HotListCard :hot-articles="hotArticles" />
 			<TagCard :tags="tags" />
 			<LinkCard :friend-links="friendLinks" />
-		</div>
+		</aside>
 	</section>
 </template>
 
@@ -61,7 +61,7 @@ const { hotArticles, tags, friendLinks } = useSidebarData();
 </script>
 
 <style scoped>
-.container {
+.l-container {
 	margin-top: 20px;
 	margin-bottom: 20px;
 }

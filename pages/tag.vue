@@ -1,6 +1,6 @@
 <template>
-    <section class="container pt-20">
-        <div class="col-sm-9 col-md-9">
+    <section class="l-container l-main-aside pt-20">
+        <div class="l-main">
             <TipCard :tip-msg="tagName" class="tipCard"></TipCard>
             <ul class="index_arc">
                 <ArticleCard v-for="articleInfo in articleList" :key="articleInfo.id" :article-info="articleInfo">
@@ -11,11 +11,11 @@
             </Pagination>
         </div>
 
-        <div class="col-sm-3 col-md-3">
+        <aside class="l-aside">
             <HotListCard :hot-articles="hotArticles" />
             <TagCard :tags="tags" />
             <LinkCard :friend-links="friendLinks" />
-        </div>
+        </aside>
     </section>
 </template>
 

@@ -1,5 +1,5 @@
 <template>
-    <section class="container">
+    <section class="l-container">
         <div class="about">
             <h2>Just about me</h2>
             <ul>
@@ -94,7 +94,7 @@ function getEmailType(email: string): string {
 </script>
 
 <style scoped>
-.container:after {
+.l-container:after {
     overflow-y: auto;
     content: "";
     display: block;
@@ -107,18 +107,23 @@ function getEmailType(email: string): string {
 }
 
 .about h2:nth-of-type(1) {
-    font-size: 28px;
-    margin: -5px 0 15px 0;
+    /* 流式：手机 26px，PC 28px */
+    font-size: clamp(26px, 24px + 0.6vw, 28px);
+    /* 流式 margin：手机 -10px/14px，PC -5px/15px */
+    margin: clamp(-10px, -12px + 0.5vw, -5px) 0 clamp(14px, 13px + 0.3vw, 15px) 0;
 }
 
 .about h2 {
-    font-size: 28px;
-    margin: 35px 0 15px 0;
+    /* 流式：手机 26px，PC 28px */
+    font-size: clamp(26px, 24px + 0.6vw, 28px);
+    /* 流式 margin-top：手机 20px，PC 35px */
+    margin: clamp(20px, 12px + 2.5vw, 35px) 0 clamp(14px, 13px + 0.3vw, 15px) 0;
 }
 
 .about li {
     font-size: 14px;
-    margin-bottom: 16px;
+    /* 流式 margin-bottom：手机 12px，PC 16px */
+    margin-bottom: clamp(12px, 10px + 0.6vw, 16px);
 }
 
 .about a:hover {
@@ -127,22 +132,10 @@ function getEmailType(email: string): string {
 }
 
 @media(max-width: 576px) {
+    /* 仅保留"结构性"规则：移动端给 .about 容器额外左右 padding，避免顶到屏幕边缘
+       字号/margin 已由上方 clamp() 流式覆盖 */
     .about {
         padding: 0 20px;
-    }
-    .about h2:nth-of-type(1) {
-        font-size: 26px;
-        margin: -10px 0 14px 0;
-    }
-
-    .about h2 {
-        font-size: 26px;
-        margin: 20px 0 14px 0;
-    }
-
-    .about li {
-        font-size: 14px;
-        margin-bottom: 12px;
     }
 }
 </style>
