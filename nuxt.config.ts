@@ -164,8 +164,8 @@ export default defineNuxtConfig({
   css: [
     "~/assets/iconfont/iconfont.css",
     "~/assets/base.css",
-    // highlight.js 主题样式，本地引入避免 CDN 存储访问被浏览器追踪防护阻止
-    "highlight.js/styles/atom-one-dark.css",
+    // 代码块高亮颜色由 Shiki 在 SSR 阶段直接 inline 到 token 上，
+    // 不再依赖外部高亮 CSS 主题（之前 highlight.js 的 atom-one-dark.css 已移除）。
   ],
 
   // ==================== 模块配置 ====================
@@ -215,7 +215,7 @@ export default defineNuxtConfig({
 
   // ==================== 构建配置 ====================
   build: {
-    transpile: ["md-editor-v3", "lodash-es"],
+    transpile: ["lodash-es"],
     analyze: { filename: "stats.html" },
   },
 
@@ -250,9 +250,6 @@ export default defineNuxtConfig({
             return;
           }
           defaultHandler(warning);
-        },
-        output: {
-          manualChunks: {'md-editor': ['md-editor-v3']},
         },
       },
       terserOptions: {
@@ -333,7 +330,15 @@ export default defineNuxtConfig({
 
   // ==================== 功能配置 ====================
   features: {
-    inlineStyles: false,
+    // 保持 Nuxt 默认值 true：SSR 会把当前页面用到的 <style scoped> 内联进首屏 HTML 的 <style> 标签，
+    // 避免 scoped 样式必须等 page chunk JS 下载并 import 才生效导致的 FOUC。
+    //
+    // 历史教训：之前这里被显式置为 false，文章详情页表现为：
+    //   - 全局样式（.article-body-ssr 等）走 entry.css 同步加载，正文不闪
+    //   - 标题/信息行（.c_titile / .box_c / .info-item）写在 <style scoped> 里，
+    //     被拆成异步 CSS chunk，必须等 hydration 时 JS 动态 import 才注入
+    //   - 用户看到 H1 从"浏览器默认大字号左对齐"突变到"居中大标题"，肉眼可见闪烁
+    inlineStyles: true,
   },
 
   compatibilityDate: "2025-05-19",

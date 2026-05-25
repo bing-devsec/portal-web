@@ -1,6 +1,7 @@
 import MarkdownIt from 'markdown-it';
-import hljs from 'highlight.js';
 import katex from 'katex';
+import type { Highlighter, ThemedToken } from 'shiki';
+import { createHighlighter, bundledLanguages } from 'shiki';
 
 // 单例 MarkdownIt 实例，既可在服务端也可在客户端运行
 // 优化：禁用一些耗时的插件，提升渲染速度
@@ -165,56 +166,165 @@ md.renderer.rules.math_inline = function (tokens, idx) {
 // 所以这里直接重写 md.renderer.rules.fence。
 // ============================================================
 
+// ============================================================
+// Shiki 高亮：以"占位符 → 异步高亮 → 字符串替换"两阶段处理同步/异步阻抗
+// ------------------------------------------------------------
+// 背景：markdown-it 的 fence renderer 是同步的，但 Shiki 的高亮 API
+// （包括 createHighlighter / codeToTokens）需要异步加载语法/主题资源。
+// 折中方案：
+//   阶段一（同步）：fence renderer 把每段代码序列化进一个隐藏的 <script type="application/json">
+//                  占位符，包含 lang/code 与一个唯一 token；
+//   阶段二（异步）：renderMarkdownToHtml 拿到 markdown-it 的输出后，扫描占位符，
+//                  调用 Shiki 完成高亮，再用最终 HTML 替换占位符。
+// 这样既不用把 markdown-it 全管线改成异步，也无需在每次渲染时实例化 Shiki。
+// ============================================================
+
+// VSCode 同款主题：github-dark（用户已选定）
+// ⚠ 注意 Shiki 里 `github-dark` 与 `github-dark-default` 是两个不同主题：
+//   - github-dark：GitHub 早期经典 dark 主题（更克制、注释更暗）
+//   - github-dark-default：GitHub 2022 重设计版（色彩更鲜艳）
+// 这里选的是经典版。
+const SHIKI_THEME = 'github-dark';
+
+// Shiki 实例采用懒加载：首次调用时才初始化、后续复用。
+// 在 SSR (Node) 与 CSR 都能跑——Shiki 内部基于 oniguruma-to-es 做 wasm-free 正则匹配。
+let highlighterPromise: Promise<Highlighter> | null = null;
+
+// 已加载语言缓存：同一语言不重复 loadLanguage，避免重复 IO/解析成本
+const loadedLanguages = new Set<string>();
+
+function getHighlighter(): Promise<Highlighter> {
+    if (!highlighterPromise) {
+        // 初始化时仅加载主题；语言按需加载，控制冷启动开销
+        highlighterPromise = createHighlighter({
+            themes: [SHIKI_THEME],
+            langs: [],
+        });
+    }
+    return highlighterPromise;
+}
+
+async function ensureLanguageLoaded(highlighter: Highlighter, lang: string): Promise<boolean> {
+    if (!lang) return false;
+    if (loadedLanguages.has(lang)) return true;
+    // bundledLanguages 是 Shiki 提供的"已知语言列表"，对未识别语言直接降级为纯文本
+    if (!(lang in bundledLanguages)) return false;
+    try {
+        await highlighter.loadLanguage(lang as keyof typeof bundledLanguages);
+        loadedLanguages.add(lang);
+        return true;
+    } catch {
+        return false;
+    }
+}
+
+// 占位符格式：用注释 + 唯一 token 让 markdown-it 输出里能稳定定位
+// （HTML 注释不会被 markdown-it 的 sanitize 干扰，因为我们开启了 html: true）
+const SHIKI_PLACEHOLDER_PREFIX = '<!--shiki-placeholder:';
+const SHIKI_PLACEHOLDER_SUFFIX = '-->';
+
+interface PendingHighlight {
+    lang: string;
+    rawCode: string;
+    /** 是否需要 ssr-code-line 包裹结构（普通代码块都要；mermaid 等不要） */
+}
+
+// 待高亮 fence 收集器：fence renderer 同步阶段往里塞，渲染入口异步阶段消费
+let pendingHighlights = new Map<string, PendingHighlight>();
+let pendingCounter = 0;
+
+function nextPlaceholderToken(): string {
+    pendingCounter += 1;
+    // 用零宽字符 + 计数器构造唯一 token，避免与正文 markdown 内容碰撞
+    return `${pendingCounter.toString(36)}-${Date.now().toString(36)}`;
+}
+
 /**
- * 把 hljs 高亮后的 HTML 按 \n 拆分成"每行一个 <span class="ssr-code-line">"，
- * 同时正确处理跨行的 <span class="hljs-..."> —— 在每个换行处先关闭未闭合的标签，
- * 下一行重新打开，保证每一行 DOM 都是合法可独立解析的片段。
+ * 把 Shiki 返回的 ThemedToken 二维数组转换成
+ *   <span class="ssr-code-line">
+ *     <span style="color:#xxx">token1</span><span style="color:#xxx">token2</span>
+ *   </span>
+ * 形式的字符串，与原 hljs 渲染产物的"逐行 span 包裹"保持结构兼容。
+ *
+ * 这样 base.css 里基于 .ssr-code-line 的所有规则（行号对齐、空行兜底、
+ * 全屏复用 innerHTML 等）完全无需改动。
  */
-function wrapHighlightedLines(html: string): string {
-    const lines: string[] = [];
-    let buffer = '';
-    const openTags: string[] = []; // 未闭合的 span 标签栈，元素是完整起始标签字符串
-    let i = 0;
-
-    const flushLine = () => {
-        const closing = '</span>'.repeat(openTags.length);
-        lines.push(`<span class="ssr-code-line">${buffer}${closing}</span>`);
-        buffer = openTags.join('');
-    };
-
-    while (i < html.length) {
-        const ch = html[i];
-        if (ch === '<') {
-            const end = html.indexOf('>', i);
-            if (end === -1) {
-                buffer += html.slice(i);
-                break;
-            }
-            const tag = html.slice(i, end + 1);
-            buffer += tag;
-            if (tag.startsWith('</')) {
-                openTags.pop();
-            } else if (tag.startsWith('<span') && !tag.endsWith('/>')) {
-                openTags.push(tag);
-            }
-            i = end + 1;
-        } else if (ch === '\n') {
-            flushLine();
-            i += 1;
-        } else {
-            buffer += ch;
-            i += 1;
+function tokenizedLinesToHtml(linesTokens: ThemedToken[][]): string {
+    if (linesTokens.length === 0) {
+        return '<span class="ssr-code-line">\u200B</span>';
+    }
+    const out: string[] = [];
+    for (const line of linesTokens) {
+        // 空行：Shiki 会输出空数组或单个空文本 token；直接给零宽空格撑行高
+        const visibleLength = line.reduce((acc, t) => acc + t.content.length, 0);
+        if (visibleLength === 0) {
+            out.push('<span class="ssr-code-line">\u200B</span>');
+            continue;
         }
+        let lineHtml = '';
+        for (const token of line) {
+            const safe = escapeHtml(token.content);
+            // Shiki 有时给某些 token 不带 color（继承默认前景色），此时不需要 inline style
+            if (token.color) {
+                lineHtml += `<span style="color:${token.color}">${safe}</span>`;
+            } else {
+                lineHtml += safe;
+            }
+        }
+        out.push(`<span class="ssr-code-line">${lineHtml}</span>`);
     }
-    if (buffer.length > 0 || lines.length === 0) {
-        const closing = '</span>'.repeat(openTags.length);
-        lines.push(`<span class="ssr-code-line">${buffer}${closing}</span>`);
+    return out.join('');
+}
+
+function escapeHtml(input: string): string {
+    return input
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+}
+
+/**
+ * 异步消费收集到的 fence，调用 Shiki 高亮并把占位符替换成最终 HTML。
+ * 返回一份新的 HTML 字符串，pendingHighlights / pendingCounter 在每次渲染入口处都会重置。
+ */
+async function resolveShikiPlaceholders(html: string): Promise<string> {
+    if (pendingHighlights.size === 0) return html;
+    const highlighter = await getHighlighter();
+
+    // 串行 loadLanguage 即可（重复语言走缓存），保持低内存峰值
+    const replacements = new Map<string, string>();
+    for (const [token, { lang, rawCode }] of pendingHighlights) {
+        const supported = await ensureLanguageLoaded(highlighter, lang);
+        let linesTokens: ThemedToken[][];
+        if (supported) {
+            try {
+                const result = highlighter.codeToTokens(rawCode, {
+                    lang: lang as keyof typeof bundledLanguages,
+                    theme: SHIKI_THEME,
+                });
+                linesTokens = result.tokens;
+            } catch {
+                linesTokens = rawCode.split('\n').map((l) => [{ content: l, offset: 0 } as ThemedToken]);
+            }
+        } else {
+            // 未识别语言：保留行结构但不上色（与原 hljs 行为一致）
+            linesTokens = rawCode.split('\n').map((l) => [{ content: l, offset: 0 } as ThemedToken]);
+        }
+        // 与原行为对齐：去掉末尾空行，避免多一个"空行号"
+        if (linesTokens.length > 0 && linesTokens[linesTokens.length - 1].length === 0) {
+            linesTokens.pop();
+        }
+        replacements.set(token, tokenizedLinesToHtml(linesTokens));
     }
-    // ⚠ 注意这里必须用空串拼接，不能 join('\n')。
-    // 因为外层 <pre> 是 white-space: pre，任何字面 '\n' 都会被渲染成真实换行；
-    // 而 .ssr-code-line 本身就是 display: block，每个 span 已经占一行，
-    // 再叠一个 \n 就会变成双倍行距（看起来 1 和 2 之间空一大块）。
-    return lines.join('');
+
+    // 一次性正则替换：占位符里嵌的 token 都是 [a-z0-9-]，模式简单
+    const re = new RegExp(
+        `${SHIKI_PLACEHOLDER_PREFIX}([a-z0-9-]+)${SHIKI_PLACEHOLDER_SUFFIX}`,
+        'g',
+    );
+    return html.replace(re, (_, token) => replacements.get(token) ?? '');
 }
 
 md.renderer.rules.fence = function (tokens, idx) {
@@ -259,20 +369,11 @@ md.renderer.rules.fence = function (tokens, idx) {
         );
     }
 
-    // 高亮：识别的语言走 hljs，否则只做 HTML 转义防止注入
-    let highlighted: string;
-    if (lang && hljs.getLanguage(lang)) {
-        try {
-            highlighted = hljs.highlight(rawCode, { language: lang, ignoreIllegals: true }).value;
-        } catch {
-            highlighted = md.utils.escapeHtml(rawCode);
-        }
-    } else {
-        highlighted = md.utils.escapeHtml(rawCode);
-    }
-
-    // 末尾的孤立换行不需要变成"空行号"，trimEnd 一下
-    const linesHtml = wrapHighlightedLines(highlighted.replace(/\n$/, ''));
+    // 高亮：插入占位符，把真正的 Shiki 调用推到 renderMarkdownToHtml 末尾的异步阶段
+    const placeholderToken = nextPlaceholderToken();
+    pendingHighlights.set(placeholderToken, { lang, rawCode });
+    const linesPlaceholder = `${SHIKI_PLACEHOLDER_PREFIX}${placeholderToken}${SHIKI_PLACEHOLDER_SUFFIX}`;
+    const linesHtml = linesPlaceholder;
     const langLabel = lang || 'text';
     const safeLang = md.utils.escapeHtml(langLabel);
 
@@ -400,9 +501,13 @@ md.renderer.rules.image = function (tokens, idx, options, env, self) {
 };
 
 // ============================================================
-// 与 md-editor-v3 / CatalogRenderer 完全一致的 heading id 生成规则
-// 之所以必须保持一致：客户端 md-editor-v3 接管 DOM 时，会按它自己的规则
-// 计算 heading id；如果 SSR 直出的 id 不一致，目录点击会跳不到对应锚点。
+// 与 CatalogRenderer 完全一致的 heading id 生成规则
+// 历史背景：早期客户端用 md-editor-v3 接管 DOM 渲染，本函数对齐 md-editor-v3
+// 内部的 heading id 算法以保证 SSR 直出与客户端二次渲染锚点一致。
+// 当前架构已切换为纯 SSR（参见 pages/article-detail/[id].vue 的 v-html 直出），
+// md-editor-v3 已从依赖中移除；规则保留是因为：
+//   1) CatalogRenderer 仍依据相同规则把目录链接指向各 heading 的 id
+//   2) 同一规则也保证了历史文章里的锚点 url 不会因迁移而失效
 // ------------------------------------------------------------
 // 同时把"根据出现顺序生成 index"的副作用做成"每次渲染前重置计数"，
 // 避免多篇文章共享同一计数器导致 id 漂移。
@@ -437,9 +542,13 @@ md.renderer.rules.heading_open = function (tokens, idx, options, env, self) {
  * 将 Markdown 文本渲染为 HTML 字符串
  * 该方法可在 Nuxt3 的 SSR 阶段安全调用，用于生成 SEO 友好的文章内容 HTML。
  *
- * 优化：对于大内容，可以考虑分块渲染或限制长度
+ * ⚠ 现在是 async：因为代码块高亮交给了 Shiki（VSCode 同款 TextMate Grammar 引擎），
+ *   Shiki 的 createHighlighter / loadLanguage 是异步 API。
+ *
+ * 调用方都已在 async 函数内（pages/article-detail/[id].vue 的两处 await 路径），
+ * 直接 await 即可，无需特殊改造。
  */
-export function renderMarkdownToHtml(markdown: string | undefined | null, maxLength?: number): string {
+export async function renderMarkdownToHtml(markdown: string | undefined | null, maxLength?: number): Promise<string> {
     if (!markdown) return '';
 
     // 如果指定了最大长度，只渲染前部分内容
@@ -448,9 +557,13 @@ export function renderMarkdownToHtml(markdown: string | undefined | null, maxLen
         : markdown;
 
     try {
-        // 每次渲染前重置 heading 计数，保证多文章渲染 id 不漂移
+        // 每次渲染前重置 heading 计数与 Shiki 占位符收集器，
+        // 保证多文章渲染时 id 不漂移、占位符 token 不串号
         headingIndexCounter = 0;
-        return md.render(contentToRender);
+        pendingHighlights = new Map();
+        pendingCounter = 0;
+        const html = md.render(contentToRender);
+        return await resolveShikiPlaceholders(html);
     } catch (error) {
         return `<pre>${md.utils.escapeHtml(contentToRender)}</pre>`;
     }

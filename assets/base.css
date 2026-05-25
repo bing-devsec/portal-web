@@ -1159,7 +1159,7 @@ a {
 .article-body-ssr .ssr-code-block {
     margin: 1em 0;
     border-radius: 6px;
-    background-color: #282c34;
+    background-color: #24292e;
     box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08);
     overflow: hidden;
 }
@@ -1420,7 +1420,7 @@ a {
     height: 100dvw;
     transform: translate(-50%, -50%) rotate(90deg);
     transform-origin: center center;
-    background-color: #282c34;
+    background-color: #24292e;
     display: flex;
     flex-direction: column;
 }
@@ -1508,11 +1508,14 @@ a {
     margin: 0;
     padding: 10px 0 16px;
     overflow: auto;
-    background-color: #282c34;
+    background-color: #24292e;
     line-height: 1.55;
     font-size: 13px;
     font-family: SFMono-Regular, Consolas, "Liberation Mono", Menlo, monospace;
     -webkit-overflow-scrolling: touch;
+    /* 与常规态保持一致的 tab 宽度，避免横竖屏切换时缩进宽度变化造成视觉跳动 */
+    tab-size: 4;
+    -moz-tab-size: 4;
     /* 自定义滚动条（Firefox） */
     scrollbar-width: thin;
     scrollbar-color: rgba(255, 255, 255, 0.28) transparent;
@@ -1520,7 +1523,9 @@ a {
 
 .ssr-code-fs-pre code.hljs {
     background-color: transparent;
-    color: #abb2bf;
+    /* 默认前景色：与 Shiki github-dark 主题前景色对齐
+       （Shiki 输出的 token 都带 inline color，这里只是兜底"未着色 token / 空白"的默认色） */
+    color: #e1e4e8;
     padding: 0;
     display: block;
     white-space: pre;
@@ -1577,6 +1582,11 @@ a {
     font-size: 14px;
     box-shadow: none;
     border-radius: 0;
+    /* tab 缩进宽度：CSS 规范默认是 8 字符，但 Go/Python 等语言习惯一个 tab = 4 空格，
+       用户笔记里 Go 源码用 \t 缩进时若不显式声明，默认 8 格会让"4 空格缩进"看起来变成"8 空格缩进"。
+       同步设置 -moz-tab-size 兼容旧版 Firefox（虽然 91+ 已支持标准 tab-size）。 */
+    tab-size: 4;
+    -moz-tab-size: 4;
     /* 自定义滚动条（Firefox）：白色半透明 thumb，深色背景上更显眼 */
     scrollbar-width: thin;
     scrollbar-color: rgba(255, 255, 255, 0.28) transparent;
@@ -1621,7 +1631,8 @@ a {
 
 .article-body-ssr .ssr-code-block .ssr-code-pre code.hljs {
     background-color: transparent;
-    color: #abb2bf;
+    /* 与 Shiki github-dark 主题前景色对齐 */
+    color: #e1e4e8;
     padding: 0;
     border-radius: 0;
     /* 关键：font-size/line-height 必须 inherit 自 .ssr-code-pre，
@@ -1691,12 +1702,15 @@ a {
 .article-body-ssr pre:not(.ssr-code-pre) {
     margin: 1em 0;
     padding: 16px 18px;
-    background-color: #282c34;
+    background-color: #24292e;
     border-radius: 6px;
     overflow-x: auto;
     line-height: 1.55;
     font-size: 14px;
     box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08);
+    /* 与 fence 代码块保持一致：tab 渲染宽度 4 字符，避免缩进式代码块出现 8 格 tab */
+    tab-size: 4;
+    -moz-tab-size: 4;
 }
 
 .article-body-ssr pre:not(.ssr-code-pre) code {
@@ -1861,7 +1875,7 @@ a {
     text-align: left;
     margin: 0;
     padding: 12px;
-    background-color: #282c34;
+    background-color: #24292e;
     color: #abb2bf;
     border-radius: 4px;
     font-family: SFMono-Regular, Consolas, "Liberation Mono", Menlo, monospace;

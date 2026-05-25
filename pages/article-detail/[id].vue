@@ -232,7 +232,7 @@ const { data: serverArticle } = await useAsyncData<ArticleDetail>(
       // SSR 阶段直接把 markdown 渲染成 HTML，挂在 renderedHtml 上。
       // 这样模板里 v-html 直出，curl / Googlebot / Baiduspider 都能在 HTML
       // 里立刻读到完整正文，是 SEO 优化的核心。
-      const renderedHtml = renderMarkdownToHtml(result.data.content);
+      const renderedHtml = await renderMarkdownToHtml(result.data.content);
       return {
         ...result.data,
         renderedHtml,
@@ -245,7 +245,8 @@ const { data: serverArticle } = await useAsyncData<ArticleDetail>(
 );
 
 // 使用 SSR 数据优先填充文章基础信息
-// 优化：直接使用 SSR 数据，不需要渲染 HTML，客户端直接用 md-editor-v3 渲染
+// SSR 阶段已经在 useAsyncData 里把 markdown 渲染为 renderedHtml，
+// 客户端直接复用同一份字符串通过模板中的 v-html 输出，无需任何二次渲染。
 if (serverArticle.value) {
   article.value = serverArticle.value;
   visibleContent.value = serverArticle.value.content || "";
@@ -435,7 +436,7 @@ const fetchArticleContent = async () => {
           // SPA 路由切换 / 客户端兜底拉取：后端只返回原始 markdown content，
           // 这里在客户端把它渲染成 HTML，统一交给模板的 v-html 输出，
           // 与 SSR 走的是同一份排版规则（.article-body-ssr）。
-          const renderedHtml = renderMarkdownToHtml(result.data.content);
+          const renderedHtml = await renderMarkdownToHtml(result.data.content);
           article.value = {
             ...result.data,
             renderedHtml,
@@ -668,7 +669,11 @@ const handleCodeFullscreenClick = (event: Event) => {
 // 1) 仅在 onMounted 时挂一次到 document，卸载时移除，避免每个代码块单独绑事件
 // 2) 视觉状态切换走 [data-copy-state] 属性，CSS 通过属性选择器切显隐三个 SVG 图标
 //    （default / success ✓ / error ×），不需要操作子节点文本
-// 3) 优先 navigator.clipboard，无权限或老浏览器回落到 textarea + execCommand
+// 3) 复制策略：双 MIME（text/plain + text/html）
+//    - text/plain：贴到 VSCode / 终端 / 文本框 → 纯代码，零干扰
+//    - text/html：贴到飞书 / Notion / Word / Gmail → 完整带颜色的代码块（含背景）
+//    目标应用按"语义最贴近的 MIME"自动选择，对老用户场景零影响、对富文本场景大幅改善
+// 4) 浏览器降级链：ClipboardItem(双MIME) → writeText(纯文本) → execCommand(老浏览器)
 const setCopyState = (
   btn: HTMLElement,
   state: "success" | "error" | null
@@ -698,6 +703,71 @@ const fallbackCopy = (text: string): boolean => {
   return ok;
 };
 
+/**
+ * 构造用于 text/html 写入剪贴板的 HTML 字符串。
+ *
+ * 设计：
+ *  - 复用 codeEl 已经渲染好的 innerHTML（带 Shiki inline `style="color:#xxx"`）
+ *  - ⚠ 关键：每行必须包成 <div> 而不是用 \n 分隔。原因：
+ *    飞书 / 微信 / Notion / Word 这类富文本引擎在粘贴时会剥掉 <pre> 标签，
+ *    随之 white-space: pre 也失效，原本承担换行语义的 \n 被 HTML 默认空白合并规则
+ *    压成空格，整段代码就变成一行。
+ *    用 <div>（块级元素）每行包一层后，即使外层 <pre> 被剥掉，<div> 仍保持块级换行语义，
+ *    所有目标平台都能正确换行。
+ *  - 空行兜底：空 <div> 在某些富文本引擎里会被丢弃，必须塞 <br> 或 &nbsp; 撑起来
+ *  - 剥离零宽空格 \u200B（仅用于站点内行高兜底，对外部完全无意义）
+ *  - 整体仍包一层 `<pre style="...">`：在尊重 <pre> 的目标（VSCode 文档预览、Markdown 编辑器）
+ *    里能保留代码块视觉；在不尊重的目标（飞书等）里靠 <div> 兜底
+ *  - 不带 `<code>` 内层：飞书会把 <pre><code> 同时存在解析为"行内 code 嵌入块级 pre"，
+ *    导致内层颜色样式被外层 monospace 覆盖
+ */
+const buildHtmlForClipboard = (codeEl: HTMLElement, lang: string): string => {
+  // 1) 拿到 Shiki 渲染产物的克隆，避免后续操作影响真实 DOM
+  const cloned = codeEl.cloneNode(true) as HTMLElement;
+
+  // 2) 把每行的零宽空格替换为空字符串
+  cloned.querySelectorAll(".ssr-code-line").forEach((line) => {
+    if (line.textContent === "\u200B") line.textContent = "";
+  });
+
+  // 3) 每行包一个 <div>，保证富文本引擎剥掉 <pre> 后仍然保留换行语义。
+  //    每行 <div> inline 一份等宽字体声明——某些富文本引擎只保留行级元素的 style，
+  //    会丢失外层 <pre> 的 font-family，不重复声明的话粘贴出来会变成默认无衬线字体。
+  const lineStyle = [
+    "font-family:SFMono-Regular,Consolas,'Liberation Mono',Menlo,monospace",
+    "white-space:pre",
+    "tab-size:4",
+  ].join(";");
+  const lineNodes = cloned.querySelectorAll(".ssr-code-line");
+  const linesHtml = Array.from(lineNodes)
+    .map((line) => {
+      const inner = (line as HTMLElement).innerHTML;
+      // 空行：飞书 / Notion 会把空 <div> 合并掉，必须塞 <br> 撑起一行
+      const safeInner = inner.trim() === "" ? "<br>" : inner;
+      return `<div style="${lineStyle}">${safeInner}</div>`;
+    })
+    .join("");
+
+  // 4) 包一层 <pre>，在尊重 <pre> 的平台保留完整代码块视觉
+  //    所有样式必须 inline——飞书/Notion 不会执行外部 CSS
+  const preStyle = [
+    "background:#24292e",
+    "color:#e1e4e8",
+    "padding:12px 14px",
+    "border-radius:6px",
+    "font-family:SFMono-Regular,Consolas,'Liberation Mono',Menlo,monospace",
+    "font-size:14px",
+    "line-height:1.55",
+    "tab-size:4",
+    "white-space:pre",
+    "overflow-x:auto",
+    "margin:0",
+  ].join(";");
+
+  // data-lang 留作富文本引擎可选识别（飞书/Notion 都不强求，但留无害）
+  return `<pre data-lang="${lang}" style="${preStyle}">${linesHtml}</pre>`;
+};
+
 const handleCodeCopyClick = (event: Event) => {
   const target = event.target as HTMLElement | null;
   if (!target) return;
@@ -712,8 +782,16 @@ const handleCodeCopyClick = (event: Event) => {
   const codeEl = container.querySelector("pre code") as HTMLElement | null;
   if (!codeEl) return;
 
-  // 直接读 textContent，行号等装饰性内容已经在 CSS 伪元素里、不会被读到
-  const code = codeEl.textContent || "";
+  // text/plain：直接 textContent，行号在独立的 .ssr-code-gutter 列里、不会被读到。
+  // 但 Shiki 空行兜底用了 \u200B 撑行高，要剥离掉避免终端 / 编辑器看到不可见字符。
+  const plain = (codeEl.textContent || "").replace(/\u200B/g, "");
+
+  // text/html：保留 Shiki 颜色高亮，包一层带主题背景的 <pre>
+  const lang =
+    (container as HTMLElement).getAttribute("data-lang") ||
+    codeEl.className.match(/language-([\w-]+)/)?.[1] ||
+    "text";
+  const htmlPayload = buildHtmlForClipboard(codeEl, lang);
 
   const onSuccess = () => {
     setCopyState(btn, "success");
@@ -724,12 +802,46 @@ const handleCodeCopyClick = (event: Event) => {
     window.setTimeout(() => setCopyState(btn, null), 1500);
   };
 
+  // 优先：双 MIME 写入（Chrome 76+ / Edge 79+ / Safari 13.1+ / Firefox 127+ 支持）
+  // 注意：ClipboardItem 必须放在 user gesture 同步回调中调用——所以这里直接用 await/then，
+  // 不要拆成异步函数中再处理（在 then 里再 new ClipboardItem 仍然处于 click 上下文中是允许的）
+  if (
+    typeof window !== "undefined" &&
+    "ClipboardItem" in window &&
+    navigator.clipboard &&
+    navigator.clipboard.write
+  ) {
+    try {
+      const item = new ClipboardItem({
+        "text/plain": new Blob([plain], { type: "text/plain" }),
+        "text/html": new Blob([htmlPayload], { type: "text/html" }),
+      });
+      navigator.clipboard.write([item]).then(onSuccess, () => {
+        // 浏览器拒绝或权限失败 → 降级到纯文本写入
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText(plain).then(onSuccess, () => {
+            if (fallbackCopy(plain)) onSuccess();
+            else onError();
+          });
+        } else if (fallbackCopy(plain)) {
+          onSuccess();
+        } else {
+          onError();
+        }
+      });
+      return;
+    } catch {
+      // ClipboardItem 构造失败（极少见）→ 降级
+    }
+  }
+
+  // 不支持 ClipboardItem：退回到纯文本写入路径
   if (navigator.clipboard && navigator.clipboard.writeText) {
-    navigator.clipboard.writeText(code).then(onSuccess, () => {
-      if (fallbackCopy(code)) onSuccess();
+    navigator.clipboard.writeText(plain).then(onSuccess, () => {
+      if (fallbackCopy(plain)) onSuccess();
       else onError();
     });
-  } else if (fallbackCopy(code)) {
+  } else if (fallbackCopy(plain)) {
     onSuccess();
   } else {
     onError();
@@ -1665,7 +1777,7 @@ onMounted(() => {
     isMobile.value = window.innerWidth < 576;
 
     // SSR 已经把正文直出到页面，客户端只在"SSR 没有拿到内容"时兜底拉取，
-    // 不再切换到 md-editor-v3 替换 DOM，避免样式抖动与 hydration 二次渲染。
+    // 不会再做任何客户端二次渲染来替换 DOM，避免样式抖动与 hydration mismatch。
     if (!article.value || !article.value.renderedHtml) {
       initArticleContent();
     }
