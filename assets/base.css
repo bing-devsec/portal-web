@@ -1387,7 +1387,7 @@ a {
     flex: 1 1 auto;
     min-width: 0; /* flex 子项默认 min-width: auto，会撑爆容器，必须显式 0 */
     margin: 0;
-    padding: 12px 14px 18px 0;
+    padding: 12px 14px 12px 0;
     background-color: transparent;
     overflow-x: auto;
     line-height: 1.55;
@@ -1530,25 +1530,23 @@ a {
     flex: 1 1 auto;
     overflow: auto;
     -webkit-overflow-scrolling: touch;
-    padding: 12px;
+    padding: 0;
     background-color: #f8f9fa;
 }
 
-/* 全屏表格本身：自然宽度 + 完整外框 + 圆角，与正文表格保持一致风格 */
+/* 全屏表格本身：自然宽度 + 完整外框，无圆角，贴边显示 */
 .ssr-table-fs-body table {
     width: max-content;
     min-width: 100%;
     border-collapse: separate;
     border-spacing: 0;
     background-color: #fff;
-    /* 与正文表格保持一致：轻量藏青外框 (#4a6079)，比 H1 更轻 */
     border: 1px solid #4a6079;
-    border-radius: 6px;
+    border-radius: 0;
     overflow: hidden;
     font-size: 14px;
 }
 .ssr-table-fs-body th {
-    /* 与正文表格保持一致：轻量藏青背景 + 白字 */
     color: #fff;
     word-break: normal;
     text-align: center;
@@ -1725,7 +1723,7 @@ a {
 .article-body-ssr .ssr-table-fs-btn {
     appearance: none;
     border: 0;
-    background: rgba(255, 255, 255, 0.9);
+    background: rgba(255, 255, 255, 0.55);
     color: #4a5568;
     width: 30px;
     height: 26px;
@@ -1739,11 +1737,12 @@ a {
     top: 4px;
     right: 4px;
     z-index: 2;
-    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08);
     transition: background-color 0.15s ease, color 0.15s ease;
 }
 .article-body-ssr .ssr-table-fs-btn:hover {
-    background-color: #fff;
+    /* hover 时再加深到接近不透明，给出明确反馈 */
+    background-color: rgba(255, 255, 255, 0.9);
     color: #1a202c;
 }
 .article-body-ssr .ssr-table-fs-btn:active {
@@ -1831,7 +1830,7 @@ a {
     font-size: clamp(11px, 10px + 0.3vw, 13px);
 }
 .article-body-ssr .ssr-code-block .ssr-code-pre {
-    padding: clamp(10px, 8px + 0.5vw, 14px) clamp(12px, 10px + 0.5vw, 16px) clamp(16px, 14px + 0.5vw, 20px) 0;
+    padding: clamp(10px, 8px + 0.5vw, 14px) clamp(12px, 10px + 0.5vw, 16px) clamp(10px, 8px + 0.5vw, 14px) 0;
     font-size: clamp(13px, 12px + 0.3vw, 14px);
 }
 .article-body-ssr .ssr-code-gutter {
