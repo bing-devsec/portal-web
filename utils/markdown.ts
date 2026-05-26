@@ -592,6 +592,48 @@ md.renderer.rules.image = function (tokens, idx, options, env, self) {
 };
 
 // ============================================================
+// 表格外包一层横向滚动容器（移动端核心可读性修复）
+// ------------------------------------------------------------
+// 背景：base.css 中 .article-body-ssr table { width: 100% } 让表格被强制贴齐父级宽度，
+// 当列数 ≥4 或某列内容较长时，移动端窄屏会把每个 cell 的文本压成"一字一行"甚至溢出，
+// 用户也无法横向滚动查看完整内容。
+// 解决方案：在表格外包一层 .ssr-table-wrap，由它承担 overflow-x: auto，
+// 让表格可以保留"自然宽度"水平滚动；CSS 层会在移动端把 width 100% 改成 max-content，
+// 配合 wrap 滚动，列再多也能完整看到。
+// 仅作用于 markdown 渲染管线生成的 <table>，不影响其他位置（比如代码块里的 <table> 文本）。
+// ============================================================
+const defaultTableOpen = md.renderer.rules.table_open || function (tokens, idx, options, _env, self) {
+    return self.renderToken(tokens, idx, options);
+};
+const defaultTableClose = md.renderer.rules.table_close || function (tokens, idx, options, _env, self) {
+    return self.renderToken(tokens, idx, options);
+};
+md.renderer.rules.table_open = function (tokens, idx, options, env, self) {
+    // 全屏按钮 SVG：与代码块全屏按钮风格一致（四角向外的箭头图标）。
+    // SSR 阶段把按钮 DOM 直接写好，CSS 控制可见性：
+    //   - PC 端：始终隐藏（PC 屏宽充足，无需全屏）
+    //   - 移动端：仅在 wrap 拥有 [data-overflow="true"] 时显示，
+    //     overflow 标记由 [id].vue 的 ResizeObserver 在客户端检测后注入。
+    // 这样首屏 SSR HTML 含静态按钮，但视觉上只对真正需要的表格暴露入口，零误导。
+    const fsBtn =
+        '<button class="ssr-table-fs-btn" type="button" aria-label="全屏查看表格" title="全屏">' +
+        '<svg viewBox="0 0 24 24" width="17" height="17" aria-hidden="true">' +
+        '<path fill="currentColor" d="M5 5h6v2H7v4H5V5zm14 0v6h-2V7h-4V5h6zM5 19v-6h2v4h4v2H5zm14 0h-6v-2h4v-4h2v6z"/>' +
+        '</svg>' +
+        '</button>';
+    // 双层 DOM：
+    //   外层 .ssr-table-wrap —— 仅承担 position: relative 作为按钮的定位参照系，
+    //                          自身不滚动，确保按钮在 wrap 右上角"钉死"，
+    //                          不会随表格横向滚动而漂移。
+    //   内层 .ssr-table-scroll —— 真正承担 overflow-x: auto，包裹表格本体；
+    //                            横向滚动只发生在这一层，与按钮位置解耦。
+    return `<div class="ssr-table-wrap">${fsBtn}<div class="ssr-table-scroll">${defaultTableOpen(tokens, idx, options, env, self)}`;
+};
+md.renderer.rules.table_close = function (tokens, idx, options, env, self) {
+    return `${defaultTableClose(tokens, idx, options, env, self)}</div></div>`;
+};
+
+// ============================================================
 // 与 CatalogRenderer 完全一致的 heading id 生成规则
 // 历史背景：早期客户端用 md-editor-v3 接管 DOM 渲染，本函数对齐 md-editor-v3
 // 内部的 heading id 算法以保证 SSR 直出与客户端二次渲染锚点一致。

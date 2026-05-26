@@ -658,6 +658,170 @@ const handleCodeFullscreenClick = (event: Event) => {
   }
 };
 
+// ============================================================
+// 表格全屏（移动端伪横屏）：事件委托统一处理 .ssr-table-fs-btn 点击
+// ------------------------------------------------------------
+// 设计与代码块全屏完全对齐，差异仅在内容（克隆 <table> 而不是 <pre><code>）：
+// 1) SSR 已经把按钮 DOM 直出（utils/markdown.ts 中 table_open 钩子），
+//    客户端仅根据 wrap 是否真的横向溢出决定按钮可见性 —— 通过 ResizeObserver
+//    给 wrap 加 data-overflow="true"，CSS 据此显示按钮，避免对小表格也暴露入口造成噪音。
+// 2) 全屏蒙层 DOM 不在 SSR HTML 中，运行时动态创建/销毁，与代码块一致。
+// 3) "伪横屏"复用代码块同款 transform: rotate(90deg) + 100dvh/100dvw 互换方案。
+// 4) 关闭路径：右上角 × / ESC 键 / 安卓返回键（pushState + popstate 拦截），与代码块一致。
+// 5) 进入时锁 body 滚动；退出还原。
+// ============================================================
+const tableFsState = {
+  overlay: null as HTMLElement | null,
+  prevBodyOverflow: "" as string,
+  triggerBtn: null as HTMLElement | null,
+  escHandler: null as ((e: KeyboardEvent) => void) | null,
+  popstateHandler: null as ((e: PopStateEvent) => void) | null,
+  pushedHistory: false,
+};
+
+const closeTableFullscreen = () => {
+  const s = tableFsState;
+  if (!s.overlay) return;
+  s.overlay.remove();
+  s.overlay = null;
+  document.body.style.overflow = s.prevBodyOverflow;
+  if (s.escHandler) {
+    document.removeEventListener("keydown", s.escHandler);
+    s.escHandler = null;
+  }
+  if (s.popstateHandler) {
+    window.removeEventListener("popstate", s.popstateHandler);
+    s.popstateHandler = null;
+  }
+  if (s.pushedHistory) {
+    s.pushedHistory = false;
+    try {
+      history.back();
+    } catch {
+      // 忽略
+    }
+  }
+  s.triggerBtn?.focus();
+  s.triggerBtn = null;
+};
+
+const handleTableFullscreenClick = (event: Event) => {
+  const target = event.target as HTMLElement | null;
+  if (!target) return;
+  const btn = target.closest(
+    ".ssr-table-fs-btn"
+  ) as HTMLButtonElement | null;
+  if (!btn) return;
+
+  // 仅移动端响应：CSS 已经隐藏 PC 按钮，这里再做一次防御
+  if (window.innerWidth > 576) return;
+
+  const wrap = btn.closest(".ssr-table-wrap") as HTMLElement | null;
+  if (!wrap) return;
+  const tableEl = wrap.querySelector("table") as HTMLTableElement | null;
+  if (!tableEl) return;
+
+  // 克隆 <table> 进入全屏蒙层；克隆能保留所有 inline style（包括 markdown-it 注入的
+  // text-align 列对齐），同时与原 DOM 完全解耦，全屏关闭后不会影响原表格状态。
+  const clonedTable = tableEl.cloneNode(true) as HTMLTableElement;
+
+  const overlay = document.createElement("div");
+  overlay.className = "ssr-table-fs-overlay";
+  overlay.setAttribute("role", "dialog");
+  overlay.setAttribute("aria-modal", "true");
+  overlay.setAttribute("aria-label", "表格全屏查看");
+  overlay.innerHTML = `
+    <div class="ssr-table-fs-stage">
+      <div class="ssr-table-fs-head">
+        <span class="ssr-table-fs-info">表格全屏</span>
+        <div class="ssr-table-fs-actions">
+          <button class="ssr-table-fs-close ssr-code-iconbtn" type="button" aria-label="退出全屏" title="关闭">
+            <svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true">
+              <path fill="currentColor" d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/>
+            </svg>
+          </button>
+        </div>
+      </div>
+      <div class="ssr-table-fs-body"></div>
+    </div>
+  `;
+  const bodyEl = overlay.querySelector(".ssr-table-fs-body") as HTMLElement;
+  bodyEl.appendChild(clonedTable);
+  document.body.appendChild(overlay);
+
+  tableFsState.overlay = overlay;
+  tableFsState.prevBodyOverflow = document.body.style.overflow;
+  tableFsState.triggerBtn = btn;
+  document.body.style.overflow = "hidden";
+
+  overlay
+    .querySelector(".ssr-table-fs-close")
+    ?.addEventListener("click", closeTableFullscreen);
+
+  tableFsState.escHandler = (e: KeyboardEvent) => {
+    if (e.key === "Escape") closeTableFullscreen();
+  };
+  document.addEventListener("keydown", tableFsState.escHandler);
+
+  tableFsState.popstateHandler = () => {
+    tableFsState.pushedHistory = false;
+    closeTableFullscreen();
+  };
+  try {
+    history.pushState({ ssrTableFullscreen: true }, "");
+    tableFsState.pushedHistory = true;
+    window.addEventListener("popstate", tableFsState.popstateHandler);
+  } catch {
+    // 某些环境可能限制 pushState，忽略即可
+  }
+};
+
+// 表格 overflow 检测：用 ResizeObserver 监听所有 .ssr-table-wrap 的尺寸变化，
+// 当 scrollWidth > clientWidth 时（表格自然宽度超过容器，需要横滚），
+// 给 wrap 加 data-overflow="true"，CSS 据此显示全屏按钮。
+// 这样小表格不会显示按钮，避免视觉噪音。
+let tableOverflowObserver: ResizeObserver | null = null;
+const observedTableWraps = new WeakSet<HTMLElement>();
+
+const updateTableOverflowFlag = (wrap: HTMLElement) => {
+  // 现在 wrap 自身不滚动，需要去内层 .ssr-table-scroll 上测溢出。
+  // data-overflow 标记仍写在 wrap 上，因为按钮挂在 wrap，CSS 选择器基于 wrap。
+  const scrollEl = wrap.querySelector<HTMLElement>(".ssr-table-scroll");
+  if (!scrollEl) return;
+  // 1px 容差：避免亚像素差异下来回 toggle
+  if (scrollEl.scrollWidth - scrollEl.clientWidth > 1) {
+    wrap.setAttribute("data-overflow", "true");
+  } else {
+    wrap.removeAttribute("data-overflow");
+  }
+};
+
+const observeAllTableWraps = () => {
+  if (typeof ResizeObserver === "undefined") return;
+  if (!tableOverflowObserver) {
+    tableOverflowObserver = new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        // ResizeObserver 监听的是 .ssr-table-scroll（内层滚动层），
+        // 但更新 data-overflow 时要回到外层 wrap，按 DOM 关系反查。
+        const scrollEl = entry.target as HTMLElement;
+        const wrap = scrollEl.closest(".ssr-table-wrap") as HTMLElement | null;
+        if (wrap) updateTableOverflowFlag(wrap);
+      }
+    });
+  }
+  const wraps = document.querySelectorAll<HTMLElement>(".ssr-table-wrap");
+  wraps.forEach((wrap) => {
+    if (observedTableWraps.has(wrap)) return;
+    const scrollEl = wrap.querySelector<HTMLElement>(".ssr-table-scroll");
+    if (!scrollEl) return;
+    observedTableWraps.add(wrap);
+    tableOverflowObserver?.observe(scrollEl);
+    // 观察到时立即测一次，避免等到下一帧才显示按钮
+    updateTableOverflowFlag(wrap);
+  });
+};
+
+
 // 代码块复制按钮：事件委托统一处理 .ssr-code-block 内的 .ssr-code-copy 点击
 // 设计要点：
 // 1) 仅在 onMounted 时挂一次到 document，卸载时移除，避免每个代码块单独绑事件
@@ -1781,6 +1945,8 @@ onMounted(() => {
     document.addEventListener("click", handleCodeToggleClick);
     // 代码块全屏按钮：同样事件委托（仅移动端响应）
     document.addEventListener("click", handleCodeFullscreenClick);
+    // 表格全屏按钮：同样事件委托（仅移动端响应）
+    document.addEventListener("click", handleTableFullscreenClick);
     // Mermaid 图表全屏按钮：事件委托，PC + 移动端都响应
     document.addEventListener("click", handleMermaidFullscreenClick);
     // 文章图片点击全屏：事件委托
@@ -1797,6 +1963,11 @@ onMounted(() => {
     } else {
       setTimeout(triggerMermaid, 0);
     }
+
+    // 表格 overflow 检测：首屏挂上 ResizeObserver，仅在表格自然宽度超过容器时
+    // 给 wrap 加 data-overflow="true"，从而显示全屏按钮。
+    // 等 nextTick 确保 v-html 已把 SSR HTML 注入 DOM。
+    void nextTick().then(() => observeAllTableWraps());
   }
 });
 
@@ -1806,12 +1977,17 @@ onBeforeUnmount(() => {
     document.removeEventListener("click", handleCodeCopyClick);
     document.removeEventListener("click", handleCodeToggleClick);
     document.removeEventListener("click", handleCodeFullscreenClick);
+    document.removeEventListener("click", handleTableFullscreenClick);
     document.removeEventListener("click", handleMermaidFullscreenClick);
     document.removeEventListener("click", handleImageClick);
     // 如果用户路由切走时全屏蒙层还在，需要主动清理
     closeCodeFullscreen();
+    closeTableFullscreen();
     closeMermaidFullscreen();
     closeImageFullscreen();
+    // 释放表格 overflow 监听
+    tableOverflowObserver?.disconnect();
+    tableOverflowObserver = null;
     // 取消待处理的请求
     pendingRequest.value = null;
   }
@@ -1846,6 +2022,9 @@ watch(
         // 用 nextTick 确保 v-html 已经把新 DOM 写入页面。
         await nextTick();
         void renderMermaidBlocks();
+        // 同样原因：新文章里的表格也要重新挂 overflow 检测。
+        // observeAllTableWraps 内部用 WeakSet 去重，不会对老 wrap 重复 observe。
+        observeAllTableWraps();
       }
     }
   }
@@ -1883,13 +2062,17 @@ watch(
 
 /* 移动端特别优化 */
 @media (max-width: 576px) {
+  .article-detail-section.l-container {
+    width: 100%;
+  }
+
   .l-article-main {
     padding-left: 0px;
     padding-right: 0px;
   }
 
   .panel-body {
-    padding: 5px 8px !important;
+    padding: 0px !important;
   }
 
   .c_titile {
@@ -2044,26 +2227,33 @@ watch(
   will-change: auto;
 }
 
-/* 优化：移动端SSR HTML样式，确保与客户端渲染一致 */
+/* 移动端（≤576px）样式集中区：SSR 正文、信息条、标题等的小屏专项调整 */
 @media (max-width: 576px) {
   .article-body-ssr {
-    /* 确保移动端SSR内容立即可见，优化LCP */
     min-height: 0;
-    /* 优化字体渲染 */
     text-rendering: optimizeLegibility;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
+    line-height: 1.6;
   }
-  /* 移动端目录的隐藏与 FAB 切换由 CatalogRenderer 自身在 991px 断点接管，
-     此处不再硬编码侧栏 / 主栏的覆盖；
-     Grid 在 < 992px 自动堆叠为单列，主内容自然满宽。 */
-}
 
-@media (max-width: 576px) {
+  .article-body-ssr :deep(p),
+  .article-body-ssr :deep(li),
+  .article-body-ssr :deep(li p) {
+    line-height: 1.6;
+  }
+
   .box_c {
     flex-direction: column;
     align-items: flex-start;
     gap: 8px;
+    margin-left: 8px;
+    margin-right: 8px;
+  }
+
+  .c_titile {
+    padding-left: 8px;
+    padding-right: 8px;
   }
 
   .info-item {

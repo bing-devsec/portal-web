@@ -793,11 +793,9 @@ a {
 /* H3：左侧顶置图 + 右侧旋转动画图（迁移自 md-editor-v3 自定义样式） */
 .article-body-ssr h3 {
     margin: 8px 0;
-    /* 流式：手机 1.2rem，PC 1.3rem */
     font-size: clamp(1.2rem, 1.15rem + 0.25vw, 1.3rem);
     position: relative;
-    /* 流式 padding：手机 24px，PC 32px */
-    padding: 4px clamp(24px, 20px + 1vw, 32px);
+    padding: 8px clamp(24px, 20px + 1vw, 32px) 0;
     width: max-content;
 }
 
@@ -1443,6 +1441,131 @@ a {
     background: transparent;
 }
 
+/* ============================================================
+ * 表格全屏（移动端伪横屏）
+ * ------------------------------------------------------------
+ * 与代码块全屏（.ssr-code-fs-*）共用伪横屏底层方案：
+ * - 蒙层 position: fixed; inset: 0; 占满 viewport
+ * - 内部 stage 用 transform: rotate(90deg) 旋转 90 度，宽高互换
+ * - 使用 dvh/dvw 规避 iOS Safari 地址栏抖动
+ * 差异：
+ * - 内容区不是代码 <pre>，而是承载 <table> 的滚动容器，需要 overflow: auto
+ * - 顶部 head 多一行"提示横屏"小条，让用户在横屏后视觉密度最大化
+ * ============================================================ */
+.ssr-table-fs-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 9999;
+    background-color: #1c1f24;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+    height: 100dvh;
+}
+
+.ssr-table-fs-stage {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 100dvh;
+    height: 100dvw;
+    transform: translate(-50%, -50%) rotate(90deg);
+    transform-origin: center center;
+    background-color: #f8f9fa;
+    display: flex;
+    flex-direction: column;
+}
+
+.ssr-table-fs-head {
+    flex: 0 0 auto;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 2px 10px;
+    background-color: #21252b;
+    color: #e1e4e8;
+    font-size: 12px;
+    line-height: 1.2;
+    user-select: none;
+}
+
+.ssr-table-fs-info {
+    letter-spacing: 0.5px;
+    font-weight: 600;
+}
+
+.ssr-table-fs-actions {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+/* 全屏蒙层里的关闭按钮：与代码块全屏的 .ssr-code-iconbtn 视觉对齐，
+   但高度比代码块版本进一步收紧（22px vs 26px），让 head 整体更窄。 */
+.ssr-table-fs-actions .ssr-code-iconbtn {
+    appearance: none;
+    border: 0;
+    background: transparent;
+    color: #828a96;
+    width: 26px;
+    height: 22px;
+    padding: 0;
+    border-radius: 4px;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    transition: background-color 0.15s ease, color 0.15s ease;
+}
+.ssr-table-fs-actions .ssr-code-iconbtn:hover {
+    color: #e5e7eb;
+    background-color: #2c313a;
+}
+.ssr-table-fs-actions .ssr-code-iconbtn:active {
+    background-color: #3a3f4a;
+}
+
+/* 表格内容区：可横向 + 纵向滚动，确保任意尺寸表格都能完整查看。
+   背景给浅色，避免 stage 深色背景透出造成阅读疲劳。 */
+.ssr-table-fs-body {
+    flex: 1 1 auto;
+    overflow: auto;
+    -webkit-overflow-scrolling: touch;
+    padding: 12px;
+    background-color: #f8f9fa;
+}
+
+/* 全屏表格本身：自然宽度 + 完整边框 + 充足 padding，密度回到"PC 端"水平 */
+.ssr-table-fs-body table {
+    width: max-content;
+    min-width: 100%;
+    border-collapse: collapse;
+    background-color: #fff;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+    font-size: 14px;
+}
+.ssr-table-fs-body th {
+    color: #4f4f4f;
+    word-break: normal;
+    text-align: center;
+    font-weight: 700;
+    background-color: #eff3f5;
+    border: 1px solid #ccc;
+    padding: 8px 12px;
+    /* 全屏态下取消 nowrap，允许长文本回到正常换行；列宽由内容决定 */
+    white-space: normal;
+}
+.ssr-table-fs-body td {
+    text-align: left;
+    border: 1px solid #ccc;
+    padding: 8px 12px;
+    white-space: normal;
+}
+.ssr-table-fs-body tr:nth-child(even) td {
+    background-color: #fafbfc;
+}
+
 .article-body-ssr .ssr-code-block .ssr-code-pre code.hljs {
     background-color: transparent;
     /* 与 Shiki github-dark 主题前景色对齐 */
@@ -1539,6 +1662,26 @@ a {
 }
 
 /* 表格 */
+/* 表格双层 DOM 容器：
+   - .ssr-table-wrap：外层，position: relative 作为全屏按钮的定位参照系，自身不滚动；
+     这样按钮 right: 4px 始终对齐"屏幕可见的 wrap 右边缘"，不会随表格横滑漂移。
+   - .ssr-table-scroll：内层，真正承担横向滚动 (overflow-x: auto)。
+   PC 端外层宽度撑满 100%，仅在表格真的超过容器宽度时由内层出现滚动条；
+   移动端 ≤576px 表格 width 改为 max-content，强制走内层的横向滚动，避免 cell 被挤压。
+   双层 DOM 由 markdown 渲染管线（utils/markdown.ts 中 table_open/close）注入。 */
+.article-body-ssr .ssr-table-wrap {
+    width: 100%;
+    margin: 1em 0;
+    position: relative;
+}
+.article-body-ssr .ssr-table-scroll {
+    width: 100%;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    /* 让滚动条不要紧贴底部 cell：iOS Safari 默认滚动条更短，留点呼吸空间 */
+    padding-bottom: 2px;
+}
+
 .article-body-ssr table {
     width: 100%;
     border-collapse: collapse;
@@ -1546,6 +1689,44 @@ a {
     font-size: 14px;
     background-color: #fff;
     box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+}
+
+/* 包裹层内部的 table：margin 由 wrap 接管，避免双倍上下间距 */
+.article-body-ssr .ssr-table-wrap table {
+    margin: 0;
+}
+
+/* 表格全屏入口按钮（SSR 注入）：默认隐藏，CSS 仅在"移动端 + wrap 真的横向溢出"时显示，
+   避免给小表格也暴露入口，保持视觉简洁。
+   data-overflow="true" 由 [id].vue 的 ResizeObserver 在客户端检测后注入到外层 wrap。
+   按钮挂在 .ssr-table-wrap（不滚动层）上，right: 4px 永远锚定屏幕可见的 wrap 右上角，
+   表格在 .ssr-table-scroll 内滚动也不会让按钮位移。 */
+.article-body-ssr .ssr-table-fs-btn {
+    appearance: none;
+    border: 0;
+    background: rgba(255, 255, 255, 0.9);
+    color: #4a5568;
+    width: 30px;
+    height: 26px;
+    padding: 0;
+    border-radius: 4px;
+    cursor: pointer;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    position: absolute;
+    top: 4px;
+    right: 4px;
+    z-index: 2;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
+    transition: background-color 0.15s ease, color 0.15s ease;
+}
+.article-body-ssr .ssr-table-fs-btn:hover {
+    background-color: #fff;
+    color: #1a202c;
+}
+.article-body-ssr .ssr-table-fs-btn:active {
+    background-color: #edf2f7;
 }
 
 .article-body-ssr table th {
@@ -1638,6 +1819,34 @@ a {
         max-height: calc(
             var(--ssr-code-collapsed-rows) * 1.55 * 13px + 10px * 2
         );
+    }
+
+    /* 移动端表格强制保留自然宽度，由 .ssr-table-scroll 提供横向滚动。
+       不改 width 的话，table 仍会被父级压成 100%，cell 被挤成多行甚至溢出，
+       内层 overflow-x: auto 也无从触发。
+       注意：选择器用后代选择（不带 >），因为 DOM 是 wrap > scroll > table 三层。 */
+    .article-body-ssr .ssr-table-wrap table {
+        width: max-content;
+        min-width: 100%;
+    }
+    /* cell 内边距与字号同步收紧：让数据型表格能塞下更多列；
+       white-space: nowrap 强制单行展示，避免被压成多行影响阅读。 */
+    .article-body-ssr .ssr-table-wrap th,
+    .article-body-ssr .ssr-table-wrap td {
+        padding: 6px 8px;
+        font-size: 13px;
+        white-space: nowrap;
+    }
+
+    .article-body-ssr img.article-img {
+        background-color: #f1f3f5;
+    }
+
+    /* 表格全屏按钮：仅在移动端 + 表格确实溢出时（data-overflow="true"）才显示。
+       data-overflow 由 [id].vue 的 ResizeObserver 在客户端写入；首屏 SSR 时该属性不存在，
+       按钮保持 display: none 状态，避免短暂闪现。 */
+    .article-body-ssr .ssr-table-wrap[data-overflow="true"] .ssr-table-fs-btn {
+        display: inline-flex;
     }
 }
 
