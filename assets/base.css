@@ -1526,8 +1526,6 @@ a {
     background-color: #3a3f4a;
 }
 
-/* 表格内容区：可横向 + 纵向滚动，确保任意尺寸表格都能完整查看。
-   背景给浅色，避免 stage 深色背景透出造成阅读疲劳。 */
 .ssr-table-fs-body {
     flex: 1 1 auto;
     overflow: auto;
@@ -1536,34 +1534,52 @@ a {
     background-color: #f8f9fa;
 }
 
-/* 全屏表格本身：自然宽度 + 完整边框 + 充足 padding，密度回到"PC 端"水平 */
+/* 全屏表格本身：自然宽度 + 完整外框 + 圆角，与正文表格保持一致风格 */
 .ssr-table-fs-body table {
     width: max-content;
     min-width: 100%;
-    border-collapse: collapse;
+    border-collapse: separate;
+    border-spacing: 0;
     background-color: #fff;
-    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+    border: 1px solid #2c3e50;
+    border-radius: 6px;
+    overflow: hidden;
     font-size: 14px;
 }
 .ssr-table-fs-body th {
-    color: #4f4f4f;
+    /* 与正文表格保持一致：藏青色背景 + 白字 + 青色点缀底线 */
+    color: #fff;
     word-break: normal;
     text-align: center;
     font-weight: 700;
-    background-color: #eff3f5;
-    border: 1px solid #ccc;
-    padding: 8px 12px;
-    /* 全屏态下取消 nowrap，允许长文本回到正常换行；列宽由内容决定 */
+    background-color: #2c3e50;
+    border: 0;
+    border-right: 1px solid rgba(255, 255, 255, 0.18);
+    padding: 10px 12px;
+    letter-spacing: 0.02em;
     white-space: normal;
 }
 .ssr-table-fs-body td {
     text-align: left;
-    border: 1px solid #ccc;
+    border: 0;
+    border-right: 1px solid #d8dee5;
+    border-bottom: 1px solid #d8dee5;
     padding: 8px 12px;
+    color: #333;
     white-space: normal;
 }
+.ssr-table-fs-body th:last-child,
+.ssr-table-fs-body td:last-child {
+    border-right: 0;
+}
+.ssr-table-fs-body tbody tr:last-child td {
+    border-bottom: 0;
+}
 .ssr-table-fs-body tr:nth-child(even) td {
-    background-color: #fafbfc;
+    background-color: #fafafa;
+}
+.ssr-table-fs-body tbody tr:hover td {
+    background-color: #f3f6f8;
 }
 
 .article-body-ssr .ssr-code-block .ssr-code-pre code.hljs {
@@ -1684,11 +1700,18 @@ a {
 
 .article-body-ssr table {
     width: 100%;
-    border-collapse: collapse;
+    /* 用 separate + border-spacing:0，配合 overflow:hidden + border-radius 实现真圆角；
+       collapse 模式下 cells 的边会突出到圆角外，无法实现四角圆 */
+    border-collapse: separate;
+    border-spacing: 0;
     margin: 1em 0;
     font-size: 14px;
     background-color: #fff;
-    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+    /* 完整外框：藏青色细描边，与 H1 标题 #2c3e50 同源；圆角与代码块 (6px) 保持一致 */
+    border: 1px solid #2c3e50;
+    border-radius: 6px;
+    /* 必须 hidden 才能让 th 的深色背景在圆角处被裁切，避免直角溢出圆角 */
+    overflow: hidden;
 }
 
 /* 包裹层内部的 table：margin 由 wrap 接管，避免双倍上下间距 */
@@ -1730,23 +1753,47 @@ a {
 }
 
 .article-body-ssr table th {
-    color: #4f4f4f;
+    /* 表头：藏青色背景 + 白字，呼应 H1 (#2c3e50) 的配色基调 */
+    color: #fff;
     word-break: normal;
     text-align: center;
     font-weight: 700;
-    background-color: #eff3f5;
-    border: 1px solid #ccc;
-    padding: 8px 12px;
+    background-color: #2c3e50;
+    border: 0;
+    border-right: 1px solid rgba(255, 255, 255, 0.18);
+    padding: 10px 12px;
+    letter-spacing: 0.02em;
 }
 
 .article-body-ssr table td {
     text-align: left;
-    border: 1px solid #ccc;
+    /* 单元格保留竖线，符合常见博客表格的阅读习惯 */
+    border: 0;
+    border-right: 1px solid #d8dee5;
+    border-bottom: 1px solid #d8dee5;
     padding: 8px 12px;
+    color: #333;
+}
+
+/* 最后一列：去掉右侧分隔线，避免与外框右边重叠成双线 */
+.article-body-ssr table th:last-child,
+.article-body-ssr table td:last-child {
+    border-right: 0;
+}
+
+/* 最后一行：去掉底分隔线，避免与外框底边重叠成双线 */
+.article-body-ssr table tbody tr:last-child td {
+    border-bottom: 0;
 }
 
 .article-body-ssr table tr:nth-child(even) td {
-    background-color: #fafbfc;
+    /* 偶数行底色：极淡的中性灰，仅用于辅助阅读对齐，不抢正文视线 */
+    background-color: #fafafa;
+}
+
+/* 行 hover 高亮：让长表格在阅读时更容易锁定当前行 */
+.article-body-ssr table tbody tr:hover td {
+    background-color: #f3f6f8;
 }
 
 /* 图片 */
