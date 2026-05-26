@@ -1541,18 +1541,19 @@ a {
     border-collapse: separate;
     border-spacing: 0;
     background-color: #fff;
-    border: 1px solid #2c3e50;
+    /* 与正文表格保持一致：轻量藏青外框 (#4a6079)，比 H1 更轻 */
+    border: 1px solid #4a6079;
     border-radius: 6px;
     overflow: hidden;
     font-size: 14px;
 }
 .ssr-table-fs-body th {
-    /* 与正文表格保持一致：藏青色背景 + 白字 + 青色点缀底线 */
+    /* 与正文表格保持一致：轻量藏青背景 + 白字 */
     color: #fff;
     word-break: normal;
     text-align: center;
     font-weight: 700;
-    background-color: #2c3e50;
+    background-color: #4a6079;
     border: 0;
     border-right: 1px solid rgba(255, 255, 255, 0.18);
     padding: 10px 12px;
@@ -1700,17 +1701,14 @@ a {
 
 .article-body-ssr table {
     width: 100%;
-    /* 用 separate + border-spacing:0，配合 overflow:hidden + border-radius 实现真圆角；
-       collapse 模式下 cells 的边会突出到圆角外，无法实现四角圆 */
     border-collapse: separate;
     border-spacing: 0;
     margin: 1em 0;
     font-size: 14px;
     background-color: #fff;
-    /* 完整外框：藏青色细描边，与 H1 标题 #2c3e50 同源；圆角与代码块 (6px) 保持一致 */
-    border: 1px solid #2c3e50;
+    /* 与 H1 (#2c3e50) 同色系但更轻盈的藏青色，避免抢 H1 视觉权重 */
+    border: 1px solid #4a6079;
     border-radius: 6px;
-    /* 必须 hidden 才能让 th 的深色背景在圆角处被裁切，避免直角溢出圆角 */
     overflow: hidden;
 }
 
@@ -1753,12 +1751,12 @@ a {
 }
 
 .article-body-ssr table th {
-    /* 表头：藏青色背景 + 白字，呼应 H1 (#2c3e50) 的配色基调 */
     color: #fff;
     word-break: normal;
     text-align: center;
     font-weight: 700;
-    background-color: #2c3e50;
+    /* 表头：与 H1 (#2c3e50) 同色系但更轻盈的藏青色，避免大面积深色块抢标题权重 */
+    background-color: #4a6079;
     border: 0;
     border-right: 1px solid rgba(255, 255, 255, 0.18);
     padding: 10px 12px;
@@ -1767,7 +1765,6 @@ a {
 
 .article-body-ssr table td {
     text-align: left;
-    /* 单元格保留竖线，符合常见博客表格的阅读习惯 */
     border: 0;
     border-right: 1px solid #d8dee5;
     border-bottom: 1px solid #d8dee5;
@@ -1775,23 +1772,19 @@ a {
     color: #333;
 }
 
-/* 最后一列：去掉右侧分隔线，避免与外框右边重叠成双线 */
 .article-body-ssr table th:last-child,
 .article-body-ssr table td:last-child {
     border-right: 0;
 }
 
-/* 最后一行：去掉底分隔线，避免与外框底边重叠成双线 */
 .article-body-ssr table tbody tr:last-child td {
     border-bottom: 0;
 }
 
 .article-body-ssr table tr:nth-child(even) td {
-    /* 偶数行底色：极淡的中性灰，仅用于辅助阅读对齐，不抢正文视线 */
     background-color: #fafafa;
 }
 
-/* 行 hover 高亮：让长表格在阅读时更容易锁定当前行 */
 .article-body-ssr table tbody tr:hover td {
     background-color: #f3f6f8;
 }
@@ -1806,12 +1799,13 @@ a {
     border-radius: 4px;
 }
 
-/* 分割线 */
+/* 分割线：与 H1 (#2c3e50) 同色系但更轻盈的藏青调，避免抢 H1 的视觉权重 */
 .article-body-ssr hr {
     border: 0;
-    height: 1px;
-    background: linear-gradient(90deg, transparent, #ccc, transparent);
-    margin: 2em 0;
+    border-top: 2px solid #4a6079;
+    height: 0;
+    background: transparent;
+    margin: 1.6em 0;
 }
 
 /* ============================================================
