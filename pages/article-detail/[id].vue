@@ -157,7 +157,15 @@ const emptyArticle: ArticleDetail = {
 };
 
 const { data: serverArticle } = await useAsyncData<ArticleDetail>(
-  "article-detail-ssr",
+  // key 必须带上 articleId：
+  //   1) 防御性：避免不同文章在同一会话里复用同一 useAsyncData 槽位，
+  //      导致 SPA 路由切换时旧文章 payload 被错误复用。
+  //   2) 与 Nuxt 3 的 _payload.json 抽取机制配合得更稳：
+  //      payloadExtraction 默认开启时，浏览器加载 HTML 后会再 fetch
+  //      `/article-detail/<id>/_payload.json` 用以替换 inline payload。
+  //      key 携带 id 之后，hydration 阶段 payload 与 ref 的对应关系是 1:1，
+  //      不会因 key 复用产生跨文章串台。
+  `article-detail-ssr-${articleId.value}`,
   async () => {
     if (!import.meta.server || !articleId.value) {
       return emptyArticle;

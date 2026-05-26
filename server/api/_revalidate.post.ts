@@ -54,36 +54,42 @@ interface RevalidateBody {
 const ROUTE_CACHE_PREFIX = "nitro:routes";
 
 /**
- * 把 URL path 转成"用于子串匹配的 slug 片段"
+ * 把 URL path 转成"用于子串匹配的 slug 片段集合"
  *
- * Nitro 2.13 + unstorage fs driver 实测的 key 形如：
- *   nitro:routes:_:articledetail504.2c1G7yFDYW.json
+ * Nitro 2.13 + unstorage fs driver 实测的 key 有两类形态：
+ *   1) 文章页 HTML 缓存：
+ *        nitro:routes:_:articledetail504.2c1G7yFDYW.json
+ *      —— slug 后直接跟 `.` 哈希分隔符
+ *   2) 文章页 payload 缓存（experimental.payloadExtraction 默认 true 时由 Nuxt 生成）：
+ *        nitro:routes:_:articledetail504:_payloadjson.HASH.json
+ *      —— slug 后是 `:_payload`，再后面才是哈希
  *
  * 关键观察：
  *   - 路径片段会被截断到 **16 个字母数字字符**，再加 10 字节的 base32 哈希
- *   - slug 前以 `:` 分隔（来自 nitro 内部 key），后以 `.` 分隔哈希（fs driver 文件名规则）
+ *   - slug 前以 `:` 分隔（来自 nitro 内部 key），后以 `.` 或 `:` 分隔
  *   - getKeys() 返回的 key 直接带 `.json` 后缀（fs driver 不剥离扩展名）
  *
- * 因此匹配策略：
- *   - 取 path 的 slug 前 16 字符（与 Nitro 截断对齐）
- *   - 用 `:slug.` 作为子串模式（前 `:` 边界 + slug + 后 `.` 边界），不会误匹配其他路径
+ * 之前只清形态 1 导致线上 bug：
+ *   更新文章后，HTML 是新的（被清了重新渲染），但 payload.json 还是旧的，
+ *   浏览器加载 HTML 后再 fetch _payload.json，旧 payload 反水覆盖客户端
+ *   ref，最终目录、updateTime 等依赖 payload 的字段视觉上又变回旧值。
  *
- * 例：
- *   /article-detail/50474370602109964  →  slug = "articledetail504"
- *   匹配模式: ":articledetail504." 命中 "nitro:routes:_:articledetail504.HASH.json"
+ * 因此匹配策略改为返回**模式数组**，HTML 与 payload 一并清理：
+ *   - `:slug.` 命中 HTML 缓存
+ *   - `:slug:` 命中 payload（以及未来可能出现的其它子路径变体）
  *
  * 副作用提示：
- *   如果两篇文章 ID 前几位相同（如 /article-detail/50474... 和 /article-detail/50412...），
- *   它们的 slug 截断后都是 "articledetail504"，会被一起清理。
+ *   如果两篇文章 ID 前几位相同（slug 截断后相同），它们会被一起清。
  *   这是 Nitro key 算法的固有限制；博客场景下影响极小（最多多一次回源），
  *   不会造成数据正确性问题。
  */
-function pathToSlugMatcher(path: string): string {
+function pathToSlugMatchers(path: string): string[] {
   const trimmed = path.replace(/^\/+/, "").replace(/\/+$/, "");
   // 移除所有非字母数字字符（与 Nitro 内部 slug 化规则对齐）
   const slug = trimmed.replace(/[^a-zA-Z0-9]/g, "").slice(0, 16);
-  if (!slug) return "";
-  return `:${slug}.`;
+  if (!slug) return [];
+  // 同时覆盖 HTML 缓存（slug.HASH）与 payload 缓存（slug:_payloadjson.HASH）
+  return [`:${slug}.`, `:${slug}:`];
 }
 
 export default defineEventHandler(async (event: H3Event) => {
@@ -124,13 +130,15 @@ export default defineEventHandler(async (event: H3Event) => {
         cleared[String(path)] = 0;
         continue;
       }
-      const slug = pathToSlugMatcher(path);
-      if (!slug) {
+      const slugs = pathToSlugMatchers(path);
+      if (slugs.length === 0) {
         cleared[path] = 0;
         continue;
       }
-      // 子串匹配：key 里包含 ":slug." 即视为该路径相关的缓存
-      const matched = allKeys.filter((k: string) => k.includes(slug));
+      // 子串匹配：key 命中任一模式即视为该路径相关的缓存（HTML / payload 一起清）
+      const matched = allKeys.filter((k: string) =>
+        slugs.some((s) => k.includes(s))
+      );
       await Promise.all(matched.map((k: string) => storage.removeItem(k)));
       cleared[path] = matched.length;
     }
