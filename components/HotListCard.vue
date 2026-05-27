@@ -6,7 +6,7 @@
         <div class="tab-category-item">
             <ul class="index_recd">
                 <li v-for="article in hotArticles" :key="article.id" class="hotTips">
-                    <NuxtLink :to="`/article-detail/${article.id}`">
+                    <NuxtLink :to="`/article-detail/${article.id}`" :prefetch="canPrefetch(article.id)">
                         <span>{{ article.title }}</span>
                         <p class="hits">
                             <i class="iconfont icon-eye" title="点击量"></i>
@@ -20,6 +20,8 @@
 </template>
 
 <script setup lang="ts">
+import { shouldPrefetchArticle } from '~/composables/usePrefetchDedup'
+
 interface HotArticle {
     id: string;
     title: string;
@@ -27,6 +29,10 @@ interface HotArticle {
 }
 
 defineProps<{hotArticles: HotArticle[]}>();
+
+// 文章 _payload.json 预取名额：'hot' 命名空间。
+// 若主列表（'main'）已经领走该 id 的预取名额，这里返回 false，避免重复请求。
+const canPrefetch = (id: string) => shouldPrefetchArticle(id, 'hot')
 </script>
 
 <style scoped>

@@ -45,7 +45,7 @@ interface TimelineData {
 
 const { data: timelineData } = useApiData<TimelineData>('/user/article/timeline');
 const articleList = computed(() => timelineData.value?.rows ?? []);
-const expandedIndex = ref<number | null>(null);
+const expandedIndex = ref<number | null>(0);
 
 // 切换展开
 const toggleExpand = (index: number) => {

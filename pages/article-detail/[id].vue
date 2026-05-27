@@ -110,11 +110,25 @@ interface ArticleDetail {
   id: string;
   title: string;
   tag: string;
-  content: string;
+  // content 是后端返回的 markdown 原文，仅在 SSR 阶段用于：
+  //   1) renderMarkdownToHtml → renderedHtml
+  //   2) extractPlainTextDescription → description（meta description / og:description）
+  //   3) extractFirstImageUrl → ogImageUrl（og:image）
+  // 这三件事在 SSR 阶段就能全部完成，结果会作为下面三个派生字段一起返回。
+  // 因此 content 不再写入客户端 payload —— 一篇 markdown 长文动辄 100KB+，
+  // 这块体积占了 _payload.json 的一大半，删掉收益极大。
+  // 仍标为可选字段是因为 SPA 路由切换时（客户端 fetchArticleContent）
+  // 这条降级路径会临时持有 content（用于客户端再渲一次 markdown），但它不会
+  // 进入 SSR 序列化产物。
+  content?: string;
   createTime: string;
   updateTime: string;
   // SSR 阶段预渲染好的 HTML 字符串，模板中 v-html 直出，确保爬虫立即拿到正文
   renderedHtml?: string;
+  // SSR 阶段预提取的纯文本摘要（≤160 字），用于 meta description / og:description / twitter:description
+  description?: string;
+  // SSR 阶段预提取的首图 URL（无图时为空串），用于 og:image / twitter:image
+  ogImageUrl?: string;
 }
 
 const route = useRoute();
@@ -122,7 +136,6 @@ const runtimeConfig = useRuntimeConfig();
 const articleId = computed(() => route.params.id as string);
 const scrollElement = ".scrollable-content";
 const article = ref<ArticleDetail | null>(null);
-const visibleContent = ref("");
 const loadingState = ref<string>("正在加载文章...");
 const fingerprintReady = ref(false);
 const fingerprintValue = ref("");
@@ -151,7 +164,6 @@ const emptyArticle: ArticleDetail = {
   id: "",
   title: "",
   tag: "",
-  content: "",
   createTime: "",
   updateTime: "",
 };
@@ -223,13 +235,26 @@ const { data: serverArticle } = await useAsyncData<ArticleDetail>(
     }
 
     if (result?.code === 2000 && result.data) {
-      // SSR 阶段直接把 markdown 渲染成 HTML，挂在 renderedHtml 上。
-      // 这样模板里 v-html 直出，curl / Googlebot / Baiduspider 都能在 HTML
-      // 里立刻读到完整正文，是 SEO 优化的核心。
-      const renderedHtml = await renderMarkdownToHtml(result.data.content);
+      // SSR 阶段一次性把所有"依赖 markdown 原文"的派生数据算好，避免把
+      // 完整 content 字段塞进客户端 payload。这是 _payload.json 体积优化的关键步骤。
+      //   - renderedHtml：v-html 直出正文（SEO + 首屏）
+      //   - description：纯文本摘要，用于 meta description / og / twitter / JSON-LD
+      //   - ogImageUrl  ：从正文里抽出第一张图作为 og:image
+      const md = result.data.content || "";
+      const renderedHtml = await renderMarkdownToHtml(md);
+      const description = extractPlainTextDescription(md, 160);
+      const firstImage = extractFirstImageUrl(md);
+      const ogImageUrl = firstImage || "";
+
+      // 注意：这里**显式剥离 content**，让它不再出现在 useAsyncData 的返回值里，
+      // Nuxt payload 序列化时就不会写进 _payload.json。
+      const { content: _drop, ...rest } = result.data as ArticleDetail;
+      void _drop;
       return {
-        ...result.data,
+        ...rest,
         renderedHtml,
+        description,
+        ogImageUrl,
       };
     }
 
@@ -243,7 +268,6 @@ const { data: serverArticle } = await useAsyncData<ArticleDetail>(
 // 客户端直接复用同一份字符串通过模板中的 v-html 输出，无需任何二次渲染。
 if (serverArticle.value) {
   article.value = serverArticle.value;
-  visibleContent.value = serverArticle.value.content || "";
 }
 
 // SEO：根据文章内容动态设置页面标题和 meta 信息
@@ -269,15 +293,25 @@ const seoData = computed(() => {
     };
   }
 
-  // 用统一的纯文本提取工具，跳过代码块/图片/链接 URL，描述更干净
-  const description = extractPlainTextDescription(current.content, 160);
+  // 描述：优先使用 SSR 阶段已经预提取的 description；
+  // 仅在客户端 SPA 路由切换并临时持有 content 的兜底路径下回退到现场抽取。
+  const description = current.description
+    ? current.description
+    : current.content
+      ? extractPlainTextDescription(current.content, 160)
+      : "";
   const tags = current.tag ? current.tag.split(/[,\s，]+/).filter(Boolean) : [];
   const canonicalUrl = `${siteUrl}/article-detail/${current.id}`;
-  const structuredData = generateArticleStructuredData(current, siteUrl);
+  // 把 description 透传给结构化数据生成器，让它无需再依赖 content
+  const structuredData = generateArticleStructuredData(current, siteUrl, description);
   const breadcrumb = generateArticleBreadcrumb(current, siteUrl);
 
-  // 提取首图作为 og:image，没有时回落到默认站点封面
-  const firstImage = extractFirstImageUrl(current.content);
+  // og:image：优先使用 SSR 预提取的 ogImageUrl；客户端兜底再现场扫一次
+  const firstImage = current.ogImageUrl
+    ? current.ogImageUrl
+    : current.content
+      ? extractFirstImageUrl(current.content) || ""
+      : "";
   const ogImage = firstImage
     ? firstImage.startsWith("http")
       ? firstImage
@@ -435,7 +469,6 @@ const fetchArticleContent = async () => {
             ...result.data,
             renderedHtml,
           };
-          visibleContent.value = result.data.content || "";
         } else {
           // API 返回其他错误码
           throw new Error(
@@ -469,7 +502,6 @@ const fetchArticleContent = async () => {
     // 如果 SSR 有数据，至少可以显示 SSR 内容作为降级方案
     if (serverArticle.value) {
       article.value = serverArticle.value;
-      visibleContent.value = serverArticle.value.content || "";
     }
 
     // 重新抛出错误，让调用方知道失败了
@@ -481,10 +513,12 @@ const fetchArticleContent = async () => {
 const initArticleContent = async () => {
   if (!articleId.value) return;
 
-  // 优化：如果 SSR 已经有数据，直接使用，避免重复请求
-  if (serverArticle.value && serverArticle.value.content) {
+  // 优化：如果 SSR 已经有渲染好的 HTML，直接使用，避免重复请求。
+  // 历史上这里判断 serverArticle.value.content，但现在 SSR 已经把 content
+  // 从 payload 里剥离（替换为 renderedHtml + description + ogImageUrl），
+  // 所以改用 renderedHtml 作为"SSR 成功"的信号。
+  if (serverArticle.value && serverArticle.value.renderedHtml) {
     article.value = serverArticle.value;
-    visibleContent.value = serverArticle.value.content;
     return;
   }
 
@@ -508,7 +542,6 @@ const initArticleContent = async () => {
         // 如果 SSR 有数据，至少可以显示 SSR 内容
         if (serverArticle.value) {
           article.value = serverArticle.value;
-          visibleContent.value = serverArticle.value.content || "";
         }
       }
     }
@@ -518,7 +551,6 @@ const initArticleContent = async () => {
     // 如果 SSR 有数据，至少可以显示 SSR 内容作为降级方案
     if (serverArticle.value) {
       article.value = serverArticle.value;
-      visibleContent.value = serverArticle.value.content || "";
     }
   }
 };
@@ -2000,7 +2032,7 @@ watch(
     if (newId && newId !== oldId) {
       // 重置状态：路由切换时把内容相关字段清空，等新文章加载完毕再渲染
       article.value = null;
-      visibleContent.value = "";
+
       pendingRequest.value = null;
       loadingState.value = "正在加载文章...";
 

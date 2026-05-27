@@ -1,7 +1,7 @@
 <template>
     <li class="no_pic" @dblclick="navigateToArticle">
         <h2 class="title">
-            <NuxtLink :to="articleLink">{{ articleInfo.title }}</NuxtLink>
+            <NuxtLink :to="articleLink" :prefetch="canPrefetch">{{ articleInfo.title }}</NuxtLink>
         </h2>
         <div class="desc">{{ articleInfo.describe }}</div>
         <div class="date_hits">
@@ -17,6 +17,8 @@
 </template>
 
 <script setup lang="ts">
+import { shouldPrefetchArticle } from '~/composables/usePrefetchDedup'
+
 interface ArticleItem {
     id: string
     title: string
@@ -29,6 +31,8 @@ interface ArticleItem {
 
 const props = defineProps<{ articleInfo: ArticleItem}>()
 const articleLink = computed(() => `/article-detail/${props.articleInfo.id}`)
+// 文章 _payload.json 预取名额：'main' 命名空间，与 HotListCard('hot') 共享去重池
+const canPrefetch = computed(() => shouldPrefetchArticle(props.articleInfo.id, 'main'))
 const navigateToArticle = () => {navigateTo(articleLink.value)}
 </script>
 

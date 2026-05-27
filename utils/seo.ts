@@ -93,23 +93,29 @@ export function generateArticleStructuredData(
     article: {
         id: string;
         title: string;
-        content: string;
+        // content 改为可选：仅作为 description 的兜底回退；
+        // 主路径请通过 precomputedDescription 传入 SSR 阶段就抽好的纯文本，
+        // 这样客户端 payload 里无需保留 markdown 原文，体积可大幅缩减。
+        content?: string;
         tag?: string;
         createTime: string;
         updateTime: string;
     },
-    siteUrl: string
+    siteUrl: string,
+    precomputedDescription?: string
 ) {
     const articleUrl = `${siteUrl}/article-detail/${article.id}`;
-    
-    // 从内容中提取纯文本作为描述
-    const plainText = (article.content || '')
-        .replace(/[`*_>#\-]+/g, ' ')
-        .replace(/\[(.*?)\]\(.*?\)/g, '$1')
-        .replace(/<[^>]*>/g, '')
-        .replace(/\s+/g, ' ')
-        .trim();
-    const description = plainText.slice(0, 200);
+
+    // 优先使用 SSR 阶段就抽好的描述；否则回退到从 markdown 原文里临时抽取
+    const description = precomputedDescription
+        ? precomputedDescription.slice(0, 200)
+        : (article.content || '')
+            .replace(/[`*_>#\-]+/g, ' ')
+            .replace(/\[(.*?)\]\(.*?\)/g, '$1')
+            .replace(/<[^>]*>/g, '')
+            .replace(/\s+/g, ' ')
+            .trim()
+            .slice(0, 200);
     
     // 提取标签
     const tags = article.tag ? article.tag.split(/[,\s，]+/).filter(Boolean) : [];
