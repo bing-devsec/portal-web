@@ -122,9 +122,20 @@ export default defineNuxtConfig({
     },
     ssrApiBase: endpoints.ssrApiBase,
     // ISR 主动失效接口的鉴权密钥
-    // 部署时支持两种注入：
-    //   - 推荐：NUXT_REVALIDATE_SECRET_FILE=/run/secrets/nuxt_revalidate_secret（docker-compose secrets）
-    //   - 兼容：NUXT_REVALIDATE_SECRET=xxx（环境变量直传，本地或简单部署）
+    //
+    // 注意：这里的 readRevalidateSecret() 在 **build 时**就被求值并固化到产物里。
+    // 我们的部署方式是"宿主机 nuxt build → COPY ./dist → 容器只跑 node server/index.mjs"
+    // 因此 build 时机器上没有 secrets 文件，这里基本只会得到空字符串。
+    //
+    // 真正的密钥注入由 server/plugins/revalidate-secret.ts 在 nitro 启动钩子里完成：
+    //   - 读取 NUXT_REVALIDATE_SECRET_FILE 指向的 docker secret 文件
+    //   - 或读取 NUXT_REVALIDATE_SECRET 环境变量
+    //   - 把值塞回 useRuntimeConfig().revalidateSecret
+    //
+    // 这里保留 readRevalidateSecret()：
+    //   - 本地 nuxt dev 时若已配置 .env 中的 NUXT_REVALIDATE_SECRET 仍可走通
+    //   - 作为类型/默认值占位（runtimeConfig 必须在 build 时就有声明）
+    //
     // 后端（Go）调用 /api/_revalidate 时必须在 x-revalidate-secret 头里带相同值
     revalidateSecret: readRevalidateSecret(),
   },
