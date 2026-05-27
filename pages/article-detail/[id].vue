@@ -2267,6 +2267,8 @@ watch(
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
     line-height: 1.6;
+    padding-left: 8px;
+    padding-right: 8px;
   }
 
   .article-body-ssr :deep(p),
