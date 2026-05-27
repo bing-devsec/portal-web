@@ -144,38 +144,20 @@ export default defineNuxtConfig({
       // swr: 启用 stale-while-revalidate 模式，请求会通过 cachedEventHandler 包装。
       // Nitro 会把渲染结果写入 useStorage("cache") 持久化（fs driver 落盘到 ./cache）。
       //
-      // 用 cache 展开形式（而非 swr: number 简写）是为了能传 getKey + integrity，
-      // 自定义缓存 key 让落盘文件名直接对应文章 ID，方便排查：
-      //   - HTML 缓存       → cache/nitro/routes/_/<id>.v1.json
-      //   - Payload 缓存    → cache/nitro/routes/_/<id>_payload.v1.json
-      // 默认行为是 sluggify(path) + 自动哈希指纹，会得到
-      // articledetail504.2c1G7yFDYW.json 这种带前缀截断 + 随机哈希的难辨认形态。
+      // 关于 cache.getKey 的踩坑记录：
+      //   曾尝试通过 cache: { swr, maxAge, getKey } 自定义缓存 key，让落盘文件名
+      //   直接对应文章 ID（如 504.json）。但 routeRules 会被 Nuxt 序列化进运行
+      //   时配置（要传给客户端），函数无法 JSON 化，build 时被**静默剥离**——
+      //   只在控制台留下一行 "Runtime config option ... may not be able to be
+      //   serialized" 警告。结果就是 getKey 失效、缓存仍走 Nitro 默认算法。
       //
-      // 注意：
-      //   1) integrity 固定成 v1，是 Nitro 的"缓存格式版本号"。如果未来缓存结构
-      //      不兼容（比如 payload schema 变了），把它 bump 成 v2 即可强制失效。
-      //   2) Nitro 当前版本（2.13）routeRules.cache 的 TS 类型没暴露 getKey/integrity，
-      //      但 cachedEventHandler 运行时实际支持。用 as any 绕过类型疏漏。
-      cache: {
-        swr: true,
-        maxAge: 60 * 60 * 24 * 7,
-        integrity: "v1",
-        getKey: (event: { path: string }) => {
-          const path = event.path.split("?")[0];
-          // 同一路由下会有两类请求：
-          //   1) /article-detail/<id>              → HTML
-          //   2) /article-detail/<id>/_payload.json → Nuxt payload
-          // 必须区分 key，否则 HTML 与 payload 会互相覆盖。
-          const m = path.match(
-            /^\/article-detail\/([^/]+?)(\/_payload\.json)?$/
-          );
-          if (!m) {
-            // 兜底：万一未来加了别的子路径，退回扁平化路径
-            return path.replace(/^\/+/, "").replace(/\//g, "_") || "index";
-          }
-          return m[2] ? `${m[1]}_payload` : m[1];
-        },
-      } as any,
+      //   因此这里只用 swr: number 简写。文件名形态由 Nitro 默认 slug 算法决定：
+      //     - 路径片段移除非字母数字、截断到前 16 字符
+      //     - 末尾追加路径哈希避免冲突
+      //   实测形如：cache/nitro/routes/_/articledetail504.2c1G7yFDYW.json
+      //
+      //   主动失效逻辑见 server/api/_revalidate.post.ts，按 slug 子串匹配。
+      swr: 60 * 60 * 24 * 7,
       // 不再显式设 staleMaxAge: -1：
       //   - Nitro 会把它原样输出到 cache-control: stale-while-revalidate=-1（HTTP 非法值）
       //   - 我们用下面的 headers 直接写 Cache-Control，覆盖框架默认值
