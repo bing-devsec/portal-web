@@ -366,9 +366,7 @@
                         </div>
                         <!-- 预览区域状态栏 -->
                         <div class="editor-status-bar">
-                            <template v-if="outputEditorStatus">
-                                <span class="status-text">{{ outputEditorStatus }}</span>
-                            </template>
+                            <span v-if="outputEditorStatus" class="status-text">{{ outputEditorStatus }}</span>
                         </div>
                     </div>
                 </div>
@@ -2194,7 +2192,7 @@ const getEditorOptions = (
     formatOnPaste: false, // 启用粘贴时自动格式化
     maxUndoRedoEntries: 100, // 历史记录可撤销/重做的最大步数为100
     useTabStops: false, // 禁用TabStop
-    maxTokenizationLineLength: 500000,
+    maxTokenizationLineLength: 20000000,
     guides: {
         indentation: showIndentGuide.value, // 根据设置显示缩进引导线
         bracketPairs: showIndentGuide.value, // 根据设置显示括号配对引导线

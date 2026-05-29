@@ -327,6 +327,9 @@ export default defineNuxtConfig({
     prerender: {
       crawlLinks: false,
     },
+    // 注册 server plugin：在 SSR 渲染完成后清理 <head> 内的 Vue fragment 锚点注释。
+    // 见 server/plugins/strip-head-comments.ts 的实现与安全说明。
+    plugins: ["~/server/plugins/strip-head-comments.ts"],
     // ISR 缓存目录显式锚定，避免依赖 Nitro 默认行为（不同版本可能不一致）。
     // 生产部署时 docker volume 挂载到此路径即可实现重启不丢缓存：
     //   volumes:

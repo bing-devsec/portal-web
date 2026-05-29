@@ -24,6 +24,11 @@ export const detectInputLanguage = (value: string): EditorContentLanguage => {
     const trimmed = value.trim();
     if (!trimmed) return 'json';
 
+    // JSON 必须最先判断
+    if (/^[\[{"]/.test(trimmed) || /^(true|false|null|-?\d)/.test(trimmed)) {
+        return 'json';
+    }
+
     const sample = trimmed.slice(0, 20000);
     const sampleLines = sample.split('\n').slice(0, 80);
     const joinedSample = sampleLines.join('\n');
@@ -38,13 +43,6 @@ export const detectInputLanguage = (value: string): EditorContentLanguage => {
 
     if ((/@[a-z-]+\b/i.test(sample) || /[.#]?[a-zA-Z][^{\n]*\{/.test(sample)) && /[a-z-]+\s*:\s*[^;\n{}]+;/.test(sample)) {
         return 'css';
-    }
-
-    // JSON 顶层不只是对象/数组，也可以是字符串、数字、布尔值或 null。
-    // 例如输入 `"aa"` 时，依然应该走 JSON 语法高亮而不是 plaintext。
-    const looksLikeJson = /^[\[{"]/.test(trimmed) || /^(true|false|null|-?\d)/.test(trimmed);
-    if (looksLikeJson) {
-        return 'json';
     }
 
     if (sampleLines.some(line => /^\s*(\[\[?[^\]\n]+\]?\]|[A-Za-z0-9_.-]+\s*=\s*.+)$/.test(line.trim()))) {
