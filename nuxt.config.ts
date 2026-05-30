@@ -13,11 +13,6 @@ const PROD_ENDPOINTS = {
 };
 
 // 本地地址：本机开发与调试使用
-//   - baseURL：浏览器侧基础路径，与生产保持一致用 `/api-backend`，
-//     由 dev server 的 devProxy（见 nitro.devProxy）转发到 Go 后端 127.0.0.1:8080。
-//     这样可以避免浏览器直连后端时的跨域问题（Go 后端已不再下发 CORS 头），
-//     OPTIONS 预检 / Cookie 跨域 / Set-Cookie 域校验等麻烦也一并消失。
-//   - ssrApiBase：Node 进程内 $fetch 不受同源策略限制，直连后端最快，无需经过代理。
 const LOCAL_ENDPOINTS = {
   baseURL: "/api-backend",
   siteUrl: "http://localhost:3000",

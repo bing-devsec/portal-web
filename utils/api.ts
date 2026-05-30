@@ -80,8 +80,6 @@ export function useApiData<T>(url: string, options: any = {}) {
 	// 修复方式：初始化时主动解包一次，把 ComputedRef/Ref 的当前值取出来后再装进新的可写 ref，
 	// 这样 currentParams 永远是"普通可写 ref"，refresh({ params }) 时不会回写到外部只读 computed。
 	const currentParams = ref(isRef(initialParams) ? initialParams.value : initialParams);
-	// 强制所有请求都使用include模式，确保cookie能够被发送
-	const credentials = 'include';
 
 	// 生成缓存键
 	const cacheKey = typeof key === 'function' ? key() :
@@ -137,11 +135,6 @@ export function useApiData<T>(url: string, options: any = {}) {
 					...(options.headers || {}),
 				};
 
-				// 添加cookie（服务器端）
-				if (import.meta.server && nuxtApp.ssrContext?.event.node.req.headers.cookie) {
-					headers.cookie = nuxtApp.ssrContext.event.node.req.headers.cookie;
-				}
-
 				// 获取指纹
 				if (import.meta.client && url.includes('/user/')) {
 					if (typeof nuxtApp.$fingerprint === 'function') {
@@ -160,10 +153,8 @@ export function useApiData<T>(url: string, options: any = {}) {
 				// 创建请求Promise
 				const requestPromise = $fetch<ApiResponse<T>>(url, {
 					baseURL: import.meta.server ? config.ssrApiBase : config.public.baseURL,
-					credentials,
 					headers,
 					params: queryParams,
-					withCredentials: true,
 					...restOptions,
 				});
 

@@ -1,5 +1,5 @@
 export default defineNuxtPlugin((nuxtApp) => {
-    // 获取指纹方法
+    // 获取指纹方法（加密后的 x-client-id 头）
     const getFingerprint = async () => {
         if (typeof nuxtApp.$fingerprint === 'function') {
             try {
@@ -9,27 +9,18 @@ export default defineNuxtPlugin((nuxtApp) => {
                 throw e;
             }
         }
-        
         return '';
     };
-    
-    // 从cookie中读取session_id的辅助函数
-    const getSessionIdFromCookie = (): string | null => {
-        const sessionCookie = useCookie('session_id');
-        return sessionCookie.value && typeof sessionCookie.value === 'string' 
-            ? sessionCookie.value.trim() || null 
-            : null;
-    };
-    
-    // 拦截所有的fetch请求
+
+    // 拦截所有的 fetch 请求：在指定接口上自动注入 x-client-id 指纹头。
     nuxtApp.hook('app:created', () => {
         const originalFetch = globalThis.fetch;
-        
-        globalThis.fetch = async function(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
+
+        globalThis.fetch = async function (input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
             init = init || {};
             init.headers = init.headers || {};
-            
-            // 将Headers对象转换为普通对象
+
+            // 将 Headers 对象转换为普通对象
             const headers: Record<string, string> = {};
             if (init.headers instanceof Headers) {
                 for (const [key, value] of (init.headers as Headers).entries()) {
@@ -38,8 +29,8 @@ export default defineNuxtPlugin((nuxtApp) => {
             } else if (typeof init.headers === 'object') {
                 Object.assign(headers, init.headers);
             }
-            
-            // 检查是否应该注入指纹
+
+            // 取出 URL
             let url = '';
             if (typeof input === 'string') {
                 url = input;
@@ -48,31 +39,19 @@ export default defineNuxtPlugin((nuxtApp) => {
             } else if (input instanceof Request) {
                 url = input.url;
             }
-            
-            // 判断是否需要添加指纹
+
+            // 仅文章详情接口需要注入指纹（其他接口不需要）
             if (url && url.includes('/user/article/detail')) {
-                // 先检查是否有session_id cookie
-                const sessionId = getSessionIdFromCookie();
-                
-                if (!sessionId) {
-                    const fingerprint = await getFingerprint();
-                    
-                    if (fingerprint) {
-                        headers['x-client-id'] = fingerprint;
-                    }
-                } else {
-                    // 如果有session_id，确保不发送x-client-id（移除可能已存在的）
-                    if (headers['x-client-id']) {
-                        delete headers['x-client-id'];
-                    }
+                const fingerprint = await getFingerprint();
+                if (fingerprint) {
+                    headers['x-client-id'] = fingerprint;
                 }
             }
-            
-            // 重新创建Headers对象
+
+            // 重新组装 Headers
             init.headers = new Headers(headers);
-            
-            // 调用原始fetch
+
             return originalFetch(input, init);
         };
     });
-}); 
+});

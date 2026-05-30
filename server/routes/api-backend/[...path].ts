@@ -10,8 +10,8 @@ import { defineEventHandler, proxyRequest, getRouterParam } from "h3";
  *
  * 与 nginx `location /api-backend/ proxy_pass` 行为对齐：
  *   - 路径重写：去掉 `/api-backend` 前缀
- *   - 透传 Cookie：proxyRequest 默认会原样转发 request headers，
- *     再把后端的 Set-Cookie 透传回浏览器，session_id / HttpOnly 等行为与线上一致
+ *   - 透传请求/响应头：proxyRequest 默认会原样转发 request headers，
+ *     也会把后端的 response headers 透传回浏览器，行为与线上一致
  *
  * 兼容线上：
  *   - 生产环境前置的 nginx 已把 `/api-backend/` 转给后端容器（不会进 Nuxt），

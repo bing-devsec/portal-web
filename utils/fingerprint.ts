@@ -36,37 +36,52 @@ interface FingerprintComponents {
     vendorFlavors: any;
     webGlBasics: any;
     webGlExtensions: any;
+    uaBrands: any;
 }
+
+const PUBLIC_KEY_TTL_MS = 60 * 60 * 1000;
 
 export class FingerprintDetector {
     private static instance: FingerprintDetector;
     private fingerprintComponents: Partial<FingerprintComponents> = {};
+    /** FingerprintJS 算出的明文 hash（不加密的原值），同一会话内浏览不同文章会反复用到 */
     private fingerprintId: string = '';
+    /** 上面 fingerprintId 经 RSA 加密后的密文，给请求头 x-client-id 用 */
     private encryptedFingerprint: string = '';
+
+    /** 公钥 PEM 文本缓存 */
     private publicKeyCache: string = '';
+    /** 公钥缓存写入时刻（ms） */
+    private publicKeyCachedAt: number = 0;
 
+    /** JSEncrypt 实例缓存：避免每次 setPublicKey 重复解析 PEM */
+    private encryptCache: { key: string; encryptor: JSEncrypt } | null = null;
+
+    /**
+     * 取公钥：命中缓存且未过期则直接返回；否则请求 /api/keys 并刷新缓存。
+     * 缓存 TTL 见 PUBLIC_KEY_TTL_MS 注释。
+     */
     private async fetchPublicKey(): Promise<string> {
-        if (this.publicKeyCache) {
+        const now = Date.now();
+        if (this.publicKeyCache && now - this.publicKeyCachedAt < PUBLIC_KEY_TTL_MS) {
             return this.publicKeyCache;
         }
 
-        try {
-            const response = await fetch('/api/keys');
-            if (!response.ok) {
-                throw new Error('Failed to fetch public key');
-            }
-            const data = await response.json();
-            if (data.error) {
-                throw new Error(data.error);
-            }
-            if (!data.publicKey) {
-                throw new Error('Public key is empty');
-            }
-            this.publicKeyCache = data.publicKey;
-            return this.publicKeyCache;
-        } catch (error) {
-            throw error;
+        const response = await fetch('/api/keys');
+        if (!response.ok) {
+            throw new Error('Failed to fetch public key');
         }
+        const data = await response.json();
+        if (data.error) {
+            throw new Error(data.error);
+        }
+        if (!data.publicKey) {
+            throw new Error('Public key is empty');
+        }
+        this.publicKeyCache = data.publicKey;
+        this.publicKeyCachedAt = now;
+        this.encryptCache = null;
+        return this.publicKeyCache;
     }
 
     public static getInstance(): FingerprintDetector {
@@ -76,109 +91,126 @@ export class FingerprintDetector {
         return FingerprintDetector.instance;
     }
 
-    /**
-     * 使用RSA公钥加密数据
-     * @param data 要加密的数据
-     * @returns 加密后的数据
-     */
     private async encryptWithPublicKey(data: string): Promise<string> {
         const publicKey = await this.fetchPublicKey();
-        
+
         if (!publicKey) {
             throw new Error('公钥未设置');
         }
-        
-        try {
-            const encrypt = new JSEncrypt();
-            encrypt.setPublicKey(publicKey);
-            const encrypted = encrypt.encrypt(data);
-            
-            if (!encrypted) {
-                throw new Error('加密失败');
+
+        // 复用同一公钥下的 JSEncrypt 实例，避免重复解析 PEM
+        if (!this.encryptCache || this.encryptCache.key !== publicKey) {
+            const encryptor = new JSEncrypt();
+            encryptor.setPublicKey(publicKey);
+            this.encryptCache = { key: publicKey, encryptor };
+        }
+
+        const encrypted = this.encryptCache.encryptor.encrypt(data);
+        if (!encrypted) {
+            throw new Error('加密失败');
+        }
+        return encrypted;
+    }
+
+    private async ensureFingerprintId(): Promise<string> {
+        if (this.fingerprintId) return this.fingerprintId;
+
+        const fp = await FingerprintJS.load();
+        const result = await fp.get();
+        const {
+            applePay,
+            architecture,
+            audio,
+            audioBaseLatency,
+            canvas,
+            contrast,
+            cpuClass,
+            domBlockers,
+            fonts,
+            forcedColors,
+            hardwareConcurrency,
+            indexedDB,
+            invertedColors,
+            monochrome,
+            openDatabase,
+            osCpu,
+            pdfViewerEnabled,
+            platform,
+            privateClickMeasurement,
+            reducedMotion,
+            reducedTransparency,
+            touchSupport,
+            vendor,
+            vendorFlavors,
+            webGlBasics,
+            webGlExtensions,
+        } = result.components;
+
+        const uaBrandsValue = (() => {
+            try {
+                const brands = (navigator as any).userAgentData?.brands ?? [];
+                return brands
+                    .map((b: { brand: string }) => b.brand)
+                    .filter((s: string) => !/Not.?A.?Brand/i.test(s)) // 过滤反指纹噪声
+                    .sort()
+                    .join('|');
+            } catch {
+                return '';
             }
-            
-            return encrypted;
-        } catch (error) {
-            throw error;
-        }
+        })();
+
+        const extendedComponents = {
+            applePay,
+            architecture,
+            audio,
+            audioBaseLatency,
+            canvas,
+            contrast,
+            cpuClass,
+            domBlockers,
+            fonts,
+            forcedColors,
+            hardwareConcurrency,
+            indexedDB,
+            invertedColors,
+            monochrome,
+            openDatabase,
+            osCpu,
+            pdfViewerEnabled,
+            platform,
+            privateClickMeasurement,
+            reducedMotion,
+            reducedTransparency,
+            touchSupport,
+            vendor,
+            vendorFlavors,
+            webGlBasics,
+            webGlExtensions,
+            uaBrands: { value: uaBrandsValue, duration: 0 },
+        };
+
+        this.fingerprintComponents = extendedComponents;
+        this.fingerprintId = FingerprintJS.hashComponents(extendedComponents);
+        return this.fingerprintId;
     }
 
-    public async getFingerprint(): Promise<{
-        fingerprintId: string;
-        components: Partial<FingerprintComponents>;
-    }> {
-        try {
-            const fp = await FingerprintJS.load();
-            const result = await fp.get();
-            const {
-                applePay,
-                architecture,
-                audio,
-                audioBaseLatency,
-                canvas,
-                contrast,
-                cpuClass,
-                domBlockers,
-                fonts,
-                forcedColors,
-                hardwareConcurrency,
-                indexedDB,
-                invertedColors,
-                monochrome,
-                openDatabase,
-                osCpu,
-                pdfViewerEnabled,
-                platform,
-                privateClickMeasurement,
-                reducedMotion,
-                reducedTransparency,
-                touchSupport,
-                vendor,
-                vendorFlavors,
-                webGlBasics,
-                webGlExtensions
-            } = result.components;
-
-            // 创建与示例代码完全相同的组件对象
-            const extendedComponents = {
-                applePay,
-                architecture,
-                audio,
-                audioBaseLatency,
-                canvas,
-                contrast,
-                cpuClass,
-                domBlockers,
-                fonts,
-                forcedColors,
-                hardwareConcurrency,
-                indexedDB,
-                invertedColors,
-                monochrome,
-                openDatabase,
-                osCpu,
-                pdfViewerEnabled,
-                platform,
-                privateClickMeasurement,
-                reducedMotion,
-                reducedTransparency,
-                touchSupport,
-                vendor,
-                vendorFlavors,
-                webGlBasics,
-                webGlExtensions
-            };
-
-            this.fingerprintComponents = extendedComponents;
-            this.fingerprintId = FingerprintJS.hashComponents(extendedComponents);
+    public async getFingerprint(): Promise<{fingerprintId: string; components: Partial<FingerprintComponents>}> {
+        await this.ensureFingerprintId();
+        // 如果当前公钥下的密文还没算，或者公钥已经被刷新，需要重新加密
+        if (!this.encryptedFingerprint || !this.encryptCache) {
             this.encryptedFingerprint = await this.encryptWithPublicKey(this.fingerprintId);
-
-            return {
-                fingerprintId: this.encryptedFingerprint,
-                components: this.fingerprintComponents
-            };
-        } catch (error) {
-            throw error;
         }
+        return {
+            fingerprintId: this.encryptedFingerprint,
+            components: this.fingerprintComponents,
+        };
     }
-} 
+
+    public async getRawFingerprintId(): Promise<string> {
+        return await this.ensureFingerprintId();
+    }
+
+    public async encryptToken(plaintext: string): Promise<string> {
+        return await this.encryptWithPublicKey(plaintext);
+    }
+}

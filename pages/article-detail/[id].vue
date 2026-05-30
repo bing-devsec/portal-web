@@ -141,6 +141,218 @@ const fingerprintReady = ref(false);
 const fingerprintValue = ref("");
 const pendingRequest = ref<Promise<any> | null>(null); // 请求去重
 
+// ==================== 浏览量打点（view-log）====================
+// 设计参考：docs/view-log-backend-spec.md
+// - 真实浏览触发：onMounted 后延迟 1500ms（避开预渲染、prefetch、误触）。
+// - 仅客户端发出；SPA 路由切换在 watch route.params.id 里再次触发。
+// - 使用 navigator.sendBeacon 优先：不阻塞页面、用户立即关页也能送出。
+// - 后端只看 token 内的 fingerprintId+articleId+ts+nonce 做风控决策；前端不做任何"是否+1"判断。
+// - 同一篇文章在一次"挂载/路由切换会话"内只触发一次，避免 watch 重入或重复定时器。
+const VIEW_LOG_DELAY_MS = 1500;
+let viewLogTimer: ReturnType<typeof setTimeout> | null = null;
+let viewLogReportedFor: string | null = null; // 已经打过点的 articleId，防止重复
+
+const cancelPendingViewLog = () => {
+  if (viewLogTimer !== null) {
+    clearTimeout(viewLogTimer);
+    viewLogTimer = null;
+  }
+};
+
+const buildViewLogBody = async (
+  targetArticleId: string,
+  encryptToken: (plaintext: string) => Promise<string>,
+  rawFingerprintId: string
+): Promise<{
+  token: string;
+  referer: string;
+  tz: string;
+  screen: string;
+  lang: string;
+  perfNav: string;
+} | null> => {
+  // 1) 组装 token 明文 JSON：fingerprintId + articleId + ts + nonce
+  //    后端 §2.2：长度需 < 245 字节（RSA 2048 PKCS#1 v1.5 单块上限），实际约 130 字节，足够。
+  const nonce =
+    typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
+      ? crypto.randomUUID()
+      : // 回落：极少数老浏览器没有 randomUUID 时手搓一个伪 UUID，仍是 v4 形态
+        "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (c) => {
+          const r = (Math.random() * 16) | 0;
+          const v = c === "x" ? r : (r & 0x3) | 0x8;
+          return v.toString(16);
+        });
+
+  const plain = JSON.stringify({
+    fingerprintId: rawFingerprintId,
+    articleId: targetArticleId,
+    ts: Date.now(),
+    nonce,
+  });
+
+  let token = "";
+  try {
+    token = await encryptToken(plain);
+  } catch {
+    // 公钥拿不到 / 加密失败：本次直接放弃打点，不影响页面
+    return null;
+  }
+  if (!token) return null;
+
+  // 2) 组装其他字段（后端 §1.2 所列）
+  // 安全防御：在极小概率的非常规环境（无 screen / Intl 等），逐字段 try/catch 给空串
+  const safeReferer = (() => {
+    try {
+      return document.referrer || "";
+    } catch {
+      return "";
+    }
+  })();
+  const safeTz = (() => {
+    try {
+      return Intl.DateTimeFormat().resolvedOptions().timeZone || "";
+    } catch {
+      return "";
+    }
+  })();
+  const safeScreen = (() => {
+    try {
+      return `${window.screen.width}x${window.screen.height}`;
+    } catch {
+      return "";
+    }
+  })();
+  const safeLang = (() => {
+    try {
+      return navigator.language || "";
+    } catch {
+      return "";
+    }
+  })();
+  const safePerfNav = (() => {
+    try {
+      const entry = performance.getEntriesByType("navigation")[0] as
+        | (PerformanceEntry & { type?: string })
+        | undefined;
+      return entry?.type || "";
+    } catch {
+      return "";
+    }
+  })();
+
+  return {
+    token,
+    referer: safeReferer,
+    tz: safeTz,
+    screen: safeScreen,
+    lang: safeLang,
+    perfNav: safePerfNav,
+  };
+};
+
+const sendViewLog = async (targetArticleId: string) => {
+  if (!import.meta.client) return;
+  if (!targetArticleId) return;
+  // 同一 articleId 不重复打点（即使 watch 重入或多次 nextTick 触发）
+  if (viewLogReportedFor === targetArticleId) return;
+
+  // 页面不可见时直接放弃（背景 tab、prerender 等）。
+  // 后端虽然也会按 perfNav==="prerender" 拒绝，但前端先省一次请求更合算。
+  try {
+    if (typeof document !== "undefined" && document.visibilityState === "hidden") {
+      return;
+    }
+  } catch {
+    // 忽略
+  }
+
+  const nuxtApp = useNuxtApp();
+  const $encryptToken = nuxtApp.$encryptToken as
+    | ((plaintext: string) => Promise<string>)
+    | undefined;
+  const $getFingerprintId = nuxtApp.$getFingerprintId as
+    | (() => Promise<string>)
+    | undefined;
+
+  if (typeof $encryptToken !== "function" || typeof $getFingerprintId !== "function") {
+    // 插件未注入：理论上不会发生（plugins/fingerprint.client.ts 是 client plugin）
+    return;
+  }
+
+  let rawFp = "";
+  try {
+    rawFp = await $getFingerprintId();
+  } catch {
+    return;
+  }
+  if (!rawFp) return;
+
+  // 路由可能已经切换到别的文章，这里再校验一次 articleId 是否还是目标
+  if (route.params.id !== targetArticleId) return;
+
+  const body = await buildViewLogBody(targetArticleId, $encryptToken, rawFp);
+  if (!body) return;
+
+  // 再次校验路由没变
+  if (route.params.id !== targetArticleId) return;
+
+  // 标记已打点（在真正发出前置位，确保即使 sendBeacon 失败也不会反复重试同一篇）
+  viewLogReportedFor = targetArticleId;
+
+  const url = `${runtimeConfig.public.baseURL}/user/article/view-log/${targetArticleId}`;
+  const payload = JSON.stringify(body);
+
+  // 关键：Content-Type 使用 "text/plain;charset=UTF-8"（CORS-safelisted），不是 "application/json"。
+  // 原因：
+  //   1) navigator.sendBeacon 要求 simple request：Content-Type 必须是 text/plain /
+  //      application/x-www-form-urlencoded / multipart/form-data 三者之一，
+  //      其他类型会触发 CORS preflight（OPTIONS），但 sendBeacon 本身不支持 preflight，
+  //      因此写 "application/json" 会让 sendBeacon 直接 return false。
+  //   2) 在 LOCAL_DEBUG=false 等跨域调试场景下，"application/json" 同样会触发
+  //      preflight，而 Go 后端无 OPTIONS 路由 → 浏览器报 CORS 错误。
+  //   3) body 仍然是 JSON 字符串，Go 后端用 c.ShouldBindJSON 显式按 JSON 解析即可，
+  //      Content-Type 只是建议性提示，不影响实际反序列化。
+  const BEACON_CONTENT_TYPE = "text/plain;charset=UTF-8";
+
+  // 优先 sendBeacon：用户即使立刻关闭页面也能送出，浏览器在 unload 时不会取消。
+  // 注意 sendBeacon 不支持自定义 Content-Type 选项，但传 Blob 可以指定。
+  try {
+    if (typeof navigator !== "undefined" && typeof navigator.sendBeacon === "function") {
+      const blob = new Blob([payload], { type: BEACON_CONTENT_TYPE });
+      const ok = navigator.sendBeacon(url, blob);
+      if (ok) return;
+    }
+  } catch {
+    // 回落到 fetch
+  }
+
+  // 回落：fetch + keepalive。后端响应 204 / 4xx / 5xx 都不影响页面，静默处理。
+  try {
+    await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": BEACON_CONTENT_TYPE },
+      body: payload,
+      keepalive: true,
+    });
+  } catch {
+    // 网络异常：丢弃即可，view_count 少一次不影响业务
+  }
+};
+
+const scheduleViewLog = (targetArticleId: string) => {
+  if (!import.meta.client) return;
+  if (!targetArticleId) return;
+  cancelPendingViewLog();
+  // 已经为这篇打过点了：路由切回来不再重复
+  if (viewLogReportedFor === targetArticleId) return;
+  viewLogTimer = setTimeout(() => {
+    viewLogTimer = null;
+    void sendViewLog(targetArticleId);
+  }, VIEW_LOG_DELAY_MS);
+};
+// ==================== /浏览量打点 ====================
+
+
 // 目录列表：基于 SSR 渲染好的 HTML 用正则抽 heading（id/level/text），
 // SSR 阶段就能算出值并直出到 <ul>，避免客户端再 querySelectorAll 引发的闪烁。
 // renderedHtml 在 SSR 阶段（useAsyncData）已经填充，因此 SSR HTML 里就带着完整目录。
@@ -149,15 +361,7 @@ const catalogHeadings = computed(() => {
   return extractHeadingsFromHtml(html, 3);
 });
 
-// 从cookie中读取session_id的辅助函数
-function getSessionIdFromCookie(): string | null {
-  const sessionCookie = useCookie("session_id");
-  return sessionCookie.value && typeof sessionCookie.value === "string"
-    ? sessionCookie.value.trim() || null
-    : null;
-}
-
-// 服务端预取文章详情，用于 SSR 输出 HTML（不改变浏览器端 fingerprint / cookie 请求逻辑）
+// 服务端预取文章详情，用于 SSR 输出 HTML
 // Nuxt 要求 useAsyncData 在 SSR 阶段返回非 null/undefined 的值，否则客户端可能重复请求。
 // 在无法获取到有效文章时，返回一个空的占位对象以避免该警告并保持行为可控。
 const emptyArticle: ArticleDetail = {
@@ -194,13 +398,6 @@ const { data: serverArticle } = await useAsyncData<ArticleDetail>(
       headers["user-agent"] = userAgent;
     }
 
-    // 将请求中的 Cookie 透传给 Go 后端，让已登录/已有会话的用户 SSR 也能拿到文章内容
-    // 注意：搜索引擎爬虫通常没有 Cookie，后端应该识别 User-Agent 后直接返回内容
-    const cookie = event?.node.req.headers["cookie"];
-    if (cookie && typeof cookie === "string") {
-      headers["cookie"] = cookie;
-    }
-
     // SSR 必须用 ssrApiBase 直连后端：
     //   - 生产 public.baseURL="/api-backend" 是给浏览器走 nginx 代理用的相对路径，
     //     在 Node 进程内 $fetch 会请求 http://localhost:3000/api-backend/...（自请自身），
@@ -216,7 +413,6 @@ const { data: serverArticle } = await useAsyncData<ArticleDetail>(
           method: "GET",
           query: { id: articleId.value },
           headers,
-          credentials: "include",
         }
       );
     } catch {
@@ -416,14 +612,12 @@ const fetchArticleContent = async () => {
   }
 
   try {
-    const sessionId = import.meta.client ? getSessionIdFromCookie() : null;
-
-    // 构建请求头
+    // 构建请求头：客户端打文章详情接口时统一带 x-client-id（指纹密文）
     const headers: Record<string, string> = {
       "Content-Type": "application/json",
     };
 
-    if (!sessionId && fingerprintValue.value) {
+    if (fingerprintValue.value) {
       headers["x-client-id"] = fingerprintValue.value;
     }
 
@@ -435,7 +629,6 @@ const fetchArticleContent = async () => {
       {
         method: "GET",
         headers,
-        credentials: "include",
       }
     )
       .then(async (response) => {
@@ -523,26 +716,17 @@ const initArticleContent = async () => {
   }
 
   try {
-    // 先检查是否有session_id
-    const sessionId = getSessionIdFromCookie();
-
-    if (sessionId) {
-      // 如果有session_id，直接获取文章内容，不需要计算指纹
+    // 客户端兜底拉取文章：直接计算指纹后请求
+    const { $recalculateFingerprint } = useNuxtApp();
+    if (typeof $recalculateFingerprint === "function") {
+      fingerprintValue.value = await $recalculateFingerprint();
       fingerprintReady.value = true;
       await fetchArticleContent();
     } else {
-      // 如果没有session_id，需要计算指纹
-      const { $recalculateFingerprint } = useNuxtApp();
-      if (typeof $recalculateFingerprint === "function") {
-        fingerprintValue.value = await $recalculateFingerprint();
-        fingerprintReady.value = true;
-        await fetchArticleContent();
-      } else {
-        loadingState.value = "加载失败，请刷新页面";
-        // 如果 SSR 有数据，至少可以显示 SSR 内容
-        if (serverArticle.value) {
-          article.value = serverArticle.value;
-        }
+      loadingState.value = "加载失败，请刷新页面";
+      // 如果 SSR 有数据，至少可以显示 SSR 内容
+      if (serverArticle.value) {
+        article.value = serverArticle.value;
       }
     }
   } catch (error) {
@@ -2000,6 +2184,12 @@ onMounted(() => {
     // 给 wrap 加 data-overflow="true"，从而显示全屏按钮。
     // 等 nextTick 确保 v-html 已把 SSR HTML 注入 DOM。
     void nextTick().then(() => observeAllTableWraps());
+
+    // 浏览量打点：onMounted 后延迟 1500ms 触发（避开 prerender / 误触）。
+    // 详细设计见上方 ==================== 浏览量打点 ==================== 段。
+    if (articleId.value) {
+      scheduleViewLog(articleId.value);
+    }
   }
 });
 
@@ -2022,6 +2212,8 @@ onBeforeUnmount(() => {
     tableOverflowObserver = null;
     // 取消待处理的请求
     pendingRequest.value = null;
+    // 取消尚未触发的浏览量打点定时器
+    cancelPendingViewLog();
   }
 });
 
@@ -2035,6 +2227,10 @@ watch(
 
       pendingRequest.value = null;
       loadingState.value = "正在加载文章...";
+
+      // 重置浏览量打点会话：路由切到新文章时，旧的定时器作废、新文章允许再次打点
+      cancelPendingViewLog();
+      viewLogReportedFor = null;
 
       // 客户端：重新初始化文章内容
       if (import.meta.client) {
@@ -2057,6 +2253,10 @@ watch(
         // 同样原因：新文章里的表格也要重新挂 overflow 检测。
         // observeAllTableWraps 内部用 WeakSet 去重，不会对老 wrap 重复 observe。
         observeAllTableWraps();
+
+        // 浏览量打点：SPA 路由切换 onMounted 不会再触发，这里手动安排。
+        // 上方已经 cancelPendingViewLog + 重置 viewLogReportedFor=null，可以直接调度。
+        scheduleViewLog(newId as string);
       }
     }
   }
