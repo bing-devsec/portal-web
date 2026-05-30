@@ -229,20 +229,44 @@ interface PendingHighlight {
     /** 是否需要 ssr-code-line 包裹结构（普通代码块都要；mermaid 等不要） */
 }
 
-// 待高亮 fence 收集器：fence renderer 同步阶段往里塞，渲染入口异步阶段消费
-let pendingHighlights = new Map<string, PendingHighlight>();
-let pendingCounter = 0;
+/**
+ * 单次 renderMarkdownToHtml 调用的渲染上下文，承载：
+ *   - pendingHighlights：fence renderer 同步收集占位符 → 高亮阶段异步消费
+ *   - pendingCounter：本次渲染内的占位符自增计数（与 placeholderSalt 拼出唯一 token）
+ *   - placeholderSalt：本次渲染独立的随机 salt，杜绝跨渲染串号
+ *   - headingIndex：heading_open renderer 内的标题序号（用于 id 生成）
+ *
+ * ⚠ 严禁把这些字段提升到模块级！Node SSR 是单线程事件循环，
+ *   md.render() 是同步、resolveShikiPlaceholders() 异步；并发请求各自的
+ *   "同步收集 → 异步消费"区间会交错调度，模块级共享会导致 A 请求消费到
+ *   B 请求遗留的占位符内容（直接表现为：文章 A 的代码块里渲染出 B 的代码）。
+ *
+ * markdown-it 的 fence/heading_open 等 rule 第 4 个参数就是 env，会被透传，
+ * 这里把它定型成 RenderEnv 后做集中管理。
+ */
+interface RenderEnv {
+    pendingHighlights: Map<string, PendingHighlight>;
+    pendingCounter: number;
+    placeholderSalt: string;
+    headingIndex: number;
+}
 
-// 进程级随机 salt：仅生成一次，避免同一次渲染入口里多个 fence 的 Date.now() 落在
-// 同一毫秒导致 token 后缀完全相同（虽然前缀 pendingCounter 已经唯一，
-// 但额外加一段随机 salt 让占位符在 markdown 正文中绝不可能被误匹配）。
-const PLACEHOLDER_SALT =
-    Math.random().toString(36).slice(2, 8) + Date.now().toString(36);
+function createRenderEnv(): RenderEnv {
+    return {
+        pendingHighlights: new Map<string, PendingHighlight>(),
+        pendingCounter: 0,
+        // 每次渲染独立 salt：双保险防止占位符在 markdown 正文中误匹配，
+        // 也让单元测试 / 并发场景下不同渲染产生的占位符天然互斥。
+        placeholderSalt:
+            Math.random().toString(36).slice(2, 8) + Date.now().toString(36),
+        headingIndex: 0,
+    };
+}
 
-function nextPlaceholderToken(): string {
-    pendingCounter += 1;
-    // 计数器单调递增 + 进程级 salt，保证同一次渲染内 token 唯一且不依赖时钟分辨率
-    return `${pendingCounter.toString(36)}-${PLACEHOLDER_SALT}`;
+function nextPlaceholderToken(env: RenderEnv): string {
+    env.pendingCounter += 1;
+    // 计数器单调递增 + 本次渲染独立 salt，保证 token 在本次渲染内唯一且不依赖时钟分辨率
+    return `${env.pendingCounter.toString(36)}-${env.placeholderSalt}`;
 }
 
 /**
@@ -347,8 +371,8 @@ function escapeHtml(input: string): string {
  *      保证用户至少能看到代码内容（用户体验：丢颜色 >> 丢内容）。
  *   4) Safari 不会触发该 race，原本就走正常分支。
  */
-async function resolveShikiPlaceholders(html: string): Promise<string> {
-    if (pendingHighlights.size === 0) return html;
+async function resolveShikiPlaceholders(html: string, env: RenderEnv): Promise<string> {
+    if (env.pendingHighlights.size === 0) return html;
     const highlighter = await getHighlighter();
 
     // 在客户端首次进入时，多让出一次微任务，给 Shiki 内部异步资源留时间结算
@@ -371,7 +395,7 @@ async function resolveShikiPlaceholders(html: string): Promise<string> {
 
     // 串行 loadLanguage 即可（重复语言走缓存），保持低内存峰值
     const replacements = new Map<string, string>();
-    for (const [token, { lang, rawCode }] of pendingHighlights) {
+    for (const [token, { lang, rawCode }] of env.pendingHighlights) {
         const supported = await ensureLanguageLoaded(highlighter, lang);
         let highlighted: string | null = null;
 
@@ -418,7 +442,7 @@ async function resolveShikiPlaceholders(html: string): Promise<string> {
     return html.replace(re, (_, token) => replacements.get(token) ?? '');
 }
 
-md.renderer.rules.fence = function (tokens, idx) {
+md.renderer.rules.fence = function (tokens, idx, _options, env: RenderEnv) {
     const token = tokens[idx];
     const info = (token.info || '').trim();
     const lang = (info.split(/\s+/g)[0] || '').toLowerCase();
@@ -461,8 +485,8 @@ md.renderer.rules.fence = function (tokens, idx) {
     }
 
     // 高亮：插入占位符，把真正的 Shiki 调用推到 renderMarkdownToHtml 末尾的异步阶段
-    const placeholderToken = nextPlaceholderToken();
-    pendingHighlights.set(placeholderToken, { lang, rawCode });
+    const placeholderToken = nextPlaceholderToken(env);
+    env.pendingHighlights.set(placeholderToken, { lang, rawCode });
     const linesPlaceholder = `${SHIKI_PLACEHOLDER_PREFIX}${placeholderToken}${SHIKI_PLACEHOLDER_SUFFIX}`;
     const linesHtml = linesPlaceholder;
     const langLabel = lang || 'text';
@@ -654,19 +678,18 @@ const cleanHeadingText = (text: string): string =>
         .replace(/-+/g, '-')
         .trim();
 
-let headingIndexCounter = 0;
-
 const defaultHeadingOpen = md.renderer.rules.heading_open || function (tokens, idx, options, env, self) {
     return self.renderToken(tokens, idx, options);
 };
 
-md.renderer.rules.heading_open = function (tokens, idx, options, env, self) {
+md.renderer.rules.heading_open = function (tokens, idx, options, env: RenderEnv, self) {
     const token = tokens[idx];
     const inlineToken = tokens[idx + 1];
     const text = inlineToken && inlineToken.type === 'inline' ? inlineToken.content : '';
     const level = Number(token.tag.slice(1));
-    const id = `h${level}-${headingIndexCounter}-${cleanHeadingText(text)}`;
-    headingIndexCounter += 1;
+    // 标题序号从 env 取，保证多次并发渲染各自独立、id 不串号
+    const id = `h${level}-${env.headingIndex}-${cleanHeadingText(text)}`;
+    env.headingIndex += 1;
     token.attrSet('id', id);
     return defaultHeadingOpen(tokens, idx, options, env, self);
 };
@@ -791,13 +814,12 @@ export async function renderMarkdownToHtml(markdown: string | undefined | null, 
         : markdown;
 
     try {
-        // 每次渲染前重置 heading 计数与 Shiki 占位符收集器，
-        // 保证多文章渲染时 id 不漂移、占位符 token 不串号
-        headingIndexCounter = 0;
-        pendingHighlights = new Map();
-        pendingCounter = 0;
-        const html = md.render(contentToRender);
-        const resolved = await resolveShikiPlaceholders(html);
+        // 每次渲染创建独立的 RenderEnv：承载 heading 序号、Shiki 占位符 Map 与计数器、
+        // placeholderSalt。markdown-it 会把它透传给所有 rule（fence / heading_open 等），
+        // 确保并发请求各自持有独立状态，杜绝跨渲染串号 / 串台。
+        const env = createRenderEnv();
+        const html = md.render(contentToRender, env);
+        const resolved = await resolveShikiPlaceholders(html, env);
         // 后处理：原生 <img> 透传写法（如 Typora 的 <img style="zoom:67%">）
         // 在这里统一补 class，让点击全屏功能对所有图片一视同仁
         return ensureImgAttributes(resolved);
