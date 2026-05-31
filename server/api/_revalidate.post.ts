@@ -37,6 +37,10 @@ import {
  */
 
 const ROUTE_CACHE_PREFIX = "nitro:routes";
+// @nuxtjs/sitemap 通过 defineCachedFunction({ base: "sitemap" }) 把生成结果落到
+// useStorage("sitemap") 里（key 形如 sitemap:xml:default-https-host.cache.json）。
+// 文章 CRUD 必然改变 sitemap 的 URL 集合，所以在清理 /article-detail/* 时同步清空它。
+const SITEMAP_STORAGE_BASE = "sitemap";
 
 interface RevalidateBody {
   paths?: string[];
@@ -83,20 +87,43 @@ export default defineEventHandler(async (event: H3Event) => {
   }
 
   const storage = useStorage("cache");
+  const sitemapStorage = useStorage(SITEMAP_STORAGE_BASE);
   const cleared: Record<string, number> = {};
+
+  /**
+   * 清空 sitemap 模块的内部缓存。
+   * 任意一篇文章变更（新增/更新/删除）都会改变 sitemap.xml 的 URL 集合，
+   * 因此只要本次失效请求触达了 /article-detail/* 或 all=true，就把 sitemap 缓存一并清掉，
+   * 让下一次爬虫请求重新调用 /api/__sitemap__/articles 拉取最新文章列表。
+   */
+  async function purgeSitemapCache(): Promise<number> {
+    const sitemapKeys = await sitemapStorage.getKeys();
+    if (sitemapKeys.length === 0) return 0;
+    await Promise.all(
+      sitemapKeys.map((k: string) => sitemapStorage.removeItem(k))
+    );
+    return sitemapKeys.length;
+  }
 
   if (body.all) {
     const keys = await storage.getKeys(ROUTE_CACHE_PREFIX);
     await Promise.all(keys.map((k: string) => storage.removeItem(k)));
     cleared["*"] = keys.length;
+    cleared["__sitemap__"] = await purgeSitemapCache();
   } else {
     // 一次性列出所有 route cache keys，避免在每个 path 循环里重复扫描
     const allKeys = await storage.getKeys(ROUTE_CACHE_PREFIX);
+    let shouldPurgeSitemap = false;
 
     for (const path of body.paths!) {
       if (typeof path !== "string" || !path.startsWith("/")) {
         cleared[String(path)] = 0;
         continue;
+      }
+      // 只要命中了文章详情路径，就标记需要刷新 sitemap
+      // （文章列表/标签等聚合页本身不进 sitemap，无需关心）
+      if (path.startsWith("/article-detail/")) {
+        shouldPurgeSitemap = true;
       }
       const slugs = pathToSlugMatchers(path);
       if (slugs.length === 0) {
@@ -108,6 +135,10 @@ export default defineEventHandler(async (event: H3Event) => {
       );
       await Promise.all(matched.map((k: string) => storage.removeItem(k)));
       cleared[path] = matched.length;
+    }
+
+    if (shouldPurgeSitemap) {
+      cleared["__sitemap__"] = await purgeSitemapCache();
     }
   }
 

@@ -23,6 +23,15 @@ import { useRoute, useRouter } from 'vue-router';
 import { useSearchStore } from '~/stores/search';
 import { usePaginationStore } from '~/stores/pagination';
 
+// 搜索结果页本身依赖 ?name= 查询参数才有真实内容，
+// 裸 URL 与各种 query 组合都属于"参数化薄内容"，统一打 noindex,follow，
+// 让爬虫读取页面但不收录 URL；同时已经在 nuxt.config.ts 的 sitemap exclude 里排除。
+useHead({
+    meta: [
+        { name: 'robots', content: 'noindex, follow' },
+    ],
+});
+
 const router = useRouter();
 const route = useRoute();
 const searchStore = useSearchStore();

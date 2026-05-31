@@ -28,6 +28,19 @@ const useLocal = !isProd && process.env.LOCAL_DEBUG !== "false";
 const endpoints = useLocal ? LOCAL_ENDPOINTS : PROD_ENDPOINTS;
 
 /**
+ * 站点构建时间（用于 sitemap 静态页的 lastmod）
+ *
+ * 取值优先级：
+ *   1) process.env.BUILD_TIME：CI/CD 在构建时显式注入（推荐，例如发版时间戳）
+ *   2) 兜底取当前时间：本地开发或未注入时使用
+ *
+ * 静态页（首页 / time-line / about-me / 工具页）极少修改，所以 lastmod 与发版时间
+ * 绑定即可，比 autoLastmod 自动写当前时间更符合 "真正改了才更新" 的最佳实践，
+ * 避免误导搜索引擎频繁回抓。
+ */
+const BUILD_TIME = process.env.BUILD_TIME || new Date().toISOString();
+
+/**
  * 读取 ISR 主动失效接口的共享密钥
  *
  * 支持两种注入方式（按优先级）：
@@ -191,13 +204,70 @@ export default defineNuxtConfig({
       {
         siteUrl: 'https://liubing.xyz',
         cacheMaxAgeSeconds: 6 * 60 * 60,
-        autoLastmod: true,
+        // 关闭自动 lastmod：autoLastmod 会给所有未显式声明的 URL 写当前时间，
+        // 导致静态页（首页/time-line/about-me）每次缓存重建都得到 "刚刚被修改"，
+        // 这违反了 Google 对 sitemap 的最佳实践（"真正改了才更新 lastmod"），
+        // 长期会被搜索引擎降低对 lastmod 字段的信任度。
+        // 静态页改用 BUILD_TIME 与发版时间绑定；文章页 lastmod 来自后端 updateTime。
+        autoLastmod: false,
         xsl: '/__sitemap__/style.xsl',
-        // 显式注册工具页的双语 URL + hreflang 交叉引用，利于 Google 多语言收录
+        // 自定义 XSL 调试视图的列：仅给开发者在浏览器直接访问 sitemap.xml 时看，
+        // 不影响真实的 sitemap 协议输出。这里去掉默认的 "Images" 列
+        // （我们没有给 URL 注入 image 元数据，全 0 没有阅读价值）。
+        xslColumns: [
+          { label: 'URL', width: '50%' },
+          { label: 'Last Modified', width: '25%', select: 'sitemap:lastmod' },
+          { label: 'Change Frequency', width: '12.5%', select: 'sitemap:changefreq' },
+          { label: 'Priority', width: '12.5%', select: 'sitemap:priority' },
+        ],
+        // 动态数据源：文章详情 URL 由后端 /user/article/list 全量拉取后注入
+        // 实现见 server/api/__sitemap__/articles.ts
+        // 失效逻辑见 server/api/_revalidate.post.ts（文章变更时一并清理 sitemap 缓存）
+        sources: [
+          '/api/__sitemap__/articles',
+        ],
+        // 从 sitemap 中排除掉以下"参数化路由"的裸路径：
+        //   - /search-result 必须配 ?keyword=xxx 才有真实内容，没参数等同空页
+        //   - /tag           必须配 ?tag=xxx     才有真实内容，没参数等同空页
+        // 这两条进 sitemap 反而会被 Google 当成软 404 / 薄内容拖累整站权重；
+        // 页面侧也已经给它们打了 noindex，sitemap + meta 双重排除。
+        exclude: [
+          '/search-result',
+          '/tag',
+        ],
+        // 显式注册各路由的 priority / changefreq / lastmod。
+        //
+        // priority / changefreq 在 Google 已基本不参考，但百度/Bing/神马等国内引擎
+        // 仍会读取，因此按 "首页 > 工具页 > 文章页 > 边缘页" 分层赋权：
+        //   - 首页：信息聚合中心，权重最高，每天可能更新文章列表 → priority 1.0 / daily
+        //   - 工具页：稳定的工具入口，但偶尔会迭代功能 → priority 0.9 / monthly
+        //   - 文章页（在 articles.ts 里设置）：已发布老文章很少变 → priority 0.8 / monthly
+        //   - 时间线 / 关于我：内容几乎不变 → priority 0.5 / yearly
+        //
+        // lastmod 全部使用 BUILD_TIME（与发版时间绑定），符合 "真正改了才更新" 原则。
         urls: [
           {
+            loc: '/',
+            lastmod: BUILD_TIME,
+            changefreq: 'daily',
+            priority: 1.0,
+          },
+          {
+            loc: '/time-line',
+            lastmod: BUILD_TIME,
+            changefreq: 'yearly',
+            priority: 0.5,
+          },
+          {
+            loc: '/about-me',
+            lastmod: BUILD_TIME,
+            changefreq: 'yearly',
+            priority: 0.5,
+          },
+          {
             loc: '/tool/json',
-            changefreq: 'weekly',
+            lastmod: BUILD_TIME,
+            changefreq: 'monthly',
             priority: 0.9,
             alternatives: [
               { hreflang: 'zh-CN', href: 'https://liubing.xyz/tool/json' },
@@ -207,7 +277,8 @@ export default defineNuxtConfig({
           },
           {
             loc: '/en/tool/json',
-            changefreq: 'weekly',
+            lastmod: BUILD_TIME,
+            changefreq: 'monthly',
             priority: 0.9,
             alternatives: [
               { hreflang: 'zh-CN', href: 'https://liubing.xyz/tool/json' },

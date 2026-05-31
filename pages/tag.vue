@@ -22,6 +22,15 @@
 <script setup lang="ts">
 import { useRoute } from 'vue-router';
 
+// 标签页依赖 ?tagName= 查询参数才有真实内容，
+// 裸 URL 与各种 query 组合都属于"参数化薄内容"，统一打 noindex,follow，
+// 让爬虫读取页面但不收录 URL；同时已经在 nuxt.config.ts 的 sitemap exclude 里排除。
+useHead({
+    meta: [
+        { name: 'robots', content: 'noindex, follow' },
+    ],
+});
+
 interface ArticleItem {
     id: string;
     title: string;
