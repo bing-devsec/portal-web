@@ -391,6 +391,18 @@ const FETCH_TXT_ZH = {
     overwritePromptSuffix: '" 已存在，是否覆盖？',
     overwriteTitle: '提示',
     btnOverwrite: '覆盖',
+    msgConfigDuplicateContent: (name: string) =>
+        `已存在内容相同的配置 "${name}"，请勿重复保存`,
+    msgConfigSameNameAndContent: (name: string) =>
+        `配置已存在（与 "${name}" 完全一致），无需重复保存`,
+    overwriteDiffPrompt: (
+        name: string,
+        oldUrl: string,
+        newUrl: string,
+        oldMethod: string,
+        newMethod: string,
+    ) =>
+        `配置 "${name}" 已存在但内容不同，是否覆盖？\n旧 ${oldMethod} ${oldUrl}\n新 ${newMethod} ${newUrl}`,
     msgUrlEmpty: 'URL不能为空',
     msgUrlTooLong: (n: number, max: number) => `URL长度超过限制（${n} 字符，最大 ${max} 字符）`,
     msgUrlProtocol: 'URL协议必须是 http 或 https',
@@ -433,6 +445,14 @@ const FETCH_TXT_ZH = {
     msgCurlTooLong: (n: number, max: number) => `cURL命令长度超过限制（${n} 字符，最大 ${max} 字符）`,
     msgFetchFail: '获取JSON数据失败',
     msgFetchFailWith: (err: string) => `获取JSON数据失败: ${err}`,
+    msgBrowserFetchFailed: (err: string) =>
+        `浏览器请求失败：${err}（可能是 CORS 或目标服务不可达）`,
+    msgBrowserResponseNotJson: (contentType: string) =>
+        `响应不是 JSON（Content-Type: ${contentType || '未知'}），本工具仅处理 JSON 数据`,
+    msgBrowserResponseInvalidJson: (err: string) => `响应内容不是合法的 JSON：${err}`,
+    msgBrowserHttpError: (status: number, statusText: string) =>
+        `HTTP ${status} ${statusText}`,
+    msgBrowserFetchTimeout: '浏览器请求超时（10 秒未响应）',
     msgConfigNameValidateFail: '配置名称校验失败',
     msgConfigUrlEmpty: 'URL不能为空，请填写请求URL',
     msgConfigUrlInvalid: (err: string) => `配置中的URL无效：${err}`,
@@ -512,6 +532,18 @@ const FETCH_TXT_EN: FetchTxt = {
     overwritePromptSuffix: '" already exists. Overwrite?',
     overwriteTitle: 'Confirm',
     btnOverwrite: 'Overwrite',
+    msgConfigDuplicateContent: (name: string) =>
+        `A config with identical content already exists ("${name}"). No need to save again.`,
+    msgConfigSameNameAndContent: (name: string) =>
+        `Config "${name}" already exists with identical content. Nothing to save.`,
+    overwriteDiffPrompt: (
+        name: string,
+        oldUrl: string,
+        newUrl: string,
+        oldMethod: string,
+        newMethod: string,
+    ) =>
+        `Config "${name}" already exists but content differs. Overwrite?\nOld: ${oldMethod} ${oldUrl}\nNew: ${newMethod} ${newUrl}`,
     msgUrlEmpty: 'URL cannot be empty',
     msgUrlTooLong: (n: number, max: number) => `URL too long (${n} chars, max ${max})`,
     msgUrlProtocol: 'URL protocol must be http or https',
@@ -554,6 +586,14 @@ const FETCH_TXT_EN: FetchTxt = {
     msgCurlTooLong: (n: number, max: number) => `cURL command too long (${n} chars, max ${max})`,
     msgFetchFail: 'Failed to fetch JSON',
     msgFetchFailWith: (err: string) => `Failed to fetch JSON: ${err}`,
+    msgBrowserFetchFailed: (err: string) =>
+        `Browser request failed: ${err} (possibly CORS or unreachable target)`,
+    msgBrowserResponseNotJson: (contentType: string) =>
+        `Response is not JSON (Content-Type: ${contentType || 'unknown'}). This tool only handles JSON.`,
+    msgBrowserResponseInvalidJson: (err: string) => `Response is not valid JSON: ${err}`,
+    msgBrowserHttpError: (status: number, statusText: string) =>
+        `HTTP ${status} ${statusText}`,
+    msgBrowserFetchTimeout: 'Browser request timed out (no response in 10s)',
     msgConfigNameValidateFail: 'Config name validation failed',
     msgConfigUrlEmpty: 'URL cannot be empty — please fill in the request URL',
     msgConfigUrlInvalid: (err: string) => `Invalid URL in config: ${err}`,
@@ -634,6 +674,8 @@ const savedConfigs = ref<
         method: string;
         body: string;
         headers: Array<{ key: string; value: string }>;
+        cert?: string;
+        key?: string;
     }>
 >([]);
 const CONFIG_STORAGE_KEY = 'json-tool-saved-configs';
@@ -1386,6 +1428,36 @@ const saveConfigsToStorage = () => {
     }
 };
 
+// 计算配置内容指纹（不含 name），用于"内容是否相同"的去重判断。
+// 1) headers 按 key 小写后排序、value 做 trim，避免顺序/大小写差异被误判为不同；
+// 2) url/body/cert/key 做 trim；
+// 3) method 统一大写。
+const computeConfigContentHash = (cfg: {
+    url?: string;
+    method?: string;
+    body?: string;
+    headers?: Array<{ key: string; value: string }>;
+    cert?: string;
+    key?: string;
+}): string => {
+    const normalizedHeaders = (cfg.headers ?? [])
+        .map((h) => ({
+            key: (h?.key ?? '').toLowerCase().trim(),
+            value: (h?.value ?? '').trim(),
+        }))
+        .filter((h) => h.key)
+        .sort((a, b) => a.key.localeCompare(b.key));
+
+    return JSON.stringify({
+        url: (cfg.url ?? '').trim(),
+        method: (cfg.method ?? 'GET').toUpperCase(),
+        body: (cfg.body ?? '').trim(),
+        headers: normalizedHeaders,
+        cert: (cfg.cert ?? '').trim(),
+        key: (cfg.key ?? '').trim(),
+    });
+};
+
 // 保存当前配置
 const saveConfig = () => {
     // 清除之前的错误信息
@@ -1471,12 +1543,38 @@ const saveConfig = () => {
         method: fetchJsonMethod.value,
         body: fetchJsonBody.value,
         headers: JSON.parse(JSON.stringify(fetchJsonHeaders.value)), // 深拷贝
+        cert: fetchJsonCert.value || '',
+        key: fetchJsonKey.value || '',
     };
 
+    // 内容指纹去重：检测"换个名字保存相同内容"的场景
+    const newContentHash = computeConfigContentHash(config);
+    const sameContentEntry = savedConfigs.value.find(
+        (c, idx) => idx !== existingIndex && computeConfigContentHash(c) === newContentHash,
+    );
+    if (sameContentEntry) {
+        saveConfigError.value = fetchTxt.value.msgConfigDuplicateContent(sameContentEntry.name);
+        return;
+    }
+
     if (existingIndex >= 0) {
-        // 更新现有配置
+        const existing = savedConfigs.value[existingIndex];
+        const sameNameSameContent = computeConfigContentHash(existing) === newContentHash;
+        if (sameNameSameContent) {
+            // 同名 + 同内容：拒绝重复保存，避免无意义的写入
+            saveConfigError.value = fetchTxt.value.msgConfigSameNameAndContent(existing.name);
+            return;
+        }
+
+        // 同名 + 内容不同：附带 URL/method 差异摘要，让用户判断是否覆盖
         ElMessageBox.confirm(
-            fetchTxt.value.overwritePromptPrefix + trimmedName + fetchTxt.value.overwritePromptSuffix,
+            fetchTxt.value.overwriteDiffPrompt(
+                trimmedName,
+                existing.url || '',
+                config.url || '',
+                existing.method || 'GET',
+                config.method || 'GET',
+            ),
             fetchTxt.value.overwriteTitle,
             {
                 confirmButtonText: fetchTxt.value.btnOverwrite,
@@ -1568,6 +1666,8 @@ const loadConfig = (config: (typeof savedConfigs.value)[0]) => {
     fetchJsonMethod.value = config.method;
     fetchJsonBody.value = config.body;
     fetchJsonHeaders.value = JSON.parse(JSON.stringify(config.headers || [])); // 深拷贝
+    fetchJsonCert.value = config.cert || '';
+    fetchJsonKey.value = config.key || '';
     showLoadConfigDialog.value = false;
 };
 
@@ -1607,6 +1707,172 @@ const executeDelete = (index: number) => {
     if (savedConfigs.value.length === 0) {
         showDeleteConfigDialog.value = false;
     }
+};
+
+// ========== 浏览器直发 vs 服务端代理：自动决策 ==========
+
+// 浏览器 fetch 禁止 JS 设置的 forbidden header（设了也会被静默丢弃）。
+// 用户填了这些 header 时，应该走服务端代理才能生效。
+const BROWSER_FORBIDDEN_HEADERS = new Set([
+    'accept-charset',
+    'accept-encoding',
+    'access-control-request-headers',
+    'access-control-request-method',
+    'connection',
+    'content-length',
+    'cookie',
+    'cookie2',
+    'date',
+    'dnt',
+    'expect',
+    'host',
+    'keep-alive',
+    'origin',
+    'referer',
+    'te',
+    'trailer',
+    'transfer-encoding',
+    'upgrade',
+    'via',
+    'user-agent',
+]);
+
+// 判断 hostname 是否属于"内网/本机"范畴
+// 含义：浏览器看到这个地址时，访问的是用户自己的电脑/局域网，
+// 让浏览器直发反而符合 curl/地址栏直觉；交给服务端代理才会触发 SSRF 防护。
+const isPrivateHostname = (hostname: string): boolean => {
+    const h = (hostname || '').toLowerCase();
+    if (!h) return false;
+    // 本机
+    if (h === 'localhost' || h === '127.0.0.1' || h === '0.0.0.0' || h === '::1') return true;
+    // 常见内网域名后缀
+    if (/(\.local|\.internal|\.lan|\.corp|\.localdomain)$/.test(h)) return true;
+    // IPv4 私网段
+    const ipv4 = h.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/);
+    if (ipv4) {
+        const a = Number(ipv4[1]);
+        const b = Number(ipv4[2]);
+        if (a === 10) return true;                            // 10.0.0.0/8
+        if (a === 172 && b >= 16 && b <= 31) return true;     // 172.16.0.0/12
+        if (a === 192 && b === 168) return true;              // 192.168.0.0/16
+        if (a === 169 && b === 254) return true;              // 169.254.0.0/16
+        if (a === 127) return true;                           // 127.0.0.0/8
+        if (a === 0) return true;                             // 0.0.0.0/8
+    }
+    return false;
+};
+
+// 决策：当前请求该走"浏览器直发"还是"服务端代理"。
+// 优先级见对应需求文档。返回 transport 与可选的 reason（用于调试 / 日志）。
+const decideTransport = (
+    targetUrl: string,
+    headers: Array<{ key: string; value: string }>,
+    hasCert: boolean,
+    hasKey: boolean,
+    isCurlMode: boolean,
+): 'browser' | 'server' => {
+    // 1) cURL 模式 / mTLS：浏览器搞不定，强制走代理
+    if (isCurlMode) return 'server';
+    if (hasCert || hasKey) return 'server';
+
+    let urlObj: URL;
+    try {
+        urlObj = new URL(targetUrl);
+    } catch {
+        return 'server';
+    }
+
+    // 仅在浏览器环境才能用 window.location 比对同源；SSR 阶段统一回退代理
+    if (typeof window === 'undefined' || !window.location) return 'server';
+
+    const sameOrigin = urlObj.origin === window.location.origin;
+
+    // 2) Mixed Content：HTTPS 页面无法发 HTTP 请求 → 让代理顶
+    const isMixedContent =
+        window.location.protocol === 'https:' && urlObj.protocol === 'http:';
+    if (isMixedContent) return 'server';
+
+    // 3) 同源：浏览器直发，自带 cookie，行为同地址栏
+    if (sameOrigin) return 'browser';
+
+    // 4) 内网/本机：浏览器视角下访问的是用户自己机器，让浏览器直发
+    if (isPrivateHostname(urlObj.hostname)) return 'browser';
+
+    // 5) 用户填了浏览器禁用的 header（如 Cookie/User-Agent）→ 走代理才能真正生效
+    const hasForbiddenHeader = headers.some(
+        (h) => h?.key && BROWSER_FORBIDDEN_HEADERS.has(h.key.toLowerCase().trim()),
+    );
+    if (hasForbiddenHeader) return 'server';
+
+    // 6) 其他公网 API：走代理可避免 CORS 问题
+    return 'server';
+};
+
+// 浏览器直发 fetch；只接受 JSON 响应。失败时抛 Error，由调用方统一展示。
+const fetchInBrowser = async (
+    url: string,
+    method: string,
+    headers: Array<{ key: string; value: string }>,
+    body: string | undefined,
+): Promise<any> => {
+    const reqHeaders: Record<string, string> = {};
+    headers.forEach((h) => {
+        if (h?.key && h?.value) {
+            // forbidden header 设了也会被忽略，这里仍写入由浏览器决定
+            reqHeaders[h.key] = h.value;
+        }
+    });
+
+    const init: RequestInit = {
+        method: (method || 'GET').toUpperCase(),
+        headers: reqHeaders,
+        // 同源时自动带 cookie（贴近地址栏体验），跨源场景不会带，浏览器自行处理
+        credentials: 'same-origin',
+        mode: 'cors',
+    };
+    if (init.method !== 'GET' && body) {
+        init.body = body;
+    }
+
+    // 10 秒超时，避免内网无应答时卡死 UI
+    const controller = new AbortController();
+    const timer = window.setTimeout(() => controller.abort(), 10_000);
+    init.signal = controller.signal;
+
+    let resp: Response;
+    try {
+        resp = await fetch(url, init);
+    } catch (err: any) {
+        window.clearTimeout(timer);
+        if (err?.name === 'AbortError') {
+            throw new Error(fetchTxt.value.msgBrowserFetchTimeout);
+        }
+        throw new Error(
+            fetchTxt.value.msgBrowserFetchFailed(err?.message || fetchTxt.value.msgUnknownError),
+        );
+    }
+    window.clearTimeout(timer);
+
+    if (!resp.ok) {
+        throw new Error(fetchTxt.value.msgBrowserHttpError(resp.status, resp.statusText));
+    }
+
+    // Content-Type 必须是 JSON：本工具不接受 HTML/纯文本
+    const contentType = resp.headers.get('content-type') || '';
+    const ctLower = contentType.toLowerCase();
+    if (!ctLower.includes('application/json') && !ctLower.includes('+json')) {
+        throw new Error(fetchTxt.value.msgBrowserResponseNotJson(contentType));
+    }
+
+    let data: any;
+    try {
+        data = await resp.json();
+    } catch (err: any) {
+        throw new Error(
+            fetchTxt.value.msgBrowserResponseInvalidJson(err?.message || fetchTxt.value.msgUnknownError),
+        );
+    }
+    return data;
 };
 
 // 获取JSON数据
@@ -1673,6 +1939,42 @@ const fetchJsonData = async () => {
         }
 
         fetchJsonLoading.value = true;
+
+        // ========== 自动决策：浏览器直发 vs 服务端代理 ==========
+        // URL 模式下尝试用浏览器直发（同源 / 内网 / localhost）；
+        // 走代理的场景：cURL、mTLS、Mixed Content、跨源公网、forbidden header。
+        const transport =
+            fetchJsonMode.value === 'url'
+                ? decideTransport(
+                      fetchJsonUrl.value,
+                      fetchJsonHeaders.value,
+                      !!fetchJsonCert.value,
+                      !!fetchJsonKey.value,
+                      false,
+                  )
+                : 'server';
+
+        if (transport === 'browser') {
+            try {
+                const data = await fetchInBrowser(
+                    fetchJsonUrl.value,
+                    fetchJsonMethod.value,
+                    fetchJsonHeaders.value,
+                    fetchJsonMethod.value !== 'GET' ? fetchJsonBody.value : undefined,
+                );
+                const jsonString = JSON.stringify(data, null, props.indentSize);
+                if (props.inputEditor) {
+                    props.inputEditor.setValue(jsonString);
+                    emit('jsonLoaded', jsonString);
+                    dialogVisible.value = false;
+                }
+            } catch (err: any) {
+                // fetchInBrowser 内部已经把所有失败包装为带本地化文案的 Error，
+                // 这里直接展示原文，不再二次拼接，避免出现"获取JSON数据失败：浏览器请求失败：..."的嵌套
+                showMessageError(err?.message || fetchTxt.value.msgFetchFail);
+            }
+            return;
+        }
 
         // 构建请求参数
         const requestData: any = {};
