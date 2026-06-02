@@ -537,22 +537,18 @@ md.renderer.rules.fence = function (tokens, idx, _options, env: RenderEnv) {
     //   两个按钮文案各自固定，handler 也不用回写文本
     // 头部按钮 aria-expanded="true"（只在展开态显示）；浮动按钮 aria-expanded="false"（只在折叠态显示）
     //
-    // ⚠ 头部按钮统一图标化：与「全屏」「复制」三按钮风格保持一致，
-    //    用 SVG (chevron-up) 表示「收起」，title 属性提供原生 tooltip 学习成本最低。
+    // ⚠ 头部折叠按钮改为「单按钮 + 单图标旋转」：
+    //    - SSR 只输出一个 chevron-down 图标按钮
+    //    - 折叠态显示向下，展开态通过 CSS rotate(180deg) 旋成向上
+    //    - 相比两个按钮 display 切换，这样才能做顺滑旋转过渡动画
     // ============================================================
     const headToggleDom = collapsible
-        ? // 收起按钮（chevron-up）：仅展开态可见
-          `<button class="ssr-code-toggle ssr-code-toggle--head ssr-code-iconbtn" type="button" aria-expanded="true" aria-label="收起代码" title="收起">` +
-          `<svg viewBox="0 0 24 24" width="19" height="19" aria-hidden="true">` +
-          `<path fill="currentColor" d="M12 8.59l-6.3 6.3 1.4 1.42L12 11.4l4.9 4.9 1.4-1.4z"/>` +
-          `</svg>` +
-          `</button>` +
-          // 展开按钮（chevron-down）：仅折叠态可见，与浮动「展开全部」按钮并存，
-          // 提供"在头部一键展开"的快捷入口（不用滚到底部按浮动按钮）
-          `<button class="ssr-code-toggle ssr-code-toggle--head-expand ssr-code-iconbtn" type="button" aria-expanded="false" aria-label="展开代码" title="展开">` +
-          `<svg viewBox="0 0 24 24" width="19" height="19" aria-hidden="true">` +
+        ? `<button class="ssr-code-toggle ssr-code-toggle--head ssr-code-iconbtn" type="button" aria-expanded="false" aria-label="展开代码" title="展开">` +
+          `<span class="ssr-code-toggle-icon-wrap" aria-hidden="true">` +
+          `<svg class="ssr-code-toggle-icon" viewBox="0 0 24 24" aria-hidden="true">` +
           `<path fill="currentColor" d="M12 15.41l6.3-6.3-1.4-1.42L12 12.59 7.1 7.7l-1.4 1.4z"/>` +
           `</svg>` +
+          `</span>` +
           `</button>`
         : '';
     const floatingToggleDom = collapsible

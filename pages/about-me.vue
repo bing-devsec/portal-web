@@ -130,12 +130,4 @@ function getEmailType(email: string): string {
     color: #0056b3;
     text-decoration: underline;
 }
-
-@media(max-width: 576px) {
-    /* 仅保留"结构性"规则：移动端给 .about 容器额外左右 padding，避免顶到屏幕边缘
-       字号/margin 已由上方 clamp() 流式覆盖 */
-    .about {
-        padding: 0 20px;
-    }
-}
 </style>

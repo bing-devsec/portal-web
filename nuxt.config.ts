@@ -147,38 +147,21 @@ export default defineNuxtConfig({
   //   - 文章详情：缓存 7 天，依赖 Go 后端在文章变更时调用 /api/_revalidate 主动失效
   //   - 列表/工具页等保持默认 SSR（内容相对动态、变更频繁，靠主动失效成本高）
   //   - /api/_revalidate 自身不允许被搜索引擎索引
-  //
-  // 为什么用 swr 而不是 isr：
-  //   Nitro 2.13 + Nuxt 3.21 这个组合下，`isr: number` 只生效响应头，不会触发运行时
-  //   缓存（落 useStorage("cache")）。本地实测 isr 配置下 cache/ 目录始终为空。
-  //   `swr: number` 和 `cache.maxAge` 是 Nitro 1.x 时代就稳定的 API，跨版本表现一致。
   routeRules: {
-    "/article-detail/**": {
-      // swr: 启用 stale-while-revalidate 模式，请求会通过 cachedEventHandler 包装。
-      // Nitro 会把渲染结果写入 useStorage("cache") 持久化（fs driver 落盘到 ./cache）。
-      //
-      // 关于 cache.getKey 的踩坑记录：
-      //   曾尝试通过 cache: { swr, maxAge, getKey } 自定义缓存 key，让落盘文件名
-      //   直接对应文章 ID（如 504.json）。但 routeRules 会被 Nuxt 序列化进运行
-      //   时配置（要传给客户端），函数无法 JSON 化，build 时被**静默剥离**——
-      //   只在控制台留下一行 "Runtime config option ... may not be able to be
-      //   serialized" 警告。结果就是 getKey 失效、缓存仍走 Nitro 默认算法。
-      //
-      //   因此这里只用 swr: number 简写。文件名形态由 Nitro 默认 slug 算法决定：
-      //     - 路径片段移除非字母数字、截断到前 16 字符
-      //     - 末尾追加路径哈希避免冲突
-      //   实测形如：cache/nitro/routes/_/articledetail504.2c1G7yFDYW.json
-      //
-      //   主动失效逻辑见 server/api/_revalidate.post.ts，按 slug 子串匹配。
-      swr: 60 * 60 * 24 * 7,
-      // 不再显式设 staleMaxAge: -1：
-      //   - Nitro 会把它原样输出到 cache-control: stale-while-revalidate=-1（HTTP 非法值）
-      //   - 我们用下面的 headers 直接写 Cache-Control，覆盖框架默认值
-      headers: {
-        "Cache-Control":
-          "public, s-maxage=86400, stale-while-revalidate=604800",
-      },
-    },
+    "/article-detail/**": isProd
+      ? {
+          swr: 60 * 60 * 24 * 7,
+          headers: {
+            "Cache-Control":
+              "public, s-maxage=86400, stale-while-revalidate=604800",
+          },
+        }
+      : {
+          // 本地开发关闭文章详情页路由缓存，避免调样式/渲染结构时持续命中旧 HTML。
+          headers: {
+            "Cache-Control": "no-store",
+          },
+        },
     "/api/_revalidate": {
       headers: {
         "Cache-Control": "no-store",
@@ -396,17 +379,20 @@ export default defineNuxtConfig({
     // 注册 server plugin：在 SSR 渲染完成后清理 <head> 内的 Vue fragment 锚点注释。
     // 见 server/plugins/strip-head-comments.ts 的实现与安全说明。
     plugins: ["~/server/plugins/strip-head-comments.ts"],
-    // ISR 缓存目录显式锚定，避免依赖 Nitro 默认行为（不同版本可能不一致）。
-    // 生产部署时 docker volume 挂载到此路径即可实现重启不丢缓存：
-    //   volumes:
-    //     - ./portal-web/cache:/home/node/portal-web/cache
-    // 本地开发时该目录会自动创建在项目根目录下。
-    storage: {
-      cache: {
-        driver: "fs",
-        base: process.env.NITRO_CACHE_DIR || "./cache",
-      },
-    },
+    ...(isProd
+      ? {
+          // ISR 缓存目录显式锚定，避免依赖 Nitro 默认行为（不同版本可能不一致）。
+          // 生产部署时 docker volume 挂载到此路径即可实现重启不丢缓存：
+          //   volumes:
+          //     - ./portal-web/cache:/home/node/portal-web/cache
+          storage: {
+            cache: {
+              driver: "fs",
+              base: process.env.NITRO_CACHE_DIR || "./cache",
+            },
+          },
+        }
+      : {}),
   },
 
   // ==================== Vue配置 ====================

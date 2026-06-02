@@ -131,6 +131,24 @@ interface ArticleDetail {
   ogImageUrl?: string;
 }
 
+const stripLegacyCodeToggleButtons = (html?: string): string => {
+  if (!html) return "";
+  return html.replace(
+    /<button\b[^>]*class="[^"]*\bssr-code-toggle--head-expand\b[^"]*"[\s\S]*?<\/button>/g,
+    ""
+  );
+};
+
+const normalizeArticleDetail = (
+  detail: ArticleDetail | null | undefined
+): ArticleDetail | null => {
+  if (!detail) return null;
+  return {
+    ...detail,
+    renderedHtml: stripLegacyCodeToggleButtons(detail.renderedHtml),
+  };
+};
+
 const route = useRoute();
 const runtimeConfig = useRuntimeConfig();
 const articleId = computed(() => route.params.id as string);
@@ -448,7 +466,7 @@ const { data: serverArticle } = await useAsyncData<ArticleDetail>(
       void _drop;
       return {
         ...rest,
-        renderedHtml,
+        renderedHtml: stripLegacyCodeToggleButtons(renderedHtml),
         description,
         ogImageUrl,
       };
@@ -463,7 +481,7 @@ const { data: serverArticle } = await useAsyncData<ArticleDetail>(
 // SSR 阶段已经在 useAsyncData 里把 markdown 渲染为 renderedHtml，
 // 客户端直接复用同一份字符串通过模板中的 v-html 输出，无需任何二次渲染。
 if (serverArticle.value) {
-  article.value = serverArticle.value;
+  article.value = normalizeArticleDetail(serverArticle.value);
 }
 
 // SEO：根据文章内容动态设置页面标题和 meta 信息
@@ -658,10 +676,10 @@ const fetchArticleContent = async () => {
           // 这里在客户端把它渲染成 HTML，统一交给模板的 v-html 输出，
           // 与 SSR 走的是同一份排版规则（.article-body-ssr）。
           const renderedHtml = await renderMarkdownToHtml(result.data.content);
-          article.value = {
+          article.value = normalizeArticleDetail({
             ...result.data,
             renderedHtml,
-          };
+          });
         } else {
           // API 返回其他错误码
           throw new Error(
@@ -694,7 +712,7 @@ const fetchArticleContent = async () => {
 
     // 如果 SSR 有数据，至少可以显示 SSR 内容作为降级方案
     if (serverArticle.value) {
-      article.value = serverArticle.value;
+      article.value = normalizeArticleDetail(serverArticle.value);
     }
 
     // 重新抛出错误，让调用方知道失败了
@@ -711,7 +729,7 @@ const initArticleContent = async () => {
   // 从 payload 里剥离（替换为 renderedHtml + description + ogImageUrl），
   // 所以改用 renderedHtml 作为"SSR 成功"的信号。
   if (serverArticle.value && serverArticle.value.renderedHtml) {
-    article.value = serverArticle.value;
+    article.value = normalizeArticleDetail(serverArticle.value);
     return;
   }
 
@@ -726,7 +744,7 @@ const initArticleContent = async () => {
       loadingState.value = "加载失败，请刷新页面";
       // 如果 SSR 有数据，至少可以显示 SSR 内容
       if (serverArticle.value) {
-        article.value = serverArticle.value;
+        article.value = normalizeArticleDetail(serverArticle.value);
       }
     }
   } catch (error) {
@@ -734,7 +752,7 @@ const initArticleContent = async () => {
 
     // 如果 SSR 有数据，至少可以显示 SSR 内容作为降级方案
     if (serverArticle.value) {
-      article.value = serverArticle.value;
+      article.value = normalizeArticleDetail(serverArticle.value);
     }
   }
 };
@@ -1241,6 +1259,23 @@ const handleCodeToggleClick = (event: Event) => {
   const wasCollapsed = block.getAttribute("data-collapsed") === "true";
   const nextCollapsed = !wasCollapsed;
   block.setAttribute("data-collapsed", String(nextCollapsed));
+
+  const headBtn = block.querySelector(
+    ".ssr-code-toggle--head"
+  ) as HTMLButtonElement | null;
+  if (headBtn) {
+    const expanded = String(!nextCollapsed);
+    headBtn.setAttribute("aria-expanded", expanded);
+    headBtn.setAttribute("aria-label", nextCollapsed ? "展开代码" : "收起代码");
+    headBtn.setAttribute("title", nextCollapsed ? "展开" : "收起");
+  }
+
+  const floatingBtn = block.querySelector(
+    ".ssr-code-toggle--floating"
+  ) as HTMLButtonElement | null;
+  if (floatingBtn) {
+    floatingBtn.setAttribute("aria-expanded", String(!nextCollapsed));
+  }
 
   // 收起时把代码块顶部对齐视口，避免视觉跳跃
   if (nextCollapsed) {
