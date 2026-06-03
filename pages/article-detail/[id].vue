@@ -563,6 +563,16 @@ useHead(() => {
         rel: "canonical",
         href: data.canonicalUrl,
       },
+      // 文章详情页首屏会大量出现代码块，提前 preload 自托管的 JetBrains Mono，
+      // 避免移动端先用系统兜底字体渲染、字体加载完再 swap 时的视觉闪烁。
+      // 仅在文章页注入；其他页面不会触发该 90KB 字体的下载。
+      {
+        rel: "preload",
+        as: "font",
+        type: "font/woff2",
+        href: "/fonts/JetBrainsMono-Regular.woff2",
+        crossorigin: "anonymous",
+      },
     ],
     meta: [
       { name: "description", content: data.description },
