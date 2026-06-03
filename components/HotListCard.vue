@@ -4,14 +4,15 @@
             <a href="#"><strong>热门推荐</strong></a>
         </div>
         <div class="tab-category-item">
-            <ul class="index_recd">
-                <li v-for="article in hotArticles" :key="article.id" class="hotTips">
-                    <NuxtLink :to="`/article-detail/${article.id}`" :prefetch="canPrefetch(article.id)">
-                        <span>{{ article.title }}</span>
-                        <p class="hits">
-                            <i class="iconfont icon-eye" title="点击量"></i>
-                            <span style="font-size: 14px">&nbsp;{{ article.viewNum }}</span>
-                        </p>
+            <ul class="hot-list">
+                <li v-for="article in hotArticles" :key="article.id" class="hot-item">
+                    <NuxtLink
+                        class="hot-link"
+                        :to="`/article-detail/${article.id}`"
+                        :prefetch="canPrefetch(article.id)"
+                    >
+                        <span class="hot-title">{{ article.title }}</span>
+                        <span class="hot-meta">{{ article.viewNum }} 阅读</span>
                     </NuxtLink>
                 </li>
             </ul>
@@ -36,53 +37,59 @@ const canPrefetch = (id: string) => shouldPrefetchArticle(id, 'hot')
 </script>
 
 <style scoped>
-.index_recd .hotTips a:hover {
-    text-decoration: none;
-    color: #fc5531;
+.hot-list {
+    margin: 0;
+    padding: 0;
 }
 
-.index_recd li:hover {
-    border-radius: 3px;
-    cursor: pointer;
-    background-color: #efefef;
+.hot-item {
+    list-style: none;
 }
 
-.index_recd li {
-    background-color: #fff;
-    line-height: 35px;
-    height: 35px;
-    white-space: nowrap;
-    overflow: hidden;
-    font-style: oblique;
-    font-size: 14px;
-}
-
-.index_recd li a {
-    color: #f22c00;
+.hot-link {
     display: flex;
-    align-items: flex-start;
+    align-items: center;
     justify-content: space-between;
-}
-
-.index_recd li a span {
-    max-width: 67%;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
+    min-height: 34px;
+    padding: 0 4px;
+    color: #45515c;
     font-size: 14px;
-    vertical-align: top;
-    font-style: normal;
+    text-decoration: none;
+    cursor: pointer;
+    touch-action: manipulation;
+    -webkit-tap-highlight-color: rgba(0, 172, 193, 0.12);
 }
 
-.index_recd li a .hits {
-    color: #666;
+.hot-title {
+    flex: 1;
+    min-width: 0;
+    margin-right: 10px;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-    width: 62px;
 }
 
-.index_recd li a .hits i {
-    font-weight: 500;
+.hot-meta {
+    flex-shrink: 0;
+    color: #b08a4a;
+    font-size: 13px;
+    white-space: nowrap;
+}
+
+.hot-link:active {
+    color: #00acc1;
+    background-color: rgba(0, 172, 193, 0.06);
+}
+
+@media (hover: hover) and (pointer: fine) {
+    .hot-link:hover {
+        color: #00acc1;
+        background-color: rgba(0, 172, 193, 0.05);
+        text-decoration: none;
+    }
+
+    .hot-link:hover .hot-meta {
+        color: #c47a2c;
+    }
 }
 </style>

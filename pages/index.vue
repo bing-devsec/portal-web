@@ -5,6 +5,7 @@
 			<ArticleList 
 				:articles="articles" 
 				:total="total"
+				:show-article-tag="true"
 			/>
 		</div>
 		<aside class="l-aside">

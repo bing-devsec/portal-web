@@ -87,15 +87,24 @@ onMounted(() => {
     font-style: normal;
 }
 
-.cd-timeline-content li a:hover {
-    background-color: #efefef;
+/* 归档页条目 hover 仅 PC 启用：移动端点击 NuxtLink 跳转后该条目 DOM 仍在，
+   sticky hover 会让灰底+橙字一直挂着；:active 给所有设备一次性按压反馈。 */
+@media (hover: hover) and (pointer: fine) {
+    .cd-timeline-content li a:hover {
+        background-color: #efefef;
+    }
+
+    .cd-timeline-content a:hover {
+        border-radius: 2px;
+        cursor: pointer;
+        text-decoration: none;
+        color: #fc5531;
+    }
 }
 
-.cd-timeline-content a:hover {
+.cd-timeline-content li a:active {
     border-radius: 2px;
-    cursor: pointer;
-    text-decoration: none;
-    color: #fc5531;
+    background-color: #efefef;
 }
 
 :deep(.el-collapse-item__header) {

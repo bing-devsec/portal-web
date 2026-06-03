@@ -609,10 +609,6 @@ a {
    列表页：文章列表与提示卡片
    =========================== */
 
-.index_arc .no_pic {
-    padding: 20px;
-}
-
 .tipCard {
     margin-top: 0;
 }
@@ -1942,57 +1938,99 @@ a {
     overflow-x: auto;
 }
 
-/* 右上角全屏按钮：圆角浮层按钮，hover 时上浮效果 */
+/* 右上角全屏按钮：与表格全屏按钮 .ssr-table-fs-btn 视觉对齐
+   （半透明白底、无边框、浅阴影、hover 加深、active 浅灰反馈），
+   保持文章内"全屏入口"统一观感。 */
 .article-body-ssr .mermaid-fullscreen-btn {
-    position: absolute;
-    top: 8px;
-    right: 8px;
-    z-index: 2;
+    appearance: none;
+    border: 0;
+    background: rgba(255, 255, 255, 0.55);
+    color: #4a5568;
+    width: 30px;
+    height: 26px;
+    padding: 0;
+    border-radius: 4px;
+    cursor: pointer;
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    width: 30px;
-    height: 30px;
-    padding: 0;
-    border: 1px solid #d1d5da;
-    border-radius: 4px;
-    background-color: rgba(255, 255, 255, 0.92);
-    color: #586069;
-    cursor: pointer;
-    transition: background-color 0.15s ease, color 0.15s ease,
-        box-shadow 0.15s ease;
-    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+    position: absolute;
+    top: 4px;
+    right: 4px;
+    z-index: 2;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08);
+    transition: background-color 0.15s ease, color 0.15s ease;
 }
 .article-body-ssr .mermaid-fullscreen-btn:hover {
-    background-color: #fff;
-    color: #24292e;
-    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.12);
+    background-color: rgba(255, 255, 255, 0.9);
+    color: #1a202c;
 }
 .article-body-ssr .mermaid-fullscreen-btn:active {
-    transform: translateY(1px);
+    background-color: #edf2f7;
 }
 
-/* 未渲染态：展示原始源码（fallback / 加载中） */
+/* 未渲染态：隐藏源码 pre，避免刷新时短暂闪一段深色源码块。
+   - JS 仍能从 DOM 里读到 .mermaid-source.textContent 用于 mermaid.render
+   - 视觉上用 .mermaid-content::before 显示轻量 loading 占位，给容器一个稳定高度，
+     防止 svg 回填时页面发生明显跳动
+   - 渲染完成（data-mermaid-rendered="true"）后，整段 innerHTML 被 svg 或 .mermaid-error 替换，
+     ::before 占位自然失效，无需额外清理。 */
 .article-body-ssr .mermaid-block[data-mermaid-rendered="false"] .mermaid-source {
-    text-align: left;
+    position: absolute;
+    width: 1px;
+    height: 1px;
     margin: 0;
-    padding: 12px;
-    background-color: #24292e;
-    color: #abb2bf;
-    border-radius: 4px;
-    font-family: "JetBrains Mono", SFMono-Regular, Consolas, "Liberation Mono", Menlo, monospace;
-    /* 流式：手机 12px ~ PC 13px */
-    font-size: clamp(12px, 11px + 0.3vw, 13px);
-    line-height: 1.55;
-    white-space: pre;
-    overflow-x: auto;
+    padding: 0;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    visibility: hidden;
 }
 
-/* 已渲染态：svg 居中、保持原始尺寸或自适应宽度 */
+.article-body-ssr .mermaid-block[data-mermaid-rendered="false"] .mermaid-content {
+    min-height: 80px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+/* loading 文字：默认透明，250ms 后才淡入显示。
+   mermaid 在快速网络下通常 < 250ms 就完成渲染，此时 svg 直接替换 innerHTML、
+   ::before 一同消失，用户全程看不到"加载中"文字 → 几乎无感知；
+   只有真的慢的时候（图表复杂或网络慢）才出现，避免长时间空白让人以为坏了。 */
+.article-body-ssr
+    .mermaid-block[data-mermaid-rendered="false"]
+    .mermaid-content::before {
+    content: "图表加载中…";
+    color: #909399;
+    font-size: 13px;
+    line-height: 1.5;
+    letter-spacing: 0.02em;
+    opacity: 0;
+    animation: mermaid-loading-fade-in 0.2s ease 0.25s forwards;
+}
+
+@keyframes mermaid-loading-fade-in {
+    to {
+        opacity: 1;
+    }
+}
+
+/* 已渲染态：svg 居中、保持原始尺寸或自适应宽度；
+   附带一段 0.18s 的 opacity 淡入，避免 innerHTML 替换瞬间"啪"地闪现。 */
 .article-body-ssr .mermaid-block[data-mermaid-rendered="true"] svg {
     max-width: 100%;
     height: auto;
     display: inline-block;
+    animation: mermaid-svg-fade-in 0.18s ease both;
+}
+
+@keyframes mermaid-svg-fade-in {
+    from {
+        opacity: 0;
+    }
+    to {
+        opacity: 1;
+    }
 }
 
 /* mermaid 渲染失败时的降级展示 */

@@ -619,8 +619,12 @@ const onViewportResize = () => {
   line-height: 1.4;
 }
 
-.ssr-catalog-item:hover a {
-  color: #4dd0e1;
+/* hover 仅 PC 启用：目录条目在抽屉里也会被复用，移动端点击锚点跳转后
+   sticky hover 会让最后点击的条目颜色一直停在高亮态，造成"假激活"错觉。 */
+@media (hover: hover) and (pointer: fine) {
+  .ssr-catalog-item:hover a {
+    color: #4dd0e1;
+  }
 }
 
 .ssr-catalog-item.active {

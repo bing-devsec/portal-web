@@ -2138,6 +2138,25 @@ const handleImageClick = (event: Event) => {
 // 3) 把 .mermaid-source 替换为 svg，并打 data-mermaid-rendered="true" 防止重复渲染
 // 路由切换时（同一组件实例），watch route 后会重新调用一次，覆盖新文章里的 mermaid 块。
 // ============================================================
+// ============================================================
+// mermaid 模块预热：把 import('mermaid') 的网络/解析开销并行到首屏其他工作之上，
+// 让 renderMermaidBlocks 真正调用时大概率已经命中模块缓存，svg 几乎瞬间出现。
+// ------------------------------------------------------------
+// 设计：
+//   - 仅客户端调用一次（mermaidLib 缓存命中时直接返回）
+//   - 任何阶段都可以重复调用，幂等
+//   - 失败由 renderMermaidBlocks 内部再 try 一次，这里静默吞错
+// ============================================================
+const prewarmMermaid = () => {
+  if (typeof document === "undefined") return;
+  if (mermaidLib) return;
+  // 触发动态 import；下载/解析完成后，renderMermaidBlocks 里的 await import('mermaid')
+  // 会直接命中浏览器模块缓存，无需再次走网络。
+  void import("mermaid").catch(() => {
+    // 静默：真实渲染时还会再 import 一次并报错
+  });
+};
+
 let mermaidLib: typeof import("mermaid").default | null = null;
 let mermaidIdCounter = 0;
 const renderMermaidBlocks = async () => {
@@ -2190,13 +2209,12 @@ const renderMermaidBlocks = async () => {
 
 // 确保客户端激活时初始化数据
 // 优化：使用 requestIdleCallback 延迟非关键操作，减少TBT
-onMounted(() => {
+onMounted(async () => {
   if (import.meta.client) {
-    // SSR 已经把正文直出到页面，客户端只在"SSR 没有拿到内容"时兜底拉取，
-    // 不会再做任何客户端二次渲染来替换 DOM，避免样式抖动与 hydration mismatch。
-    if (!article.value || !article.value.renderedHtml) {
-      initArticleContent();
-    }
+    // 第一时间预热 mermaid 模块：动态 import 与文章数据请求并行，
+    // 等到 v-html 写入 DOM、要真正渲染时，模块多半已经在浏览器缓存里，
+    // svg 几乎瞬间出现，配合 CSS 0.18s 淡入接近无感。
+    prewarmMermaid();
 
     // 代码块复制按钮：通过事件委托一次性挂载到 document.body，
     // 避免每个 .ssr-code-block 单独绑事件；点击后从对应 <pre><code> 读 textContent，
@@ -2213,28 +2231,38 @@ onMounted(() => {
     // 文章图片点击全屏：事件委托
     document.addEventListener("click", handleImageClick);
 
-    // 首屏激活：把 SSR 输出的 .mermaid-block 占位 div 渲染成 svg。
-    // 放到 nextTick 之后等水合完成，避免与 Vue 的水合写 DOM 抢同一帧。
-    // requestIdleCallback 兜底降级 setTimeout，确保非关键路径不阻塞 LCP。
-    const triggerMermaid = () => {
-      void renderMermaidBlocks();
-    };
-    if (typeof window.requestIdleCallback === "function") {
-      window.requestIdleCallback(triggerMermaid, { timeout: 1500 });
-    } else {
-      setTimeout(triggerMermaid, 0);
-    }
-
-    // 表格 overflow 检测：首屏挂上 ResizeObserver，仅在表格自然宽度超过容器时
-    // 给 wrap 加 data-overflow="true"，从而显示全屏按钮。
-    // 等 nextTick 确保 v-html 已把 SSR HTML 注入 DOM。
-    void nextTick().then(() => observeAllTableWraps());
-
     // 浏览量打点：onMounted 后延迟 1500ms 触发（避开 prerender / 误触）。
     // 详细设计见上方 ==================== 浏览量打点 ==================== 段。
     if (articleId.value) {
       scheduleViewLog(articleId.value);
     }
+
+    // SSR 已经把正文直出到页面，客户端只在"SSR 没有拿到内容"时兜底拉取，
+    // 不会再做任何客户端二次渲染来替换 DOM，避免样式抖动与 hydration mismatch。
+    //
+    // ⚠ 必须 await：从首页 SPA 路由进入时 useAsyncData 不会在客户端真正请求接口
+    // （因为只在 import.meta.server 时拉取），此时 article.value.renderedHtml 还不存在，
+    // 必须等 initArticleContent 拿到数据并写入 article.value、nextTick 后 v-html 才能
+    // 把 .mermaid-block 等节点真正插入 DOM。
+    // 之前没有 await 会导致 renderMermaidBlocks 跑得比 DOM 还早，找不到 .mermaid-block，
+    // 表现为 mermaid 始终停留在源码态、刷新（走 SSR）后才正常。
+    if (!article.value || !article.value.renderedHtml) {
+      try {
+        await initArticleContent();
+      } catch (error) {}
+    }
+
+    // 等 v-html 把最新 renderedHtml 写入 DOM，再激活依赖 SSR/v-html 输出的副作用。
+    await nextTick();
+
+    // 立即调度 mermaid 渲染：mermaid 块属于关键内容，不再用 requestIdleCallback 延迟，
+    // 否则会出现"DOM 已就位但 svg 迟迟不来"的可见空白窗口。
+    // 与上面的 prewarmMermaid 配合，此时 import 多半已完成，调用近似同步。
+    void renderMermaidBlocks();
+
+    // 表格 overflow 检测：挂 ResizeObserver，仅在表格自然宽度超过容器时
+    // 给 wrap 加 data-overflow="true"，从而显示全屏按钮。
+    observeAllTableWraps();
   }
 });
 

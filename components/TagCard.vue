@@ -4,11 +4,16 @@
             <a href="#"><strong>博客分类</strong></a>
         </div>
         <div class="tab-category-item">
-            <ul class="index_recd">
-                <li v-for="tag in tags" :key="tag.name" class="index_recd_item">
-                    <a href="#" @click.prevent="handleTagClick(tag.name)">
-                        <p>{{ tag.name }}</p>
-                        <span class="article_num">(&nbsp;{{ tag.articleNum }}&nbsp;)</span>
+            <ul class="category-list">
+                <li v-for="tag in tags" :key="tag.name" class="category-item">
+                    <a
+                        href="#"
+                        class="category-link"
+                        :class="{ active: currentTagName === tag.name }"
+                        @click.prevent="handleTagClick(tag.name)"
+                    >
+                        <span class="category-name">{{ tag.name }}</span>
+                        <span class="article-num">{{ tag.articleNum }} 篇</span>
                     </a>
                 </li>
             </ul>
@@ -32,6 +37,10 @@ defineProps<{
 const router = useRouter();
 const route = useRoute();
 const paginationStore = usePaginationStore();
+const currentTagName = computed(() => {
+    if (route.path !== '/tag') return '';
+    return route.query.tagName as string || paginationStore.currentTagName;
+});
 
 // 上次点击的标签
 const lastClickedTag = ref('');
@@ -40,10 +49,8 @@ const lastClickedTag = ref('');
 const handleTagClick = (tagName: string) => {
     // 如果当前在tag页面，并且点击的是当前显示的标签，则不做任何操作
     const isTagPage = route.path === '/tag';
-    const currentTagName = route.query.tagName as string || paginationStore.currentTagName;
-    
     // 避免重复点击相同标签
-    if (isTagPage && currentTagName === tagName) {
+    if (isTagPage && currentTagName.value === tagName) {
         return;
     }
     
@@ -72,51 +79,66 @@ let lastClickTime = 0;
 </script>
 
 <style scoped>
-.index_recd li {
-    background-color: #fff;
-    line-height: 35px;
-    height: 35px;
-    overflow: hidden;
-    font-style: oblique;
+.category-list {
+    margin: 0;
+    padding: 0;
 }
 
-.article_num {
-    color: #222;
-    width: 50px;
+.category-item {
+    list-style: none;
 }
 
-.index_recd li a {
-    color: #f22c00;
+.category-link {
+    font-size: 14px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    min-height: 34px;
+    padding: 0 4px;
+    color: #45515c;
+    text-decoration: none;
+    cursor: pointer;
+    touch-action: manipulation;
+    -webkit-tap-highlight-color: rgba(0, 172, 193, 0.12);
+}
+
+.category-name {
+    flex: 1;
+    min-width: 0;
+    margin-right: 10px;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-    font-size: 14px;
-    vertical-align: top;
-    display: flex;
-    align-content: center;
-    justify-content: space-between;
 }
 
-.index_recd li a p {
-    max-width: 60%;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    font-style: normal;
+.article-num {
+    flex-shrink: 0;
+    color: #7f8fb3;
+    font-size: 13px;
+    white-space: nowrap;
 }
 
-.index_recd li a span {
-    width: 50px;
-    font-style: normal;
+.category-link.active {
+    color: #00acc1;
 }
 
-.index_recd li:hover {
-    border-radius: 3px;
-    cursor: pointer;
-    background-color: #efefef;
+.category-link.active .article-num {
+    color: #00acc1;
 }
 
-.index_recd .index_recd_item a:hover {
-    text-decoration: none;
-    color: #fc5531;
+.category-link:active {
+    color: #00acc1;
+    background-color: rgba(0, 172, 193, 0.06);
+}
+
+@media (hover: hover) and (pointer: fine) {
+    .category-link:hover {
+        color: #00acc1;
+        background-color: rgba(0, 172, 193, 0.05);
+    }
+
+    .category-link:hover .article-num {
+        color: #00acc1;
+    }
 }
 </style>

@@ -1,12 +1,17 @@
 <template>
-    <div class="panel panel-default mb-20">
-        <div class="search_session">
-            <form id="search" @submit.prevent="handleSearch">
-                <input type="text" name="q" maxlength="30" autocomplete="off" placeholder="请输入关键词..."
-                    v-model.trim="keyword">
-                <button type="submit" class="submit iconfont">&#xeafe;</button>
-            </form>
-        </div>
+    <div class="search-card">
+        <form id="search" class="search-form" @submit.prevent="handleSearch">
+            <input
+                v-model.trim="keyword"
+                class="search-input"
+                type="text"
+                name="q"
+                maxlength="30"
+                autocomplete="off"
+                placeholder="搜索文章关键词..."
+            >
+            <button type="submit" class="search-button iconfont" aria-label="搜索">&#xeafe;</button>
+        </form>
     </div>
 </template>
 
@@ -68,30 +73,58 @@ const showErrorNotification = (title: string, message: string) => {
 </script>
 
 <style scoped>
-.search_session {
-    padding: 0;
-    height: 42px;
-}
-
-form {
-    display: flex;
-    align-content: center;
-    justify-content: space-between;
-}
-
-.search_session form input {
-    border: transparent;
-    padding: 0 15px;
+.search-card {
+    margin-bottom: 20px;
     background-color: #fff;
-    width: 100%;
+}
+
+.search-form {
+    display: flex;
+    align-items: center;
     height: 42px;
 }
 
-.search_session form button {
-    border: transparent;
-    font-size: 22px;
-    background-color: #f4f4f4;
+.search-input {
+    flex: 1;
+    min-width: 0;
     height: 42px;
-    padding: 0 9px;
+    padding: 0 14px;
+    color: #45515c;
+    background-color: transparent;
+    border: 0;
+    font-size: 14px;
+    outline: none;
+    touch-action: manipulation;
+}
+
+.search-input::placeholder {
+    color: #a3adb8;
+}
+
+.search-button {
+    flex-shrink: 0;
+    width: 44px;
+    height: 42px;
+    color: #00acc1;
+    background-color: rgba(77, 208, 225, 0.08);
+    border: 0;
+    font-size: 19px;
+    line-height: 42px;
+    cursor: pointer;
+    touch-action: manipulation;
+    -webkit-tap-highlight-color: rgba(0, 172, 193, 0.14);
+    transition: color .2s ease, background-color .2s ease;
+}
+
+.search-button:active {
+    color: #00838f;
+    background-color: rgba(77, 208, 225, 0.16);
+}
+
+@media (hover: hover) and (pointer: fine) {
+    .search-button:hover {
+        color: #00838f;
+        background-color: rgba(77, 208, 225, 0.14);
+    }
 }
 </style>
