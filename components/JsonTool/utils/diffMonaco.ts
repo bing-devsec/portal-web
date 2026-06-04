@@ -137,7 +137,14 @@ export const buildDiffViewZoneSpecs = (
 
 /**
  * 计算某个 change 在两侧编辑器视觉中心的 Y 像素位置（用于跳转 / 同步按钮定位）。
- * 当两侧都有内容时取两侧中心的平均值；只有一侧时取该侧中心。
+ *
+ * 关键事实：两侧通过 view zones 强制等高，因此差异块的"视觉范围"等于
+ *   max(左侧实际文字高度, 右侧实际文字高度)
+ * 同步箭头应该出现在"视觉范围"的几何中心，而不是某一侧实际文字的中心。
+ *
+ * 例如：左侧仅 1 行被删，右侧新增 10 行 ——
+ *   旧逻辑：(左 1 行中心 + 右 5 行中心) / 2 ≈ 第 3 行 ❌（明显偏上）
+ *   新逻辑：以 10 行的视觉块为准，按钮位于第 5~6 行中央 ✓
  */
 export const getDiffChangeTop = (
     leftEditor: monaco.editor.IStandaloneCodeEditor,
@@ -148,54 +155,77 @@ export const getDiffChangeTop = (
     const rightLineHeight = rightEditor.getOption(monaco.editor.EditorOption.lineHeight);
     const { hasLeft, hasRight, leftLineCount, rightLineCount } = getDiffLineRangeInfo(change);
 
-    const getSideCenter = (
+    /** 计算某一侧"差异块顶部"的 Y 坐标（包含 view zone 之前的高度） */
+    const getSideTop = (
+        editor: monaco.editor.IStandaloneCodeEditor,
+        startLineNumber: number,
+        lineCount: number,
+        lineHeight: number,
+    ) => {
+        if (lineCount <= 0) {
+            // 纯插入点：行号 startLineNumber 表示"在该行之前插入"
+            return editor.getTopForLineNumber(startLineNumber);
+        }
+        return editor.getTopForLineNumber(startLineNumber);
+    };
+
+    /** 计算某一侧实际文字内容的像素高度（不含 view zone 占位） */
+    const getSideContentHeight = (
         editor: monaco.editor.IStandaloneCodeEditor,
         startLineNumber: number,
         endLineNumber: number,
         lineCount: number,
         lineHeight: number,
     ) => {
-        if (lineCount <= 1) {
-            return editor.getTopForLineNumber(startLineNumber) + lineHeight / 2;
-        }
-        return getEditorBlockHeight(editor, startLineNumber, endLineNumber) / 2
-            + editor.getTopForLineNumber(startLineNumber);
+        if (lineCount <= 0) return 0;
+        if (lineCount === 1) return lineHeight;
+        return getEditorBlockHeight(editor, startLineNumber, endLineNumber);
     };
 
     if (hasLeft && hasRight) {
-        const leftCenter = getSideCenter(
+        const leftTop = getSideTop(leftEditor, change.originalStartLineNumber, leftLineCount, leftLineHeight);
+        const rightTop = getSideTop(rightEditor, change.modifiedStartLineNumber, rightLineCount, rightLineHeight);
+        const leftHeight = getSideContentHeight(
             leftEditor,
             change.originalStartLineNumber,
             change.originalEndLineNumber,
             leftLineCount,
             leftLineHeight,
         );
-        const rightCenter = getSideCenter(
+        const rightHeight = getSideContentHeight(
             rightEditor,
             change.modifiedStartLineNumber,
             change.modifiedEndLineNumber,
             rightLineCount,
             rightLineHeight,
         );
-        return (leftCenter + rightCenter) / 2;
+        // 视觉块高度 = 两侧最大值（短的一侧由 view zone 补齐）
+        const visualHeight = Math.max(leftHeight, rightHeight);
+        // 取两侧 top 平均值（理想情况下两侧 top 应相同；小差异时平均更稳定）
+        const visualTop = (leftTop + rightTop) / 2;
+        return visualTop + visualHeight / 2;
     }
     if (hasRight) {
-        return getSideCenter(
+        const top = getSideTop(rightEditor, change.modifiedStartLineNumber, rightLineCount, rightLineHeight);
+        const height = getSideContentHeight(
             rightEditor,
             change.modifiedStartLineNumber,
             change.modifiedEndLineNumber,
             rightLineCount,
             rightLineHeight,
         );
+        return top + height / 2;
     }
     if (hasLeft) {
-        return getSideCenter(
+        const top = getSideTop(leftEditor, change.originalStartLineNumber, leftLineCount, leftLineHeight);
+        const height = getSideContentHeight(
             leftEditor,
             change.originalStartLineNumber,
             change.originalEndLineNumber,
             leftLineCount,
             leftLineHeight,
         );
+        return top + height / 2;
     }
     return 0;
 };

@@ -11146,13 +11146,12 @@ const transferToInput = (e: MouseEvent) => {
     opacity: 0.7;
 }
 
-/* ---------------- 差异行高亮装饰 ---------------- */
 .diff-editor-row :deep(.diff-line-delete) {
     background: rgba(255, 0, 0, 0.12);
 }
 
 .diff-editor-row :deep(.diff-line-insert) {
-    background: rgba(0, 200, 0, 0.12);
+    background: rgba(95, 188, 240, 0.16);
 }
 
 .diff-editor-row :deep(.diff-line-delete-margin) {
@@ -11162,7 +11161,7 @@ const transferToInput = (e: MouseEvent) => {
 }
 
 .diff-editor-row :deep(.diff-line-insert-margin) {
-    background: rgba(0, 200, 0, 0.5);
+    background: rgba(95, 188, 240, 0.6);
     width: 3px !important;
     margin-left: 2px;
 }
@@ -11176,7 +11175,7 @@ const transferToInput = (e: MouseEvent) => {
 }
 
 .diff-editor-row :deep(.diff-inline-insert) {
-    background: rgba(0, 200, 0, 0.35);
+    background: rgba(95, 188, 240, 0.42);
     border-radius: 2px;
 }
 
@@ -11199,11 +11198,11 @@ const transferToInput = (e: MouseEvent) => {
 }
 
 .diff-editor-row :deep(.diff-view-zone-spacer-right) {
-    background-color: rgba(243, 251, 243, 0.92);
+    background-color: rgba(238, 247, 253, 0.92);
     background-image: repeating-linear-gradient(
         -45deg,
-        rgba(92, 184, 92, 0.2) 0,
-        rgba(92, 184, 92, 0.2) 2px,
+        rgba(95, 188, 240, 0.22) 0,
+        rgba(95, 188, 240, 0.22) 2px,
         transparent 2px,
         transparent 9px
     );

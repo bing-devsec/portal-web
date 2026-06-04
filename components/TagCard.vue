@@ -38,8 +38,9 @@ const router = useRouter();
 const route = useRoute();
 const paginationStore = usePaginationStore();
 const currentTagName = computed(() => {
-    if (route.path !== '/tag') return '';
-    return route.query.tagName as string || paginationStore.currentTagName;
+    if (!route.path.startsWith('/tag/')) return '';
+    const raw = route.params.name as string | undefined;
+    return raw ? decodeURIComponent(raw) : paginationStore.currentTagName;
 });
 
 // 上次点击的标签
@@ -47,13 +48,12 @@ const lastClickedTag = ref('');
 
 // 处理标签点击
 const handleTagClick = (tagName: string) => {
-    // 如果当前在tag页面，并且点击的是当前显示的标签，则不做任何操作
-    const isTagPage = route.path === '/tag';
-    // 避免重复点击相同标签
+    const isTagPage = route.path.startsWith('/tag/');
+    // 已在该标签页则不重复跳转
     if (isTagPage && currentTagName.value === tagName) {
         return;
     }
-    
+
     // 避免快速点击相同标签
     if (lastClickedTag.value === tagName) {
         const now = Date.now();
@@ -61,17 +61,23 @@ const handleTagClick = (tagName: string) => {
             return;
         }
     }
-    
-    // 更新最后点击的标签和时间
+
     lastClickedTag.value = tagName;
     lastClickTime = Date.now();
-    
+
     // 重置页码，然后设置标签名
     paginationStore.resetPagination();
     paginationStore.setCurrentTagName(tagName);
-    
-    // 导航到标签页 - 使用replace而不是push以避免历史堆栈积累
-    router.replace('/tag?tagName=' + tagName);
+
+    // 路由策略：
+    //   - 当前已在 /tag/* 路径：用 replace 仅替换路径，避免历史栈累积同类记录
+    //   - 来自其他页面：用 push 保留来源页，便于移动端左滑返回手势使用
+    const target = '/tag/' + encodeURIComponent(tagName);
+    if (isTagPage) {
+        router.replace(target);
+    } else {
+        router.push(target);
+    }
 };
 
 // 用于防抖的时间标记
@@ -95,7 +101,7 @@ let lastClickTime = 0;
     justify-content: space-between;
     min-height: 34px;
     padding: 0 4px;
-    color: #45515c;
+    color: #263238;
     text-decoration: none;
     cursor: pointer;
     touch-action: manipulation;
@@ -113,7 +119,7 @@ let lastClickTime = 0;
 
 .article-num {
     flex-shrink: 0;
-    color: #7f8fb3;
+    color: #586a8a;
     font-size: 13px;
     white-space: nowrap;
 }

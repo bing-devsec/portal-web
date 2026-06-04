@@ -203,20 +203,20 @@ export default defineNuxtConfig({
           { label: 'Change Frequency', width: '12.5%', select: 'sitemap:changefreq' },
           { label: 'Priority', width: '12.5%', select: 'sitemap:priority' },
         ],
-        // 动态数据源：文章详情 URL 由后端 /user/article/list 全量拉取后注入
-        // 实现见 server/api/__sitemap__/articles.ts
-        // 失效逻辑见 server/api/_revalidate.post.ts（文章变更时一并清理 sitemap 缓存）
+        // 动态数据源：
+        //   - 文章详情 URL 由后端 /user/article/list 全量拉取后注入（articles.ts）
+        //   - 标签 URL 由后端 /user/tag/list 全量拉取后注入（tags.ts）
+        // 缓存失效逻辑见 server/api/_revalidate.post.ts
         sources: [
           '/api/__sitemap__/articles',
+          '/api/__sitemap__/tags',
         ],
         // 从 sitemap 中排除掉以下"参数化路由"的裸路径：
         //   - /search-result 必须配 ?keyword=xxx 才有真实内容，没参数等同空页
-        //   - /tag           必须配 ?tag=xxx     才有真实内容，没参数等同空页
-        // 这两条进 sitemap 反而会被 Google 当成软 404 / 薄内容拖累整站权重；
-        // 页面侧也已经给它们打了 noindex，sitemap + meta 双重排除。
+        // 该路径页面侧也已经打了 noindex，sitemap + meta 双重排除。
+        // 注：/tag 现已改为 /tag/<name> 动态路由，标签 URL 由 sources 中的 tags.ts 动态注入。
         exclude: [
           '/search-result',
-          '/tag',
         ],
         // 显式注册各路由的 priority / changefreq / lastmod。
         //

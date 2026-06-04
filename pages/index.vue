@@ -1,7 +1,7 @@
 <template>
 	<section class="l-container l-main-aside">
 		<div class="l-main">
-			<TipCard v-if="currentPage === 1" :tip-msg="'最新发布'" />
+			<TipCard :tip-msg="currentPage === 1 ? '最新发布' : '历史文章'" />
 			<ArticleList 
 				:articles="articles" 
 				:total="total"

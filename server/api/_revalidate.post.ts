@@ -120,9 +120,10 @@ export default defineEventHandler(async (event: H3Event) => {
         cleared[String(path)] = 0;
         continue;
       }
-      // 只要命中了文章详情路径，就标记需要刷新 sitemap
-      // （文章列表/标签等聚合页本身不进 sitemap，无需关心）
-      if (path.startsWith("/article-detail/")) {
+      if (
+        path.startsWith("/article-detail/") ||
+        path.startsWith("/tag/")
+      ) {
         shouldPurgeSitemap = true;
       }
       const slugs = pathToSlugMatchers(path);

@@ -1,15 +1,11 @@
 @charset "utf-8";
 
 /* ============================================================
-   代码块专用等宽字体：JetBrains Mono
+   注：代码块专用等宽字体 JetBrains Mono 的 @font-face 声明
+   已移至 assets/code-fonts.css，仅在文章详情页（含代码块的页面）
+   通过 useHead 动态注入，避免首页 / 标签页 / 归档等纯文本列表页
+   触发字体预加载浪费带宽（Chrome 会对未使用的 preload 字体抛警告）。
    ============================================================ */
-@font-face {
-    font-family: "JetBrains Mono";
-    src: url("/fonts/JetBrainsMono-Regular.woff2") format("woff2");
-    font-weight: 400;
-    font-style: normal;
-    font-display: swap;
-}
 
 /* ============================================================
    关闭代码场景下的 OpenType 连字（liga / calt）

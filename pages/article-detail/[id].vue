@@ -573,6 +573,14 @@ useHead(() => {
         href: "/fonts/JetBrainsMono-Regular.woff2",
         crossorigin: "anonymous",
       },
+      // 加载 @font-face 声明本身。
+      // 之前该声明位于全局 base.css，会让首页/标签页等无代码块的页面也触发字体下载，
+      // 触发 Chrome "preloaded but not used" 警告 + 浪费带宽（约 50KB gzip）。
+      // 现在迁移到 public/css/code-fonts.css，仅文章详情页通过 useHead 动态加载。
+      {
+        rel: "stylesheet",
+        href: "/css/code-fonts.css",
+      },
     ],
     meta: [
       { name: "description", content: data.description },

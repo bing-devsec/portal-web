@@ -57,8 +57,10 @@ const articleLink = computed(() => `/article-detail/${props.articleInfo.id}`)
 const canPrefetch = computed(() => shouldPrefetchArticle(props.articleInfo.id, 'main'))
 const navigateToArticle = () => {navigateTo(articleLink.value)}
 const handleTagClick = (tagName: string) => {
-    const isTagPage = route.path === '/tag'
-    const currentTagName = route.query.tagName as string || paginationStore.currentTagName
+    const isTagPage = route.path.startsWith('/tag/')
+    const currentTagName = decodeURIComponent(
+        (route.params.name as string) || ''
+    ) || paginationStore.currentTagName
 
     if (isTagPage && currentTagName === tagName) {
         return
@@ -66,10 +68,15 @@ const handleTagClick = (tagName: string) => {
 
     paginationStore.resetPagination()
     paginationStore.setCurrentTagName(tagName)
-    router.replace({
-        path: '/tag',
-        query: { tagName }
-    })
+    // 标签页使用 path 形态 /tag/<tagName>，便于搜索引擎收录与移动端左滑返回。
+    //   - 当前已在 /tag/* 路径：replace（避免栈内累积同类页）
+    //   - 来自其他页面：push（保留来源页，左滑可返回）
+    const target = `/tag/${encodeURIComponent(tagName)}`
+    if (isTagPage) {
+        router.replace(target)
+    } else {
+        router.push(target)
+    }
 }
 </script>
 
@@ -113,7 +120,7 @@ li .title a {
 li .desc {
     flex: 0 0 calc(14px * 1.65 * 2);
     margin: 0;
-    color: #5f6b76;
+    color: #263238;
     font-size: 14px;
     line-height: 1.65;
     display: -webkit-box;
@@ -132,7 +139,7 @@ li .desc {
     width: 100%;
     margin-top: auto;
     padding-top: 10px;
-    color: #8f9aa5;
+    color: #5f6b76;
     font-size: 13px;
     line-height: 1.4;
     cursor: default;
@@ -160,21 +167,24 @@ li .desc {
 
 .article-tag {
     cursor: pointer;
-    color: #a3adb8;
+    color: #0098aa;
+    font-weight: 500;
     max-width: 120px;
     overflow: hidden;
     text-overflow: ellipsis;
     touch-action: manipulation;
     -webkit-tap-highlight-color: rgba(0, 172, 193, 0.14);
+    transition: color 0.15s ease;
 }
 
 .article-tag::before {
     content: "#";
     margin-right: 2px;
-    color: #b0bac4;
-    font-size: 15px;
+    color: inherit;
+    font-size: 13px;
     font-weight: 500;
     line-height: 1;
+    opacity: 0.85;
 }
 
 li .title a:active,
@@ -244,7 +254,7 @@ li .title a:active,
     }
 
     .article-tag::before {
-        font-size: 14px;
+        font-size: 12px;
     }
 }
 </style>

@@ -52,7 +52,7 @@ const canPrefetch = (id: string) => shouldPrefetchArticle(id, 'hot')
     justify-content: space-between;
     min-height: 34px;
     padding: 0 4px;
-    color: #45515c;
+    color: #263238;
     font-size: 14px;
     text-decoration: none;
     cursor: pointer;
@@ -71,7 +71,7 @@ const canPrefetch = (id: string) => shouldPrefetchArticle(id, 'hot')
 
 .hot-meta {
     flex-shrink: 0;
-    color: #b08a4a;
+    color: #8a6a32;
     font-size: 13px;
     white-space: nowrap;
 }
@@ -89,7 +89,7 @@ const canPrefetch = (id: string) => shouldPrefetchArticle(id, 'hot')
     }
 
     .hot-link:hover .hot-meta {
-        color: #c47a2c;
+        color: #a05f1c;
     }
 }
 </style>

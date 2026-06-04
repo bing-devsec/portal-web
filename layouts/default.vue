@@ -2,9 +2,9 @@
     <div class="app">
         <Navigation class="navigation" />
         <div class="scrollable-content">
-            <div class="content-wrapper">
+            <main class="content-wrapper">
                 <slot></slot>
-            </div>
+            </main>
             <SiteFooter />
         </div>
     </div>

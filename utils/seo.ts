@@ -333,7 +333,7 @@ export function generateArticleBreadcrumb(
             '@type': 'ListItem',
             position: items.length + 1,
             name: firstTag,
-            item: `${siteUrl}/tag?tag=${encodeURIComponent(firstTag)}`,
+            item: `${siteUrl}/tag/${encodeURIComponent(firstTag)}`,
         });
     }
 
