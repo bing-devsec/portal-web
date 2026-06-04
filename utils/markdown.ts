@@ -8,9 +8,8 @@ import { createHighlighter, bundledLanguages } from 'shiki';
 const md = new MarkdownIt({
     html: true,
     linkify: true,
-    breaks: false,
-    // 优化：禁用一些可能耗时的功能
-    typographer: true, // 启用排版优化，提升速度
+    breaks: true,
+    typographer: true
 });
 
 // ============================================================
@@ -165,8 +164,6 @@ md.renderer.rules.math_inline = function (tokens, idx) {
 //   3) 复制按钮通过事件委托读取 <pre><code> 的 textContent，不需要重复编码代码字符串
 // 所以这里直接重写 md.renderer.rules.fence。
 // ============================================================
-
-// ============================================================
 // Shiki 高亮：以"占位符 → 异步高亮 → 字符串替换"两阶段处理同步/异步阻抗
 // ------------------------------------------------------------
 // 背景：markdown-it 的 fence renderer 是同步的，但 Shiki 的高亮 API
@@ -178,19 +175,14 @@ md.renderer.rules.math_inline = function (tokens, idx) {
 //                  调用 Shiki 完成高亮，再用最终 HTML 替换占位符。
 // 这样既不用把 markdown-it 全管线改成异步，也无需在每次渲染时实例化 Shiki。
 // ============================================================
-
 // VSCode 同款主题：github-dark（用户已选定）
+// ------------------------------------------------------------
 // ⚠ 注意 Shiki 里 `github-dark` 与 `github-dark-default` 是两个不同主题：
 //   - github-dark：GitHub 早期经典 dark 主题（更克制、注释更暗）
 //   - github-dark-default：GitHub 2022 重设计版（色彩更鲜艳）
 // 这里选的是经典版。
 const SHIKI_THEME = 'github-dark';
-
-// Shiki 实例采用懒加载：首次调用时才初始化、后续复用。
-// 在 SSR (Node) 与 CSR 都能跑——Shiki 内部基于 oniguruma-to-es 做 wasm-free 正则匹配。
 let highlighterPromise: Promise<Highlighter> | null = null;
-
-// 已加载语言缓存：同一语言不重复 loadLanguage，避免重复 IO/解析成本
 const loadedLanguages = new Set<string>();
 
 function getHighlighter(): Promise<Highlighter> {
@@ -226,7 +218,6 @@ const SHIKI_PLACEHOLDER_SUFFIX = '-->';
 interface PendingHighlight {
     lang: string;
     rawCode: string;
-    /** 是否需要 ssr-code-line 包裹结构（普通代码块都要；mermaid 等不要） */
 }
 
 /**
