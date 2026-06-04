@@ -13,6 +13,162 @@ const md = new MarkdownIt({
 });
 
 // ============================================================
+// 提示块（Admonition）：支持 !!! tips / info / warning / error / success / thinking / example
+// ------------------------------------------------------------
+// 语法约定（与常见笔记软件 / 文档站风格对齐）：
+//
+//   !!! warning 注意
+//   这里是提示块正文
+//   !!!
+//
+// 要点：
+//   1) 首行必须是 !!! + 类型 + 可选标题
+//   2) 结束行必须是单独一个 !!!
+//   3) 中间正文不强制缩进，按原样交给 markdown-it 继续解析
+//   4) 自定义标题可省略，省略时使用类型默认标题
+//   5) 提示块内部继续走当前 markdown-it 管线，因此可嵌套段落、列表、代码块、公式等
+// ============================================================
+const ADMONITION_TYPES = new Set(['tips', 'info', 'warning', 'error', 'success', 'thinking', 'example']);
+const ADMONITION_DEFAULT_TITLES: Record<string, string> = {
+    tips: '小技巧',
+    info: '说明',
+    warning: '注意',
+    error: '错误',
+    success: '完成',
+    thinking: '思考',
+    example: '示例',
+};
+const ADMONITION_EMOJIS: Record<string, string> = {
+    tips: '💡',
+    info: '📘',
+    warning: '⚠️',
+    error: '❌',
+    success: '🍺',
+    thinking: '🤔',
+    example: '🌰',
+};
+const ADMONITION_KIND_ALIASES: Record<string, string> = {
+    tips: 'tips',
+    tip: 'tips',
+    小技巧: 'tips',
+    技巧: 'tips',
+    提示: 'tips',
+
+    info: 'info',
+    note: 'info',
+    说明: 'info',
+    信息: 'info',
+
+    warning: 'warning',
+    warn: 'warning',
+    注意: 'warning',
+    警告: 'warning',
+
+    error: 'error',
+    错误: 'error',
+    失败: 'error',
+
+    success: 'success',
+    成功: 'success',
+    完成: 'success',
+
+    thinking: 'thinking',
+    think: 'thinking',
+    思考: 'thinking',
+    想法: 'thinking',
+    问题: 'thinking',
+
+    example: 'example',
+    示例: 'example',
+    例子: 'example',
+    栗子: 'example',
+};
+
+interface AdmonitionMeta {
+    kind: string;
+    title: string;
+    content: string;
+}
+
+function normalizeAdmonitionTitle(raw: string | undefined, kind: string): string {
+    const trimmed = (raw || '').trim();
+    if (!trimmed) return ADMONITION_DEFAULT_TITLES[kind];
+    const quoted = trimmed.match(/^(['"])([\s\S]*)\1$/);
+    return quoted ? quoted[2].trim() : trimmed;
+}
+
+function normalizeAdmonitionKind(raw: string | undefined): string | null {
+    if (!raw) return null;
+    return ADMONITION_KIND_ALIASES[raw.trim().toLowerCase()] || ADMONITION_KIND_ALIASES[raw.trim()] || null;
+}
+
+md.block.ruler.before('blockquote', 'admonition', function (state, startLine, endLine, silent) {
+    const start = state.bMarks[startLine] + state.tShift[startLine];
+    const max = state.eMarks[startLine];
+    if (start + 3 > max) return false;
+
+    const line = state.src.slice(start, max).trim();
+    const match = line.match(/^!!!\s+([^\s]+)(?:\s+(.*))?$/);
+    if (!match) return false;
+
+    const kind = normalizeAdmonitionKind(match[1]);
+    if (!kind || !ADMONITION_TYPES.has(kind)) return false;
+    if (silent) return true;
+
+    let nextLine = startLine + 1;
+    let foundClose = false;
+
+    while (nextLine < endLine) {
+        const lineStart = state.bMarks[nextLine] + state.tShift[nextLine];
+        const lineEnd = state.eMarks[nextLine];
+        const currentLine = state.src.slice(lineStart, lineEnd).trim();
+        if (currentLine === '!!!') {
+            foundClose = true;
+            break;
+        }
+        nextLine += 1;
+    }
+
+    if (!foundClose) return false;
+
+    const content =
+        nextLine > startLine + 1
+            ? state.getLines(startLine + 1, nextLine, 0, false)
+            : '';
+
+    const token = state.push('admonition', 'div', 0);
+    token.block = true;
+    token.map = [startLine, nextLine + 1];
+    token.meta = {
+        kind,
+        title: normalizeAdmonitionTitle(match[2], kind),
+        content,
+    } satisfies AdmonitionMeta;
+
+    state.line = nextLine + 1;
+    return true;
+});
+
+md.renderer.rules.admonition = function (tokens, idx, _options, env) {
+    const meta = tokens[idx].meta as AdmonitionMeta | undefined;
+    if (!meta) return '';
+
+    const bodyHtml = meta.content.trim() ? md.render(meta.content, env) : '';
+    const safeTitle = md.utils.escapeHtml(meta.title);
+    const emoji = md.utils.escapeHtml(ADMONITION_EMOJIS[meta.kind] || '📝');
+
+    return (
+        `<div class="md-admonition md-admonition--${meta.kind}">` +
+        `<div class="md-admonition__title">` +
+        `<span class="md-admonition__emoji" aria-hidden="true">${emoji}</span>` +
+        `<span class="md-admonition__title-text">${safeTitle}</span>` +
+        `</div>` +
+        `<div class="md-admonition__body">${bodyHtml}</div>` +
+        `</div>\n`
+    );
+};
+
+// ============================================================
 // 数学公式（KaTeX）：行内 $...$ 与块级 $$...$$ 自定义规则
 // ------------------------------------------------------------
 // 为什么不用 markdown-it-texmath / @vscode/markdown-it-katex：

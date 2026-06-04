@@ -718,8 +718,9 @@ a {
    =========================== */
 
 .article-body-ssr {
+    --article-line-height: 1.8;
     word-break: normal;
-    line-height: 1.6;
+    line-height: var(--article-line-height);
     color: #333;
     /* 流式字号：320px 屏 ≈ 14px，640px+ 屏 ≈ 16px，平滑过渡，不再用 media query 跳变 */
     font-size: clamp(14px, 13px + 0.3vw, 16px);
@@ -731,8 +732,14 @@ a {
 /* 段落与基础排版 */
 .article-body-ssr p {
     margin: 0.6em 0;
-    line-height: 1.8;
+    line-height: var(--article-line-height);
     word-break: normal;
+}
+
+@media (max-width: 576px) {
+    .article-body-ssr {
+        --article-line-height: 1.6;
+    }
 }
 
 .article-body-ssr a {
@@ -933,14 +940,14 @@ a {
 }
 
 .article-body-ssr li {
-    line-height: 1.8;
+    line-height: var(--article-line-height);
     margin: 0.2em 0;
     word-break: normal;
 }
 
 .article-body-ssr li p {
     margin: 0;
-    line-height: 1.8;
+    line-height: var(--article-line-height);
 }
 
 /* 引用块 */
@@ -955,6 +962,94 @@ a {
 
 .article-body-ssr blockquote p {
     margin: 0.3em 0;
+}
+
+/* 提示块（Admonition） */
+.article-body-ssr .md-admonition {
+    --admonition-accent: #5c6bc0;
+    --admonition-bg: #f5f7ff;
+    --admonition-border: #d7ddff;
+    margin: 1em 0;
+    padding: 0.9em 1em;
+    border: 1px solid var(--admonition-border);
+    border-radius: 10px;
+    background: var(--admonition-bg);
+    color: #2f3a4a;
+    box-shadow: 0 1px 3px rgba(15, 23, 42, 0.04);
+}
+
+.article-body-ssr .md-admonition__title {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 0.45em;
+    font-weight: 700;
+    line-height: 1.5;
+}
+
+.article-body-ssr .md-admonition__emoji {
+    flex: 0 0 auto;
+    font-size: 1.05em;
+    line-height: 1;
+}
+
+.article-body-ssr .md-admonition__title-text {
+    color: var(--admonition-accent);
+}
+
+.article-body-ssr .md-admonition__body > :first-child {
+    margin-top: 0;
+}
+
+.article-body-ssr .md-admonition__body > :last-child {
+    margin-bottom: 0;
+}
+
+.article-body-ssr .md-admonition__body p,
+.article-body-ssr .md-admonition__body li {
+    line-height: var(--article-line-height);
+}
+
+.article-body-ssr .md-admonition--tips {
+    --admonition-accent: #7c4dff;
+    --admonition-bg: #f6f0ff;
+    --admonition-border: #e2d5ff;
+}
+
+.article-body-ssr .md-admonition--info {
+    --admonition-accent: #1e88e5;
+    --admonition-bg: #eef7ff;
+    --admonition-border: #d0e7ff;
+}
+
+.article-body-ssr .md-admonition--warning {
+    --admonition-accent: #f59e0b;
+    --admonition-bg: #fff8e8;
+    --admonition-border: #fde3a7;
+}
+
+.article-body-ssr .md-admonition--error {
+    --admonition-accent: #ef4444;
+    --admonition-bg: #fff1f1;
+    --admonition-border: #ffd2d2;
+}
+
+.article-body-ssr .md-admonition--success {
+    --admonition-accent: #10b981;
+    --admonition-bg: #ecfdf5;
+    --admonition-border: #bfead8;
+}
+
+.article-body-ssr .md-admonition--thinking {
+    --admonition-accent: #64748b;
+    --admonition-bg: #f6f8fb;
+    --admonition-border: #d8e0ea;
+}
+
+.article-body-ssr .md-admonition--example {
+    --admonition-accent: #9a6b2f;
+    --admonition-bg: #fff8ef;
+    --admonition-border: #ead8bf;
 }
 
 /* 行内代码 */

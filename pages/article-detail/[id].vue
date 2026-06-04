@@ -2531,7 +2531,6 @@ watch(
 /* 优化：SSR HTML 内容样式，确保与客户端渲染一致 */
 .article-body-ssr {
   word-break: normal;
-  line-height: 1.6;
 }
 
 /* 优化：减少重绘和重排 */
@@ -2547,15 +2546,8 @@ watch(
     text-rendering: optimizeLegibility;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
-    line-height: 1.6;
     padding-left: 8px;
     padding-right: 8px;
-  }
-
-  .article-body-ssr :deep(p),
-  .article-body-ssr :deep(li),
-  .article-body-ssr :deep(li p) {
-    line-height: 1.6;
   }
 
   .box_c {
