@@ -322,7 +322,7 @@
                     @mousedown="startResize"
                     @touchstart.passive="startResize"
                 >
-                    <el-button class="transfer-button" type="primary" circle :disabled="isDemoMode" @click.stop="transferToInput" :aria-label="settingsTxt.transferToInput">
+                    <el-button class="transfer-button" type="primary" :disabled="isDemoMode" @click.stop="transferToInput" :aria-label="settingsTxt.transferToInput">
                         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-hidden="true" focusable="false">
                             <path d="M10 18L4 12L10 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
                             <path d="M4 12H20" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
@@ -10184,10 +10184,11 @@ const transferToInput = (e: MouseEvent) => {
     left: 50%;
     transform: translate(-50%, 0);
     background-color: #e4e7ed;
-    border-radius: 3px;
     cursor: pointer;
     width: 20px;
     height: 20px;
+    min-height: 0;
+    padding: 0;
     display: flex;
     align-items: center;
     justify-content: center;
