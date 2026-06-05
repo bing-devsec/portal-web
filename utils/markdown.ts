@@ -153,17 +153,19 @@ md.renderer.rules.admonition = function (tokens, idx, _options, env) {
     const meta = tokens[idx].meta as AdmonitionMeta | undefined;
     if (!meta) return '';
 
-    const bodyHtml = meta.content.trim() ? md.render(meta.content, env) : '';
+    const hasBody = Boolean(meta.content.trim());
+    const bodyHtml = hasBody ? md.render(meta.content, env) : '';
     const safeTitle = md.utils.escapeHtml(meta.title);
     const emoji = md.utils.escapeHtml(ADMONITION_EMOJIS[meta.kind] || '📝');
+    const rootClass = hasBody ? 'md-admonition' : 'md-admonition md-admonition--title-only';
 
     return (
-        `<div class="md-admonition md-admonition--${meta.kind}">` +
+        `<div class="${rootClass} md-admonition--${meta.kind}">` +
         `<div class="md-admonition__title">` +
         `<span class="md-admonition__emoji" aria-hidden="true">${emoji}</span>` +
         `<span class="md-admonition__title-text">${safeTitle}</span>` +
         `</div>` +
-        `<div class="md-admonition__body">${bodyHtml}</div>` +
+        (hasBody ? `<div class="md-admonition__body">${bodyHtml}</div>` : '') +
         `</div>\n`
     );
 };

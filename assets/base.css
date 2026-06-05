@@ -997,6 +997,10 @@ a {
     color: var(--admonition-accent);
 }
 
+.article-body-ssr .md-admonition--title-only .md-admonition__title {
+    margin-bottom: 0;
+}
+
 .article-body-ssr .md-admonition__body > :first-child {
     margin-top: 0;
 }
