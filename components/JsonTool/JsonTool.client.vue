@@ -390,6 +390,7 @@
             :placeholder="archiveNameDialogPlaceholder"
             :existing-archives="archives"
             :exclude-archive-id="archiveNameDialogExcludeId"
+            :locale="props.locale"
             @confirm="handleArchiveNameConfirm"
             @cancel="handleArchiveNameCancel"
         />
@@ -464,155 +465,111 @@
                                 </div>
 
                                 <el-divider class="settings-subsection-divider" />
-
-                                <!-- 字体大小设置 -->
-                                <div class="settings-subsection">
-                                    <div class="settings-subsection-title">{{ settingsTxt.fontSizeTitle }}</div>
-                                    <div class="settings-item">
-                                        <div class="font-size-control">
-                                            <el-slider
-                                                v-model="fontSize"
-                                                :min="12"
-                                                :max="16"
-                                                :step="1"
-                                                :show-tooltip="true"
-                                                :format-tooltip="(val: number) => `${val}px`"
-                                                @change="updateFontSize"
-                                            />
-                                        </div>
-                                    </div>
-                                </div>
-
-                                <el-divider class="settings-subsection-divider" />
                             </template>
 
-                            <div class="settings-subsection">
-                                <div class="settings-subsection-title">{{ settingsTxt.indentTitle }}</div>
-                                <div class="settings-item">
-                                    <el-radio-group v-model="indentSize" class="settings-radio-group">
-                                        <el-radio :value="2" border>2</el-radio>
-                                        <el-radio :value="4" border>4</el-radio>
-                                        <el-radio :value="8" border>8</el-radio>
-                                    </el-radio-group>
-                                </div>
-                            </div>
-
-
-                            <!-- 字符串换行设置 -->
-                            <div class="settings-subsection">
-                                <div class="settings-subsection-title">
-                                    <span class="settings-subsection-title-label">{{ settingsTxt.wordWrapTitle }}</span>
-                                    <span class="settings-subsection-title-desc">
-                                        {{ wordWrap ? settingsTxt.wordWrapDescOn : settingsTxt.wordWrapDescOff }}
-                                    </span>
-                                </div>
-                                <div class="settings-item">
-                                    <el-switch
-                                        v-model="wordWrap"
-                                        :inactive-value="true"
-                                        :active-value="false"
-                                        :inactive-text="settingsTxt.wordWrapOff"
-                                        :active-text="settingsTxt.wordWrapOn"
-                                        size="default"
-                                        @change="updateWordWrap"
-                                    />
-                                </div>
-                            </div>
-
-                            <template v-if="!isDiffMode">
-                                <el-divider class="settings-subsection-divider" />
-
-                                <!-- 默认全屏设置 -->
-                                <div class="settings-subsection">
-                                    <div class="settings-subsection-title">
-                                        <span class="settings-subsection-title-label">{{ settingsTxt.fullscreenTitle }}</span>
-                                        <span class="settings-subsection-title-desc">{{ settingsTxt.fullscreenDesc }}</span>
+                            <!-- 字体大小 + 缩进 双卡片：与下方开关网格风格统一（diff 模式仅显示缩进） -->
+                            <div class="settings-switch-grid settings-switch-grid--values">
+                                <!-- 字体大小（仅普通模式） -->
+                                <div v-if="!isDiffMode" class="switch-card">
+                                    <div class="switch-card-head">
+                                        <span class="switch-card-title">{{ settingsTxt.fontSizeTitleValue(fontSize) }}</span>
+                                        <el-radio-group v-model="fontSize" class="switch-card-radio-group" @change="updateFontSize">
+                                            <el-radio :value="12" border>12</el-radio>
+                                            <el-radio :value="13" border>13</el-radio>
+                                            <el-radio :value="14" border>14</el-radio>
+                                        </el-radio-group>
                                     </div>
-                                    <div class="settings-item">
+                                    <span class="switch-card-desc">{{ settingsTxt.fontSizeStaticDesc }}</span>
+                                </div>
+
+                                <!-- 缩进空格 -->
+                                <div class="switch-card">
+                                    <div class="switch-card-head">
+                                        <span class="switch-card-title">{{ settingsTxt.indentTitleValue(indentSize) }}</span>
+                                        <el-radio-group v-model="indentSize" class="switch-card-radio-group">
+                                            <el-radio :value="2" border>2</el-radio>
+                                            <el-radio :value="4" border>4</el-radio>
+                                            <el-radio :value="8" border>8</el-radio>
+                                        </el-radio-group>
+                                    </div>
+                                    <span class="switch-card-desc">{{ settingsTxt.indentStaticDesc }}</span>
+                                </div>
+                            </div>
+
+
+                            <!-- 开关项集合：统一以 2 列紧凑网格呈现 -->
+                            <el-divider class="settings-subsection-divider" />
+                            <div class="settings-switch-grid">
+                                <!-- 字符串换行 -->
+                                <div class="switch-card">
+                                    <div class="switch-card-head">
+                                        <span class="switch-card-title">{{ wordWrap ? settingsTxt.wordWrapTitleOff : settingsTxt.wordWrapTitleOn }}</span>
                                         <el-switch
-                                            v-model="defaultFullscreen"
-                                            :inactive-value="false"
-                                            :active-value="true"
-                                            :inactive-text="settingsTxt.fullscreenOff"
-                                            :active-text="settingsTxt.fullscreenOn"
+                                            class="switch-card-toggle"
+                                            v-model="wordWrap"
+                                            :inactive-value="true"
+                                            :active-value="false"
                                             size="default"
+                                            @change="updateWordWrap"
                                         />
                                     </div>
+                                    <span class="switch-card-desc">{{ settingsTxt.wordWrapStaticDesc }}</span>
                                 </div>
-                            </template>
 
-                            <el-divider class="settings-subsection-divider" />
-                            
-                            <!-- 语法检查设置 -->
-                            <div class="settings-subsection">
-                                <div class="settings-subsection-title">
-                                    <span class="settings-subsection-title-label">{{ settingsTxt.diagnosticsTitle }}</span>
-                                    <span class="settings-subsection-title-desc">{{ settingsTxt.diagnosticsDesc }}</span>
+                                <!-- 语法检查 -->
+                                <div class="switch-card">
+                                    <div class="switch-card-head">
+                                        <span class="switch-card-title">{{ enableDiagnostics ? settingsTxt.diagnosticsTitleOn : settingsTxt.diagnosticsTitleOff }}</span>
+                                        <el-switch class="switch-card-toggle" v-model="enableDiagnostics" :disabled="isDisplayOnlyMode" size="default" />
+                                    </div>
+                                    <span class="switch-card-desc">{{ settingsTxt.diagnosticsStaticDesc }}</span>
                                 </div>
-                                <div class="settings-item">
-                                    <el-switch v-model="enableDiagnostics" :disabled="isDisplayOnlyMode" :active-text="settingsTxt.diagnosticsOn" :inactive-text="settingsTxt.diagnosticsOff" size="default" />
+
+                                <!-- 默认全屏（仅普通模式） -->
+                                <div v-if="!isDiffMode" class="switch-card">
+                                    <div class="switch-card-head">
+                                        <span class="switch-card-title">{{ defaultFullscreen ? settingsTxt.fullscreenTitleOn : settingsTxt.fullscreenTitleOff }}</span>
+                                        <el-switch class="switch-card-toggle" v-model="defaultFullscreen" :inactive-value="false" :active-value="true" size="default" />
+                                    </div>
+                                    <span class="switch-card-desc">{{ settingsTxt.fullscreenStaticDesc }}</span>
+                                </div>
+
+                                <!-- 粘性滚动（仅普通模式） -->
+                                <div v-if="!isDiffMode" class="switch-card">
+                                    <div class="switch-card-head">
+                                        <span class="switch-card-title">{{ stickyScroll ? settingsTxt.stickyScrollTitleOn : settingsTxt.stickyScrollTitleOff }}</span>
+                                        <el-switch class="switch-card-toggle" v-model="stickyScroll" :disabled="isDisplayOnlyMode" size="default" @change="updateStickyScroll" />
+                                    </div>
+                                    <span class="switch-card-desc">{{ settingsTxt.stickyScrollStaticDesc }}</span>
+                                </div>
+
+                                <!-- 同步滚动（仅普通模式） -->
+                                <div v-if="!isDiffMode" class="switch-card">
+                                    <div class="switch-card-head">
+                                        <span class="switch-card-title">{{ syncScrollEnabled ? settingsTxt.syncScrollTitleOn : settingsTxt.syncScrollTitleOff }}</span>
+                                        <el-switch class="switch-card-toggle" v-model="syncScrollEnabled" size="default" />
+                                    </div>
+                                    <span class="switch-card-desc">{{ settingsTxt.syncScrollStaticDesc }}</span>
+                                </div>
+
+                                <!-- 缩略图（仅普通模式） -->
+                                <div v-if="!isDiffMode" class="switch-card">
+                                    <div class="switch-card-head">
+                                        <span class="switch-card-title">{{ showMinimap ? settingsTxt.minimapTitleOn : settingsTxt.minimapTitleOff }}</span>
+                                        <el-switch class="switch-card-toggle" v-model="showMinimap" size="default" @change="updateMinimap" />
+                                    </div>
+                                    <span class="switch-card-desc">{{ settingsTxt.minimapStaticDesc }}</span>
+                                </div>
+
+                                <!-- 缩进指南（仅普通模式） -->
+                                <div v-if="!isDiffMode" class="switch-card">
+                                    <div class="switch-card-head">
+                                        <span class="switch-card-title">{{ showIndentGuide ? settingsTxt.indentGuideTitleOn : settingsTxt.indentGuideTitleOff }}</span>
+                                        <el-switch class="switch-card-toggle" v-model="showIndentGuide" size="default" @change="updateIndentGuides" />
+                                    </div>
+                                    <span class="switch-card-desc">{{ settingsTxt.indentGuideStaticDesc }}</span>
                                 </div>
                             </div>
-
-                            <template v-if="!isDiffMode">
-                                <el-divider class="settings-subsection-divider" />
-
-                                <!-- 粘性滚动设置 -->
-                                <div class="settings-subsection">
-                                    <div class="settings-subsection-title">
-                                        <span class="settings-subsection-title-label">{{ settingsTxt.stickyScrollTitle }}</span>
-                                        <span class="settings-subsection-title-desc">{{ settingsTxt.stickyScrollDesc }}</span>
-                                    </div>
-                                    <div class="settings-item">
-                                        <el-switch v-model="stickyScroll" :disabled="isDisplayOnlyMode" :active-text="settingsTxt.stickyScrollOn" :inactive-text="settingsTxt.stickyScrollOff" size="default" @change="updateStickyScroll" />
-                                    </div>
-                                </div>
-                            </template>
-
-                            <template v-if="!isDiffMode">
-                                <el-divider class="settings-subsection-divider" />
-
-                                <!-- 同步滚动设置 -->
-                                <div class="settings-subsection">
-                                    <div class="settings-subsection-title">
-                                        <span class="settings-subsection-title-label">{{ settingsTxt.syncScrollTitle }}</span>
-                                        <span class="settings-subsection-title-desc">{{ settingsTxt.syncScrollDesc }}</span>
-                                    </div>
-                                    <div class="settings-item">
-                                        <el-switch v-model="syncScrollEnabled" :active-text="settingsTxt.syncScrollOn" :inactive-text="settingsTxt.syncScrollOff" size="default" />
-                                    </div>
-                                </div>
-                            </template>
-
-                            <template v-if="!isDiffMode">
-                                <el-divider class="settings-subsection-divider" />
-
-                                <!-- 缩略图设置 -->
-                                <div class="settings-subsection">
-                                    <div class="settings-subsection-title">
-                                        <span class="settings-subsection-title-label">{{ settingsTxt.minimapTitle }}</span>
-                                        <span class="settings-subsection-title-desc">{{ settingsTxt.minimapDesc }}</span>
-                                    </div>
-                                    <div class="settings-item">
-                                        <el-switch v-model="showMinimap" :active-text="settingsTxt.minimapOn" :inactive-text="settingsTxt.minimapOff" size="default" @change="updateMinimap" />
-                                    </div>
-                                </div>
-                            </template>
-                            
-                            <template v-if="!isDiffMode">
-                                <el-divider class="settings-subsection-divider" />
-
-                                <!-- 缩进指南设置 -->
-                                <div class="settings-subsection">
-                                    <div class="settings-subsection-title">
-                                        <span class="settings-subsection-title-label">{{ settingsTxt.indentGuideTitle }}</span>
-                                        <span class="settings-subsection-title-desc">{{ settingsTxt.indentGuideDesc }}</span>
-                                    </div>
-                                    <div class="settings-item">
-                                        <el-switch v-model="showIndentGuide" :active-text="settingsTxt.indentGuideOn" :inactive-text="settingsTxt.indentGuideOff" size="default" @change="updateIndentGuides" />
-                                    </div>
-                                </div>
-                            </template>
                         </div>
                     </el-collapse-item>
 
@@ -627,22 +584,24 @@
                             </div>
                         </template>
                         <div class="settings-collapse-content">
-                            <div class="settings-item">
-                                <div class="settings-item-header">
-                                    <span class="settings-label">{{ settingsTxt.encodingLabel }}</span>
-                                    <span v-if="encodingMode" class="settings-description">{{ settingsTxt.encodingDescOn }}</span>
+                            <div class="settings-switch-grid">
+                                <!-- 自动解码 -->
+                                <div class="switch-card">
+                                    <div class="switch-card-head">
+                                        <span class="switch-card-title">{{ encodingMode ? settingsTxt.encodingTitleOn : settingsTxt.encodingTitleOff }}</span>
+                                        <el-switch class="switch-card-toggle" v-model="encodingMode" size="default" />
+                                    </div>
+                                    <span class="switch-card-desc">{{ settingsTxt.encodingStaticDesc }}</span>
                                 </div>
-                                <el-switch v-model="encodingMode" :active-text="settingsTxt.encodingOn" :inactive-text="settingsTxt.encodingOff" size="default" />
-                            </div>
 
-                            <el-divider style="margin: 12px 0" />
-
-                            <div class="settings-item">
-                                <div class="settings-item-header">
-                                    <span class="settings-label">{{ settingsTxt.arrayStyleLabel }}</span>
-                                    <span class="settings-description">{{ settingsTxt.arrayStyleDescPrefix }}<strong>{{ settingsTxt.arrayStyleDescSimple }}</strong>{{ settingsTxt.arrayStyleDescMid }}<strong>{{ settingsTxt.arrayStyleDescComplex }}</strong>{{ settingsTxt.arrayStyleDescSuffix }}</span>
+                                <!-- 数组样式 -->
+                                <div class="switch-card">
+                                    <div class="switch-card-head">
+                                        <span class="switch-card-title">{{ arrayNewLine ? settingsTxt.arrayStyleTitleOn : settingsTxt.arrayStyleTitleOff }}</span>
+                                        <el-switch class="switch-card-toggle" v-model="arrayNewLine" size="default" />
+                                    </div>
+                                    <span class="switch-card-desc">{{ settingsTxt.arrayStyleStaticDesc }}</span>
                                 </div>
-                                <el-switch v-model="arrayNewLine" :active-text="settingsTxt.arrayStyleOn" :inactive-text="settingsTxt.arrayStyleOff" size="default" />
                             </div>
                         </div>
                     </el-collapse-item>
@@ -658,11 +617,15 @@
                             </div>
                         </template>
                         <div class="settings-collapse-content">
-                            <div class="settings-item">
-                                <div class="settings-item-header">
-                                    <span class="settings-label">{{ settingsTxt.unescapeModeLabel }}</span>
+                            <div class="settings-switch-grid">
+                                <!-- 处理模式（递归 / 仅外层） -->
+                                <div class="switch-card">
+                                    <div class="switch-card-head">
+                                        <span class="switch-card-title">{{ recursiveUnescape ? settingsTxt.unescapeTitleRecursive : settingsTxt.unescapeTitleShallow }}</span>
+                                        <el-switch class="switch-card-toggle" v-model="recursiveUnescape" size="default" />
+                                    </div>
+                                    <span class="switch-card-desc">{{ settingsTxt.unescapeStaticDesc }}</span>
                                 </div>
-                                <el-switch v-model="recursiveUnescape" :active-text="settingsTxt.unescapeRecursive" :inactive-text="settingsTxt.unescapeShallow" size="default" />
                             </div>
                         </div>
                     </el-collapse-item>
@@ -678,27 +641,31 @@
                             </div>
                         </template>
                         <div class="settings-collapse-content">
-                            <div class="settings-item">
-                                <div class="settings-item-header">
-                                    <span class="settings-label">{{ settingsTxt.sortMethodLabel }}</span>
+                            <div class="settings-switch-grid settings-switch-grid--values">
+                                <!-- 排序方式 -->
+                                <div class="switch-card switch-card--wide">
+                                    <div class="switch-card-head">
+                                        <span class="switch-card-title">{{ settingsTxt.sortMethodLabel }}</span>
+                                        <el-radio-group v-model="sortMethod" class="switch-card-radio-group">
+                                            <el-radio value="dictionary" border>{{ settingsTxt.sortMethodDictionary }}</el-radio>
+                                            <el-radio value="length" border>{{ settingsTxt.sortMethodLength }}</el-radio>
+                                            <el-radio value="field" border>{{ settingsTxt.sortMethodField }}</el-radio>
+                                        </el-radio-group>
+                                    </div>
+                                    <span class="switch-card-desc">{{ settingsTxt.sortMethodStaticDesc }}</span>
                                 </div>
-                                <el-radio-group v-model="sortMethod" class="settings-radio-group">
-                                    <el-radio value="dictionary" border>{{ settingsTxt.sortMethodDictionary }}</el-radio>
-                                    <el-radio value="length" border>{{ settingsTxt.sortMethodLength }}</el-radio>
-                                    <el-radio value="field" border>{{ settingsTxt.sortMethodField }}</el-radio>
-                                </el-radio-group>
-                            </div>
 
-                            <el-divider style="margin: 12px 0" />
-
-                            <div class="settings-item">
-                                <div class="settings-item-header">
-                                    <span class="settings-label">{{ settingsTxt.sortOrderLabel }}</span>
+                                <!-- 排序方向 -->
+                                <div class="switch-card switch-card--wide">
+                                    <div class="switch-card-head">
+                                        <span class="switch-card-title">{{ settingsTxt.sortOrderLabel }}</span>
+                                        <el-radio-group v-model="sortOrder" class="switch-card-radio-group">
+                                            <el-radio value="asc" border>{{ settingsTxt.sortOrderAsc }}</el-radio>
+                                            <el-radio value="desc" border>{{ settingsTxt.sortOrderDesc }}</el-radio>
+                                        </el-radio-group>
+                                    </div>
+                                    <span class="switch-card-desc">{{ settingsTxt.sortOrderStaticDesc }}</span>
                                 </div>
-                                <el-radio-group v-model="sortOrder" class="settings-radio-group">
-                                    <el-radio value="asc" border>{{ settingsTxt.sortOrderAsc }}</el-radio>
-                                    <el-radio value="desc" border>{{ settingsTxt.sortOrderDesc }}</el-radio>
-                                </el-radio-group>
                             </div>
                         </div>
                     </el-collapse-item>
@@ -714,11 +681,15 @@
                             </div>
                         </template>
                         <div class="settings-collapse-content">
-                            <div class="settings-item">
-                                <div class="settings-item-header">
-                                    <span class="settings-label">{{ settingsTxt.archiveNameLabel }}</span>
+                            <div class="settings-switch-grid">
+                                <!-- 存档命名方式 -->
+                                <div class="switch-card">
+                                    <div class="switch-card-head">
+                                        <span class="switch-card-title">{{ customArchiveName ? settingsTxt.archiveNameTitleCustom : settingsTxt.archiveNameTitleAuto }}</span>
+                                        <el-switch class="switch-card-toggle" v-model="customArchiveName" size="default" />
+                                    </div>
+                                    <span class="switch-card-desc">{{ settingsTxt.archiveNameStaticDesc }}</span>
                                 </div>
-                                <el-switch v-model="customArchiveName" :active-text="settingsTxt.archiveNameCustom" :inactive-text="settingsTxt.archiveNameAuto" size="default" />
                             </div>
                         </div>
                     </el-collapse-item>
@@ -1320,7 +1291,7 @@ const diffFormatJSON = (side: 'left' | 'right') => {
     if (!editor) return;
     const value = editor.getValue();
     if (!value.trim()) {
-        showMessageError('没有可格式化的内容');
+        showMessageError(settingsTxt.value.msgInputJsonRequired);
         return;
     }
     try {
@@ -1333,9 +1304,9 @@ const diffFormatJSON = (side: 'left' | 'right') => {
         const { data, escapeMap } = formatter.parseJson5(value);
         const formatted = formatter.format(data, escapeMap);
         replaceEditorValuePreservingUndo(editor, formatted, `diff-format-${side}`);
-        showMessageSuccess('格式化成功');
+        showMessageSuccess(settingsTxt.value.msgFormatSuccess);
     } catch (error: any) {
-        showMessageError('格式化失败: ' + error.message);
+        showMessageError(settingsTxt.value.msgFormatFail(error.message));
     }
 };
 
@@ -1373,14 +1344,14 @@ const diffCopy = async (side: 'left' | 'right') => {
     if (!editor) return;
     const value = editor.getValue();
     if (!value) {
-        showMessageWarning('没有可复制的内容');
+        showMessageWarning(settingsTxt.value.msgNoCopyContent);
         return;
     }
     try {
         await navigator.clipboard.writeText(value);
-        showMessageSuccess('复制成功');
+        showMessageSuccess(settingsTxt.value.msgCopySuccess);
     } catch {
-        showMessageError('复制失败');
+        showMessageError(settingsTxt.value.msgCopyFail);
     }
 };
 
@@ -1388,25 +1359,25 @@ const diffClear = (side: 'left' | 'right') => {
     const editor = getDiffSideEditor(side);
     if (!editor) return;
     replaceEditorValuePreservingUndo(editor, '', `diff-clear-${side}`);
-    showMessageSuccess('已清空');
+    showMessageSuccess(settingsTxt.value.msgCleared);
 };
 
 const diffHandleUpload = (side: 'left' | 'right') => (uploadFile: UploadFile) => {
     const file = uploadFile.raw as File;
-    if (!file) { showMessageError('无法获取文件'); return; }
-    if (!file.name.toLowerCase().endsWith('.json')) { showMessageError('只能上传 JSON 文件'); return; }
-    if (file.size > MAX_FILE_SIZE) { showMessageError('文件大小不能超过 5 MB'); return; }
+    if (!file) { showMessageError(settingsTxt.value.msgFileGetFail); return; }
+    if (!file.name.toLowerCase().endsWith('.json')) { showMessageError(settingsTxt.value.msgFileOnlyJson); return; }
+    if (file.size > MAX_FILE_SIZE) { showMessageError(settingsTxt.value.msgFileTooLarge); return; }
     const reader = new FileReader();
     reader.onload = e => {
         if (e.target?.result) {
             const editor = getDiffSideEditor(side);
             if (editor) {
                 replaceEditorValuePreservingUndo(editor, e.target.result as string, `diff-upload-${side}`);
-                showMessageSuccess('文件上传成功');
+                showMessageSuccess(settingsTxt.value.msgFileUploadSuccess);
             }
         }
     };
-    reader.onerror = () => showMessageError('文件读取出错');
+    reader.onerror = () => showMessageError(settingsTxt.value.msgFileReadError);
     reader.readAsText(file, 'utf-8');
 };
 
@@ -1415,7 +1386,7 @@ const diffDownload = async (side: 'left' | 'right') => {
     if (!editor) return;
     const content = editor.getValue();
     if (!content) {
-        showMessageWarning('没有可下载的内容');
+        showMessageWarning(settingsTxt.value.msgNoDownloadContent);
         return;
     }
     try {
@@ -1430,9 +1401,9 @@ const diffDownload = async (side: 'left' | 'right') => {
         link.click();
         document.body.removeChild(link);
         URL.revokeObjectURL(url);
-        showMessageSuccess('下载成功');
+        showMessageSuccess(settingsTxt.value.msgDownloadSuccess);
     } catch (error: any) {
-        showMessageError('下载失败');
+        showMessageError(settingsTxt.value.msgDownloadFail);
     }
 };
 
@@ -2042,7 +2013,6 @@ const updateLineNumberWidth = (editor: monaco.editor.IStandaloneCodeEditor | nul
     if (!editor) return;
 
     const lineCount = editor.getModel()?.getLineCount() || 0;
-    // 当行数小于999，固定为2位宽度；否则按实际行数计算
     const digitCount = lineCount < 99 ? 2 : String(lineCount).length;
     const minChars = digitCount + 1;
 
@@ -2154,7 +2124,7 @@ const getEditorOptions = (
     lineNumbers: 'on' as const, // 启用行号
     roundedSelection: true, // 启用圆角选择
     renderIndentGuides: showIndentGuide.value, // 根据设置显示缩进指南线
-    lineNumbersMinChars: 1, // 设置行号最小字符数为1
+    lineNumbersMinChars: 2, // 默认行号槽容纳 2 位数字，超过两位时由 updateLineNumberWidth 动态扩展
     renderWhitespace: 'none' as const, // 禁用空白字符显示
 
     // 右键菜单配置
@@ -7319,11 +7289,15 @@ const handleRefreshArchive = async (item: JsonArchive) => {
 // 删除单个存档
 const handleDeleteArchive = async (item: JsonArchive) => {
     try {
-        await ElMessageBox.confirm(`确定要删除存档「${item.name}」吗？此操作不可恢复`, '删除存档', {
-            confirmButtonText: '删除',
-            cancelButtonText: '取消',
-            dangerouslyUseHTMLString: false,
-        });
+        await ElMessageBox.confirm(
+            settingsTxt.value.confirmDeleteArchiveContent(item.name),
+            settingsTxt.value.confirmDeleteArchiveTitle,
+            {
+                confirmButtonText: settingsTxt.value.confirmDeleteArchiveBtn,
+                cancelButtonText: settingsTxt.value.confirmDeleteArchiveCancelBtn,
+                dangerouslyUseHTMLString: false,
+            }
+        );
     } catch {
         // 用户取消
         return;
@@ -8866,32 +8840,32 @@ const applySort = () => {
 const handleFileUpload = async (uploadFile: UploadFile) => {
     const file = uploadFile.raw as File;
     if (!file) {
-        showMessageError('无法获取文件');
+        showMessageError(settingsTxt.value.msgFileGetFail);
         return;
     }
 
     try {
         // 检查文件名长度
         if (file.name.length > 255) {
-            showMessageError('文件名过长');
+            showMessageError(settingsTxt.value.msgFileNameTooLong);
             return;
         }
 
         // 检查文件扩展名
         if (!file.name.toLowerCase().endsWith('.json')) {
-            showMessageError('只能上传 JSON 文件');
+            showMessageError(settingsTxt.value.msgFileOnlyJson);
             return;
         }
 
         // 检查文件大小
         if (file.size > MAX_FILE_SIZE) {
-            showMessageError('文件大小不能超过 5 MB');
+            showMessageError(settingsTxt.value.msgFileTooLarge);
             return;
         }
 
         // 检查 MIME 类型
         if (file.type && !['application/json', 'text/plain'].includes(file.type)) {
-            showMessageError('文件类型不正确');
+            showMessageError(settingsTxt.value.msgFileWrongType);
             return;
         }
 
@@ -8904,17 +8878,17 @@ const handleFileUpload = async (uploadFile: UploadFile) => {
                     // 因为某些二进制数据可能被序列化为 \uFFFD，但这不影响 JSON 处理
                     resolve(e.target.result as string);
                 } else {
-                    reject(new Error('文件读取失败'));
+                    reject(new Error(settingsTxt.value.msgFileReadFail));
                 }
             };
-            reader.onerror = () => reject(new Error('文件读取出错'));
+            reader.onerror = () => reject(new Error(settingsTxt.value.msgFileReadError));
             reader.readAsText(file, 'utf-8');
         });
 
         // 检查行数限制
         const lines = content.split('\n');
         if (lines.length > MAX_LINES) {
-            showMessageError(`文件内容超过行数限制（共 ${lines.length} 行）`);
+            showMessageError(settingsTxt.value.msgFileLinesExceed(lines.length));
             return;
         }
 
@@ -8940,7 +8914,7 @@ const handleFileUpload = async (uploadFile: UploadFile) => {
                     inputEditor.updateOptions({ tabSize: detected.tabSize, indentSize: detected.tabSize } as any);
                     
                     // 提示用户已临时调整显示
-                    showMessageSuccess(`已检测到 ${detected.tabSize} 格缩进，仅临时调整编辑器显示，全局设置保持不变`);
+                    showMessageSuccess(settingsTxt.value.msgFileIndentDetected(detected.tabSize));
                 }
             }
 
@@ -8956,9 +8930,9 @@ const handleFileUpload = async (uploadFile: UploadFile) => {
         updateLineNumberWidth(outputEditor);
         updateEditorHeight(outputEditor);
 
-        showMessageSuccess('文件上传成功，已加载到编辑区域');
+        showMessageSuccess(settingsTxt.value.msgFileUploadSuccessLoaded);
     } catch (error: any) {
-        showMessageError('文件处理失败: ' + error.message);
+        showMessageError(settingsTxt.value.msgFileProcessFail(error.message));
     }
 };
 
@@ -9009,10 +8983,10 @@ const clearInput = (showToast: boolean = true) => {
 
         outputType.value = 'json';
         if (showToast) {
-            showMessageSuccess('已清空内容');
+            showMessageSuccess(settingsTxt.value.msgClearedContent);
         }
     } catch (error: any) {
-        showMessageError('清空内容失败');
+        showMessageError(settingsTxt.value.msgClearFail);
     }
 };
 
@@ -9021,15 +8995,15 @@ const copyOutput = async () => {
     try {
         const value = outputEditor?.getValue() || '';
         if (!value) {
-            showMessageWarning('没有可复制的内容');
+            showMessageWarning(settingsTxt.value.msgNoCopyContent);
             return;
         }
 
         try {
             await navigator.clipboard.writeText(value);
-            showMessageSuccess('复制成功');
+            showMessageSuccess(settingsTxt.value.msgCopySuccess);
         } catch (err) {
-            showMessageError('复制失败, 请尝试手动复制');
+            showMessageError(settingsTxt.value.msgCopyFailManual);
 
             // 自动选择内容以方便用户复制
             outputEditor?.focus();
@@ -9037,7 +9011,7 @@ const copyOutput = async () => {
             outputEditor?.setSelection(outputEditor.getModel()?.getFullModelRange() || new monaco.Range(0, 0, 0, 0));
         }
     } catch (error: any) {
-        showMessageError('复制失败, 请尝试手动复制');
+        showMessageError(settingsTxt.value.msgCopyFailManual);
     }
 };
 
@@ -9093,9 +9067,9 @@ const downloadOutput = async () => {
         document.body.removeChild(link);
         URL.revokeObjectURL(url);
 
-        showMessageSuccess('下载成功');
+        showMessageSuccess(settingsTxt.value.msgDownloadSuccess);
     } catch (error: any) {
-        showMessageError('下载失败：' + (error?.message || '未知错误'));
+        showMessageError(settingsTxt.value.msgDownloadFailWithErr(error?.message || settingsTxt.value.msgUnknownError));
     }
 };
 
@@ -10558,6 +10532,111 @@ const transferToInput = (e: MouseEvent) => {
     margin: 12px 0;
 }
 
+/* ===== 通用设置 - 开关网格布局 ===== */
+.settings-switch-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+}
+
+/* 抽屉较窄时回退到单列，避免文字与开关挤在一起 */
+@media (max-width: 560px) {
+    .settings-switch-grid {
+        grid-template-columns: 1fr;
+    }
+}
+
+.switch-card {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 12px 12px;
+    border: 1px solid #ebeef5;
+    border-radius: 8px;
+    background: #fafbfc;
+    transition: border-color 0.2s ease, background 0.2s ease, box-shadow 0.2s ease;
+    min-height: 70px;
+}
+
+.switch-card:hover {
+    border-color: #c6e2ff;
+    background: #f5f9ff;
+    box-shadow: 0 2px 6px rgba(64, 158, 255, 0.08);
+}
+
+/* 标题 + 开关同行：保证开关与标题垂直居中对齐 */
+.switch-card-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    min-width: 0;
+}
+
+.switch-card-toggle {
+    flex-shrink: 0;
+}
+
+.switch-card-title {
+    font-size: 14px;
+    font-weight: 600;
+    color: #303133;
+    line-height: 1.35;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    flex: 1;
+    min-width: 0;
+}
+
+.switch-card-desc {
+    font-size: 12px;
+    color: #909399;
+    line-height: 1.55;
+    overflow: hidden;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
+    -webkit-box-orient: vertical;
+}
+
+/* 数值类卡片（字体大小 / 缩进）放在 head 右侧的 radio 组 */
+.switch-card-radio-group {
+    display: flex;
+    flex-wrap: nowrap;
+    gap: 5px;
+    flex-shrink: 0;
+}
+
+/* 排序卡片的 radio 文案较长（如"按字段值"、"正序（升序）"），
+   允许 wrap 防止挤压；该选择器仅作用于带有 .switch-card--wide 的卡片内的 radio 组 */
+.switch-card--wide .switch-card-radio-group {
+    flex-wrap: wrap;
+    justify-content: flex-end;
+}
+
+.switch-card-radio-group :deep(.el-radio.is-bordered) {
+    padding: 4px 10px;
+    height: 28px;
+    margin-right: 0;
+    border-radius: 6px;
+}
+
+/* 隐藏 radio 左侧圆点：选中状态由整颗胶囊的边框/底色高亮表达，避免视觉冗余 */
+.switch-card-radio-group :deep(.el-radio__input) {
+    display: none;
+}
+
+.switch-card-radio-group :deep(.el-radio__label) {
+    font-size: 12px;
+    padding-left: 0;
+}
+
+/* 选中态：整颗胶囊高亮，强化"已选中"的视觉权重 */
+.switch-card-radio-group :deep(.el-radio.is-bordered.is-checked) {
+    background: #ecf5ff;
+}
+
 .button-visibility-list {
     display: grid;
     grid-template-columns: repeat(5, 1fr);
@@ -11015,7 +11094,6 @@ const transferToInput = (e: MouseEvent) => {
     position: relative;
     overflow: hidden;
     background: #fff;
-    border: 1px solid #e4e7ed;
     border-radius: 4px;
 }
 
@@ -11052,6 +11130,7 @@ const transferToInput = (e: MouseEvent) => {
     height: 35px;
     border-bottom: 1px solid #e4e7ed;
     background: linear-gradient(to bottom, #fafbfc, #f6f8fa);
+    box-sizing: border-box;
 }
 
 .diff-header-cell {

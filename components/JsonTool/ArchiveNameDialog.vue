@@ -17,15 +17,16 @@
         </div>
         <template #footer>
             <div class="dialog-footer">
-                <el-button @click="handleCancel">取消</el-button>
-                <el-button type="primary" @click="handleConfirm">保存</el-button>
+                <el-button @click="handleCancel">{{ txt.archiveDialogBtnCancel }}</el-button>
+                <el-button type="primary" @click="handleConfirm">{{ txt.archiveDialogBtnSave }}</el-button>
             </div>
         </template>
     </el-dialog>
 </template>
 
 <script setup lang="ts">
-import { ref, watch, nextTick } from 'vue';
+import { ref, watch, nextTick, computed } from 'vue';
+import { SETTINGS_TXT_ZH, SETTINGS_TXT_EN } from './utils/i18n';
 
 interface JsonArchive {
     id: string;
@@ -41,15 +42,19 @@ interface Props {
     placeholder?: string;
     existingArchives?: JsonArchive[];
     excludeArchiveId?: string; // 编辑时排除的存档ID
+    locale?: 'zh' | 'en';
 }
 
 const props = withDefaults(defineProps<Props>(), {
-    title: '保存存档',
+    title: '',
     inputValue: '',
-    placeholder: '请输入存档名称',
+    placeholder: '',
     existingArchives: () => [],
     excludeArchiveId: '',
+    locale: 'zh',
 });
+
+const txt = computed(() => (props.locale === 'en' ? SETTINGS_TXT_EN : SETTINGS_TXT_ZH));
 
 const emit = defineEmits<{
     'update:modelValue': [value: boolean];
@@ -97,14 +102,14 @@ const handleInput = () => {
 
     const invalidChars = checkInvalidChars(archiveName.value);
     if (invalidChars.length > 0) {
-        errorMessage.value = '字符限制：中英文、数字和常见字符（- _ + * / = . :）';
+        errorMessage.value = txt.value.archiveDialogErrCharLimit;
         return;
     }
 
     // 检查名称是否重复
     const trimmedName = archiveName.value.trim();
     if (trimmedName && checkNameDuplicate(trimmedName)) {
-        errorMessage.value = '存档名称已存在，请使用其他名称';
+        errorMessage.value = txt.value.archiveDialogErrNameDuplicate;
     }
 };
 
@@ -139,28 +144,28 @@ const validateInput = (): boolean => {
     errorMessage.value = '';
 
     if (!archiveName.value || !archiveName.value.trim()) {
-        errorMessage.value = '存档名称不能为空';
+        errorMessage.value = txt.value.archiveDialogErrNameEmpty;
         return false;
     }
 
     // 检查非法字符
     const invalidChars = checkInvalidChars(archiveName.value);
     if (invalidChars.length > 0) {
-        errorMessage.value = '合法字符：中英文、数字、连字符（- _）和数学符号（+ * / = . : @ #）';
+        errorMessage.value = txt.value.archiveDialogErrCharsAllowed;
         return false;
     }
 
     // 验证字符规则：长度 1-20，仅限中英文、数字、常见连字符和数学符号
     const pattern = /^[A-Za-z0-9\u4e00-\u9fa5\-\_\+\*\/=\.\:\@\#]{1,20}$/;
     if (!pattern.test(archiveName.value)) {
-        errorMessage.value = '合法字符：中英文、数字、连字符（- _）和数学符号（+ * / = . : @ #）';
+        errorMessage.value = txt.value.archiveDialogErrCharsAllowed;
         return false;
     }
 
     // 检查名称是否重复
     const trimmedName = archiveName.value.trim();
     if (checkNameDuplicate(trimmedName)) {
-        errorMessage.value = '存档名称已存在，请使用其他名称';
+        errorMessage.value = txt.value.archiveDialogErrNameDuplicate;
         return false;
     }
 

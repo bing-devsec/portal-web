@@ -67,7 +67,7 @@ const defaultSettings: PersistedSettings = {
     },
     recursiveUnescape: true,
     wordWrap: false,
-    fontSize: 14,
+    fontSize: 12,
     showIndentGuide: true,
     isFullscreen: false,
     syncScrollEnabled: false,
@@ -139,7 +139,7 @@ export const useToolSettings = (): UseToolSettingsReturn => {
     const indentSize = ref(savedSettings.indentSize);
     const recursiveUnescape = ref(savedSettings.recursiveUnescape ?? true);
     const wordWrap = ref(savedSettings.wordWrap);
-    const fontSize = ref(savedSettings.fontSize || 14);
+    const fontSize = ref(savedSettings.fontSize || 12);
     const showIndentGuide = ref(savedSettings.showIndentGuide);
     const arrayNewLine = ref(savedSettings.arrayNewLine);
     const preserveNumberLiterals = { value: true } as const;

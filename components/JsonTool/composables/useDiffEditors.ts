@@ -537,7 +537,7 @@ export const useDiffEditors = (opts: UseDiffEditorsOptions): UseDiffEditorsRetur
             readOnly: false,
             minimap: { enabled: showMinimap.value },
             lineNumbers: 'on',
-            lineNumbersMinChars: 3,
+            lineNumbersMinChars: 2,
             roundedSelection: true,
             scrollBeyondLastLine: false,
             smoothScrolling: true,
