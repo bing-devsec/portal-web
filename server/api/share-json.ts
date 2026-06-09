@@ -1,51 +1,47 @@
 import { defineEventHandler, readBody, getQuery, H3Event } from 'h3';
-import { randomBytes, privateDecrypt, constants, createPrivateKey, KeyObject } from 'crypto';
-import { promises as fs, readFileSync, existsSync, mkdirSync } from 'fs';
+import { randomBytes } from 'crypto';
+import { promises as fs, existsSync, mkdirSync } from 'fs';
 import { join, resolve, normalize } from 'path';
 
-let privateKeyCache: KeyObject | null = null;
-function getPrivateKey(): KeyObject | null {
-  if (privateKeyCache) return privateKeyCache;
-  const pemPath =
-    process.env.RSA_PRIVATE_KEY_PATH ||
-    join(process.cwd(), 'keys', 'private_key.pem');
+// 通过 Go 后端解密浏览器指纹。
+//
+// 背景：新版 Node（>=18.19/20.11，含 CVE-2023-46809 修复）已禁用 privateDecrypt
+// 的 RSA_PKCS1_PADDING，导致 Nuxt 进程内无法解密前端 JSEncrypt(PKCS1) 加密的指纹。
+// 而 Go 后端的私钥与 PKCS1 解密一直可用（文章详情等接口即依赖它），
+// 因此这里把解密统一委托给 Go，Nuxt 仅做转发，自身不再持有/读取私钥。
+//
+// 约定接口见 docs/fingerprint-decrypt-backend-spec.md
+async function decryptFingerprintViaBackend(
+  encryptedFingerprint: string,
+): Promise<string | null> {
+  if (!encryptedFingerprint) return null;
+
+  // 服务端进程内访问 Go 后端需走内网直连地址 ssrApiBase（容器内 http://meta-api:8080），
+  // public.baseURL("/api-backend") 是给浏览器经 nginx 代理用的相对路径，Node 内请求会自请自身。
+  const ssrApiBase = useRuntimeConfig().ssrApiBase as string;
+
   try {
-    const pem = readFileSync(pemPath, 'utf-8');
-    privateKeyCache = createPrivateKey(pem);
-    return privateKeyCache;
-  } catch (err) {
-    // 启动期日志，便于运维通过容器日志定位（生产环境此分支几乎不该出现）
-    console.error('[share-json] load private key failed', {
-      path: pemPath,
-      message: (err as Error)?.message,
+    const res = await $fetch<{
+      code: number;
+      message?: string;
+      data?: { fingerprint?: string } | null;
+    }>(`${ssrApiBase}/user/fingerprint/decrypt`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-client-id': encryptedFingerprint,
+      },
+      body: { encryptedFingerprint },
     });
-    return null;
-  }
-}
 
-// 本地 RSA 解密：把浏览器加密后的 base64 密文还原为 32-hex 明文指纹
-function decryptFingerprint(encryptedFingerprint: string): string | null {
-  try {
-    const key = getPrivateKey();
-    if (!key) return null;
-
-    const ciphertext = Buffer.from(encryptedFingerprint, 'base64');
-    if (ciphertext.length === 0) return null;
-
-    const plaintextBuf = privateDecrypt(
-      { key, padding: constants.RSA_PKCS1_PADDING },
-      ciphertext,
-    );
-    const plaintext = plaintextBuf.toString('utf8');
-
+    const fingerprint = res?.data?.fingerprint;
     // 指纹必须是 32 位十六进制（与 FingerprintJS.hashComponents 输出对齐）
-    if (!/^[a-f0-9]{32}$/i.test(plaintext)) {
-      return null;
+    if (res?.code === 2000 && fingerprint && /^[a-f0-9]{32}$/i.test(fingerprint)) {
+      return fingerprint;
     }
-    return plaintext;
+    return null;
   } catch (error) {
-    // 私钥与浏览器使用的公钥不匹配 / 密文被网关截断 / 编码异常等都会落到这里
-    console.warn('[share-json] decrypt fingerprint failed', {
+    console.warn('[share-json] decrypt fingerprint via backend failed', {
       encLen: encryptedFingerprint?.length,
       message: (error as Error)?.message,
     });
@@ -53,8 +49,8 @@ function decryptFingerprint(encryptedFingerprint: string): string | null {
   }
 }
 
-// 从请求中获取并解密浏览器指纹
-function getClientFingerprint(event: H3Event, body?: any): string | null {
+// 从请求中获取并解密浏览器指纹（委托 Go 后端解密）
+async function getClientFingerprint(event: H3Event, body?: any): Promise<string | null> {
   // 优先从请求头获取加密的指纹
   const headers = event.node.req.headers;
   let encryptedFingerprint = headers['x-client-id'] as string;
@@ -65,7 +61,7 @@ function getClientFingerprint(event: H3Event, body?: any): string | null {
   }
 
   if (encryptedFingerprint) {
-    return decryptFingerprint(encryptedFingerprint);
+    return decryptFingerprintViaBackend(encryptedFingerprint);
   }
 
   return null;
@@ -455,7 +451,7 @@ export default defineEventHandler(async (event: H3Event) => {
       const queryAllMine = (getQuery(event).mine as string) || '';
       if (queryAllMine === '1') {
         // 需要客户端身份
-        const clientFingerprint = getClientFingerprint(event);
+        const clientFingerprint = await getClientFingerprint(event);
         if (!clientFingerprint) {
           return {
             success: false,
@@ -597,7 +593,7 @@ export default defineEventHandler(async (event: H3Event) => {
       }
 
       // 1. 获取并验证浏览器指纹
-      const clientFingerprint = getClientFingerprint(event, body);
+      const clientFingerprint = await getClientFingerprint(event, body);
       if (!clientFingerprint) {
         return {
           success: false,
@@ -779,7 +775,7 @@ export default defineEventHandler(async (event: H3Event) => {
       const id = query.id as string;
       const body = await readBody(event).catch(() => ({}));
       const password = body.password as string | undefined;
-      const clientFingerprint = getClientFingerprint(event, body);
+      const clientFingerprint = await getClientFingerprint(event, body);
 
       if (!id) {
         return {

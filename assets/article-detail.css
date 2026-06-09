@@ -1,0 +1,1896 @@
+/* ============================================================
+   此文件集中放置文章详情页 /article-detail/[id] 专属样式
+   （.article-body-ssr / .ssr-code-* / .ssr-table-* / .md-admonition /
+   .image-fs-* / .mermaid-* / .footnotes 等），
+   由 pages/article-detail/[id].vue 按需引入，
+   避免污染首页/标签页等其他页面的首屏 CSS。
+   ============================================================ */
+
+/* ============================================================
+   注：代码块专用等宽字体 JetBrains Mono 的 @font-face 声明
+   已移至 assets/code-fonts.css，仅在文章详情页（含代码块的页面）
+   通过 useHead 动态注入，避免首页 / 标签页 / 归档等纯文本列表页
+   触发字体预加载浪费带宽（Chrome 会对未使用的 preload 字体抛警告）。
+   ============================================================ */
+
+/* ============================================================
+   关闭代码场景下的 OpenType 连字（liga / calt）
+   ============================================================ */
+.article-body-ssr code,
+.article-body-ssr pre,
+.article-body-ssr .ssr-code-pre,
+.article-body-ssr .ssr-code-gutter,
+.article-body-ssr .ssr-code-line,
+.article-body-ssr .ssr-code-num,
+.article-body-ssr .mermaid-source,
+.ssr-code-fs-stage,
+.ssr-code-fs-pre,
+.ssr-code-fs-pre code,
+.ssr-code-fs-pre .ssr-code-line {
+    font-variant-ligatures: none;
+    font-feature-settings: "liga" 0, "calt" 0;
+}
+
+/* ============================================================
+ * 文章详情页：移动端去掉顶部 padding
+ * ------------------------------------------------------------
+ * 文章详情页的 <section class="container pt-20"> 在 PC 上需要 25px 顶距，
+ * 但移动端屏幕窄，顶部 25px 浪费了可视区面积——
+ * 用 .article-detail-section 这个专属标记 + 媒体查询精准覆盖，
+ * 不影响其他页面用 .pt-20 的地方。
+ * ============================================================ */
+@media (max-width: 576px) {
+    .article-detail-section.pt-20 {
+        padding-top: 0;
+    }
+}
+
+/* ===========================
+   文章正文 SSR 排版（.article-body-ssr）
+   说明：
+   - 这套样式服务于"删除 md-editor-v3 客户端接管 + 纯 SSR"的渲染方式。
+   - markdown-it 渲染出的标准 HTML 在这里集中接管：标题装饰、表格、代码块、blockquote、列表、图片。
+   - 所有规则只作用于 .article-body-ssr 内部，不污染全站其它使用 h1~h6 的位置。
+   =========================== */
+
+.article-body-ssr {
+    --article-line-height: 1.8;
+    word-break: normal;
+    line-height: var(--article-line-height);
+    color: #333;
+    /* 流式字号：320px 屏 ≈ 14px，640px+ 屏 ≈ 16px，平滑过渡，不再用 media query 跳变 */
+    font-size: clamp(14px, 13px + 0.3vw, 16px);
+    /* 流式左右内边距：手机 0、平板 ~10px、PC 20px，连续过渡，
+       替代原 `@media (min-width:577px) { padding:10px 20px }` 的硬跳 */
+    padding: clamp(0px, -10px + 3vw, 10px) clamp(0px, -20px + 6vw, 20px);
+}
+
+/* 段落与基础排版 */
+.article-body-ssr p {
+    margin: 0.6em 0;
+    line-height: var(--article-line-height);
+    word-break: normal;
+}
+
+@media (max-width: 576px) {
+    .article-body-ssr {
+        --article-line-height: 1.6;
+    }
+}
+
+.article-body-ssr a {
+    color: #2196f3;
+    text-decoration: none;
+    border-bottom: 1px dashed #2196f3;
+}
+
+.article-body-ssr a:hover {
+    color: #4dd0e1;
+    border-bottom-color: #4dd0e1;
+}
+
+.article-body-ssr strong {
+    color: #2c3e50;
+    font-weight: 600;
+}
+
+.article-body-ssr em {
+    font-style: italic;
+    color: #555;
+}
+
+/* H1 ~ H6：覆盖全局 reset 中过重的 margin/font-weight */
+.article-body-ssr h1,
+.article-body-ssr h2,
+.article-body-ssr h3,
+.article-body-ssr h4,
+.article-body-ssr h5,
+.article-body-ssr h6 {
+    margin: 1em 0 0.6em;
+    color: #333;
+    position: relative;
+    font-weight: 700;
+    line-height: 1.4;
+    cursor: text;
+}
+
+/* H2：左侧水印图 + 右侧渐变下划线（迁移自 md-editor-v3 自定义样式） */
+.article-body-ssr h2 {
+    display: block;
+    border-bottom: 4px solid #4dd0e1;
+    /* 流式：手机 1.4rem，平板 ~1.5rem，PC 1.6rem */
+    font-size: clamp(1.4rem, 1.3rem + 0.5vw, 1.6rem);
+    /* 流式 padding：手机 5px/24px，PC 7px/32px */
+    padding: clamp(5px, 4px + 0.3vw, 7px) clamp(24px, 20px + 1vw, 32px);
+}
+
+.article-body-ssr h2::before,
+.article-body-ssr h2::after {
+    content: "";
+    display: block;
+    position: absolute;
+    bottom: 0;
+}
+
+.article-body-ssr h2::before {
+    width: 24px;
+    height: 24px;
+    left: 0;
+    top: 0;
+    margin: auto;
+    background-size: 24px 24px;
+    background-image: url(./img/h2_before.png);
+    background-repeat: no-repeat;
+}
+
+.article-body-ssr h2::after {
+    right: 0;
+    width: 40%;
+    height: 10px;
+    margin: auto;
+    display: inline-block;
+    border-top-right-radius: 24px;
+    background: linear-gradient(90deg, #fff, #4dd0e1);
+    max-width: 50vw;
+}
+
+/* H3：左侧顶置图 + 右侧旋转动画图（迁移自 md-editor-v3 自定义样式） */
+.article-body-ssr h3 {
+    margin: 8px 0;
+    font-size: clamp(1.2rem, 1.15rem + 0.25vw, 1.3rem);
+    position: relative;
+    padding: 8px clamp(24px, 20px + 1vw, 32px) 0;
+    width: max-content;
+}
+
+.article-body-ssr h3::before {
+    border-bottom: 2px solid #4dd0e1;
+    width: 100%;
+    content: "";
+    display: block;
+    height: 28px;
+    position: absolute;
+    left: 0;
+    top: 8px;
+    bottom: -2px;
+    margin: auto;
+    background-size: 28px 28px;
+    background-image: url(./img/h3_before.png);
+    background-repeat: no-repeat;
+    animation: h3AnimationBefore 2s infinite alternate;
+}
+
+.article-body-ssr h3::after {
+    content: "";
+    display: block;
+    width: 28px;
+    height: 28px;
+    position: absolute;
+    border: 2px solid #4dd0e1;
+    border-radius: 50%;
+    right: -15px;
+    top: 8px;
+    bottom: 0;
+    margin: auto;
+    background-size: 28px 28px;
+    background-image: url(./img/h3_after.png);
+    background-repeat: no-repeat;
+    animation: h3AnimationAfter 2s infinite alternate;
+}
+
+@keyframes h3AnimationBefore {
+    0% {
+        width: 28px;
+    }
+    25% {
+        width: 100%;
+    }
+    50% {
+        width: 100%;
+    }
+    100% {
+        width: 100%;
+    }
+}
+
+@keyframes h3AnimationAfter {
+    0% {
+        transform: rotate3d(0, 0, 1, 0);
+    }
+    10% {
+        transform: rotate3d(0, 0, 1, 0);
+    }
+    50% {
+        transform: rotate3d(0, 0, 1, -360deg);
+    }
+    100% {
+        transform: rotate3d(0, 0, 1, -360deg);
+    }
+}
+
+.article-body-ssr h4 {
+    font-size: 1.1rem;
+    color: #4dd0e1;
+}
+
+.article-body-ssr h5 {
+    font-size: 1rem;
+    color: #4dd0e1;
+}
+
+.article-body-ssr h6 {
+    font-size: 0.95rem;
+    color: #777;
+}
+
+/* 移动端：禁用 H3 动画（性能优化 + 减少视觉打扰，保留 media query 因为这是结构性二选一） */
+@media (max-width: 576px) {
+    .article-body-ssr h3::before,
+    .article-body-ssr h3::after {
+        animation: none !important;
+    }
+}
+
+/* 列表 */
+.article-body-ssr ul,
+.article-body-ssr ol {
+    /* 流式缩进：手机 1.4em，PC 2.35em，连续过渡，替代原 @media (max-width:576px) 跳变 */
+    padding-left: clamp(1.4em, 0.6em + 2.5vw, 2.35em);
+    margin: 0.6em 0;
+}
+
+.article-body-ssr ul > li {
+    list-style: disc;
+}
+
+.article-body-ssr ul > li ul > li {
+    list-style-type: circle;
+}
+
+.article-body-ssr ul > li ul > li ul > li {
+    list-style-type: square;
+}
+
+.article-body-ssr ol > li {
+    list-style: decimal;
+}
+
+.article-body-ssr li {
+    line-height: var(--article-line-height);
+    margin: 0.2em 0;
+    word-break: normal;
+}
+
+.article-body-ssr li p {
+    margin: 0;
+    line-height: var(--article-line-height);
+}
+
+/* 引用块 */
+.article-body-ssr blockquote {
+    padding: 0.6em 1em;
+    margin: 1em 0;
+    background-color: #e4f8fb;
+    border-left: 5px solid #4dd0e1;
+    color: #555;
+    border-radius: 0 4px 4px 0;
+}
+
+.article-body-ssr blockquote p {
+    margin: 0.3em 0;
+}
+
+/* 提示块（Admonition） */
+.article-body-ssr .md-admonition {
+    --admonition-accent: #5c6bc0;
+    --admonition-bg: #f5f7ff;
+    --admonition-border: #d7ddff;
+    margin: 1em 0;
+    padding: 0.9em 1em;
+    border: 1px solid var(--admonition-border);
+    border-radius: 10px;
+    background: var(--admonition-bg);
+    color: #2f3a4a;
+    box-shadow: 0 1px 3px rgba(15, 23, 42, 0.04);
+}
+
+.article-body-ssr .md-admonition__title {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 0.45em;
+    font-weight: 700;
+    line-height: 1.5;
+}
+
+.article-body-ssr .md-admonition__emoji {
+    flex: 0 0 auto;
+    font-size: 1.05em;
+    line-height: 1;
+}
+
+.article-body-ssr .md-admonition__title-text {
+    color: var(--admonition-accent);
+}
+
+.article-body-ssr .md-admonition--title-only .md-admonition__title {
+    margin-bottom: 0;
+}
+
+.article-body-ssr .md-admonition__body > :first-child {
+    margin-top: 0;
+}
+
+.article-body-ssr .md-admonition__body > :last-child {
+    margin-bottom: 0;
+}
+
+.article-body-ssr .md-admonition__body p,
+.article-body-ssr .md-admonition__body li {
+    line-height: var(--article-line-height);
+}
+
+.article-body-ssr .md-admonition--tips {
+    --admonition-accent: #7c4dff;
+    --admonition-bg: #f6f0ff;
+    --admonition-border: #e2d5ff;
+}
+
+.article-body-ssr .md-admonition--info {
+    --admonition-accent: #1e88e5;
+    --admonition-bg: #eef7ff;
+    --admonition-border: #d0e7ff;
+}
+
+.article-body-ssr .md-admonition--warning {
+    --admonition-accent: #f59e0b;
+    --admonition-bg: #fff8e8;
+    --admonition-border: #fde3a7;
+}
+
+.article-body-ssr .md-admonition--error {
+    --admonition-accent: #ef4444;
+    --admonition-bg: #fff1f1;
+    --admonition-border: #ffd2d2;
+}
+
+.article-body-ssr .md-admonition--success {
+    --admonition-accent: #10b981;
+    --admonition-bg: #ecfdf5;
+    --admonition-border: #bfead8;
+}
+
+.article-body-ssr .md-admonition--thinking {
+    --admonition-accent: #64748b;
+    --admonition-bg: #f6f8fb;
+    --admonition-border: #d8e0ea;
+}
+
+.article-body-ssr .md-admonition--example {
+    --admonition-accent: #9a6b2f;
+    --admonition-bg: #fff8ef;
+    --admonition-border: #ead8bf;
+}
+
+.article-body-ssr .md-admonition--summary {
+    --admonition-accent: #0d9488;
+    --admonition-bg: #effcfa;
+    --admonition-border: #c2eee8;
+}
+
+/* 行内代码 */
+.article-body-ssr code {
+    font-family: "JetBrains Mono", SFMono-Regular, Consolas, "Liberation Mono", Menlo, monospace;
+    font-size: 0.92em;
+    background-color: #f3f4f6;
+    color: #c7254e;
+    padding: 2px 6px;
+    border-radius: 3px;
+}
+
+/* ============================================================
+ * 代码块
+ * ============================================================ */
+.article-body-ssr .ssr-code-block {
+    margin: 1em 0;
+    border-radius: 6px;
+    background-color: #24292e;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08);
+    overflow: hidden;
+}
+
+.article-body-ssr .ssr-code-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 6px 14px;
+    background-color: #21252b;
+    border-bottom: 1px solid #181a1f;
+    font-family: "JetBrains Mono", SFMono-Regular, Consolas, "Liberation Mono", Menlo, monospace;
+    font-size: 12px;
+    color: #828a96;
+    user-select: none;
+}
+
+.article-body-ssr .ssr-code-lang {
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    font-weight: 600;
+}
+
+/* ============================================================
+ * .ssr-code-iconbtn —— 头部图标按钮统一基类
+ * ============================================================ */
+.article-body-ssr .ssr-code-iconbtn {
+    appearance: none;
+    border: 0;
+    background: transparent;
+    color: #828a96;
+    width: 30px;
+    height: 26px;
+    padding: 0;
+    border-radius: 4px;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    transition: background-color 0.15s ease, color 0.15s ease;
+    line-height: 1;
+    flex: 0 0 auto;
+}
+
+.article-body-ssr .ssr-code-iconbtn:hover {
+    color: #e5e7eb;
+    background-color: #2c313a;
+}
+
+.article-body-ssr .ssr-code-iconbtn:active {
+    background-color: #3a3f4a;
+}
+
+/* ============================================================
+ * 复制按钮：3 状态 SVG 切换（default / success / error）
+ * ============================================================ */
+.article-body-ssr .ssr-code-copy-icon {
+    display: none;
+}
+.article-body-ssr .ssr-code-copy:not([data-copy-state]) .ssr-code-copy-icon--default {
+    display: block;
+}
+.article-body-ssr .ssr-code-copy[data-copy-state="success"] {
+    color: #98c379;
+}
+.article-body-ssr .ssr-code-copy[data-copy-state="success"] .ssr-code-copy-icon--success {
+    display: block;
+}
+.article-body-ssr .ssr-code-copy[data-copy-state="error"] {
+    color: #e06c75;
+}
+.article-body-ssr .ssr-code-copy[data-copy-state="error"] .ssr-code-copy-icon--error {
+    display: block;
+}
+
+/* ============================================================
+ * 折叠（半折叠 + 渐变蒙层 + 头部 / 浮动两枚按钮）
+ * ============================================================ */
+
+/* 头部右侧操作区：把"收起"和"复制"并列放在这里 */
+.article-body-ssr .ssr-code-actions {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+/* 通用 toggle 按钮：胶囊形态，颜色和复制按钮一致 */
+.article-body-ssr .ssr-code-toggle {
+    appearance: none;
+    border: 0;
+    cursor: pointer;
+    user-select: none;
+    line-height: 1.4;
+    transition: background-color 0.15s ease, color 0.15s ease,
+        border-color 0.15s ease;
+}
+
+/* —— 头部折叠按钮：单按钮常驻，通过内部 SVG 旋转表达展开/收起 —— */
+.article-body-ssr .ssr-code-toggle--head {
+    display: inline-flex;
+}
+
+/* 只旋转图标包裹层，不旋转按钮本身，这样 hover/active 背景保持稳定不跟着转。 */
+.article-body-ssr .ssr-code-toggle-icon-wrap {
+    width: 23px;
+    height: 23px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    transform: rotate(0deg);
+    transform-origin: 50% 50%;
+    transition: transform 0.24s ease;
+    will-change: transform;
+}
+
+/* 图标本身保持静止并设为块级，避免 inline svg 基线参与布局时带来视觉抖动。 */
+.article-body-ssr .ssr-code-toggle-icon {
+    display: block;
+    width: 23px;
+    height: 23px;
+}
+
+/* 兼容旧版缓存里的头部按钮结构：
+   老 HTML 是 button > svg，没有中间的 wrap，也没有 .ssr-code-toggle-icon 类名。
+   这里仅对“直接子级 svg”补上同款旋转动画，避免刷新命中旧缓存时按钮不旋转。 */
+.article-body-ssr .ssr-code-toggle--head > svg {
+    transform: rotate(0deg);
+    transform-origin: 50% 50%;
+    transition: transform 0.24s ease;
+    will-change: transform;
+    display: block;
+    width: 23px;
+    height: 23px;
+}
+
+/* 兼容旧版 SSR / SWR 缓存：
+   历史 HTML 里头部会额外带一个 .ssr-code-toggle--head-expand 按钮。
+   即便刷新命中旧缓存，也先在样式层把它强制隐藏，避免用户看到双三角。 */
+.article-body-ssr .ssr-code-toggle--head-expand {
+    display: none !important;
+}
+
+/* —— 浮动「展开全部」按钮：胶囊形态，浮在蒙层中央 ——
+   尺寸跟随头部图标按钮按比例放大：font-size 13→14、padding 6×18→8×22、bottom 14→18 */
+.article-body-ssr .ssr-code-toggle--floating {
+    position: absolute;
+    left: 50%;
+    bottom: 18px;
+    transform: translateX(-50%);
+    background-color: rgba(40, 44, 52, 0.92);
+    color: #e5e7eb;
+    border: 1px solid rgba(255, 255, 255, 0.18);
+    padding: 8px 22px;
+    border-radius: 999px;
+    font-size: 14px;
+    backdrop-filter: blur(2px);
+    z-index: 1;
+    /* 折叠态显示；展开态隐藏 */
+    display: block;
+}
+.article-body-ssr .ssr-code-toggle--floating:hover {
+    background-color: rgba(56, 60, 70, 0.96);
+    border-color: rgba(255, 255, 255, 0.28);
+}
+.article-body-ssr .ssr-code-toggle--floating:active {
+    background-color: rgba(70, 75, 86, 0.96);
+}
+
+/* —— 折叠态默认参数（PC 端：默认展示 20 行） —— */
+.article-body-ssr .ssr-code-block[data-collapsible="true"] {
+    --ssr-code-collapsed-rows: 20;
+}
+
+/* body：相对定位容器，承载 max-height 裁剪 + 蒙层 + 浮动按钮 */
+.article-body-ssr .ssr-code-body {
+    position: relative;
+}
+
+/* 折叠态：max-height 裁剪 + overflow hidden */
+.article-body-ssr
+    .ssr-code-block[data-collapsible="true"][data-collapsed="true"]
+    .ssr-code-body {
+    max-height: calc(
+        var(--ssr-code-collapsed-rows) * 1.55 * 14px + 12px * 2
+    );
+    overflow: hidden;
+}
+
+/* 渐变蒙层：仅在折叠态显示（展开态通过下方规则隐藏） */
+.article-body-ssr .ssr-code-mask {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    height: 80px;
+    pointer-events: none;
+    background: linear-gradient(
+        to bottom,
+        rgba(40, 44, 52, 0) 0%,
+        rgba(40, 44, 52, 0.85) 65%,
+        rgba(40, 44, 52, 1) 100%
+    );
+    transition: opacity 0.2s ease;
+}
+
+/* —— 展开态：只旋转固定尺寸的图标包裹层，避免按钮背景跟着旋转。 —— */
+.article-body-ssr
+    .ssr-code-block[data-collapsible="true"][data-collapsed="false"]
+    .ssr-code-toggle-icon-wrap {
+    transform: rotate(180deg);
+}
+.article-body-ssr
+    .ssr-code-block[data-collapsible="true"][data-collapsed="false"]
+    .ssr-code-toggle--head > svg {
+    transform: rotate(180deg);
+}
+.article-body-ssr
+    .ssr-code-block[data-collapsible="true"][data-collapsed="false"]
+    .ssr-code-toggle--floating {
+    display: none;
+}
+.article-body-ssr
+    .ssr-code-block[data-collapsible="true"][data-collapsed="false"]
+    .ssr-code-mask {
+    display: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .article-body-ssr .ssr-code-toggle-icon-wrap {
+        transition: none;
+    }
+    .article-body-ssr .ssr-code-toggle--head > svg {
+        transition: none;
+    }
+}
+
+/* —— 全屏按钮：从 .ssr-code-iconbtn 继承外形，这里只控制"仅移动端可见" ——
+   PC 端 display: none；移动端 media query 内切回 inline-flex */
+.article-body-ssr .ssr-code-fullscreen {
+    display: none;
+}
+
+/* ============================================================
+ * 全屏蒙层（移动端「伪横屏」查看代码）
+ * ============================================================ */
+.ssr-code-fs-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 9999;
+    background-color: #1c1f24;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+    /* 防止 iOS Safari 出现地址栏弹回时的留白 */
+    height: 100dvh;
+}
+
+/* 旋转舞台：宽高互换实现"竖屏当横屏用" */
+.ssr-code-fs-stage {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    /* 用 dvh/dvw 而非 vh/vw，规避 iOS Safari 地址栏抖动 */
+    width: 100dvh;
+    height: 100dvw;
+    transform: translate(-50%, -50%) rotate(90deg);
+    transform-origin: center center;
+    background-color: #24292e;
+    display: flex;
+    flex-direction: column;
+}
+
+/* 全屏内顶部工具条：右侧 × 关闭，左侧语言/行数提示 */
+.ssr-code-fs-head {
+    flex: 0 0 auto;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 3px 14px;
+    background-color: #21252b;
+    border-bottom: 1px solid #181a1f;
+    color: #828a96;
+    font-size: 12px;
+    font-family: "JetBrains Mono", SFMono-Regular, Consolas, "Liberation Mono", Menlo, monospace;
+    user-select: none;
+}
+
+.ssr-code-fs-info {
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    font-weight: 600;
+    font-size: 13px;
+}
+
+.ssr-code-fs-actions {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+/* 全屏蒙层里的图标按钮：因为蒙层 DOM 在 body 下、不在 .article-body-ssr 内，
+   这里需要单独再声明一遍颜色 / hover / state 规则；同时按钮略放大到 34×30，
+   让移动端全屏态下的复制 / 关闭更容易点击。 */
+.ssr-code-fs-actions .ssr-code-iconbtn {
+    appearance: none;
+    border: 0;
+    background: transparent;
+    color: #828a96;
+    width: 34px;
+    height: 30px;
+    padding: 0;
+    border-radius: 4px;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    transition: background-color 0.15s ease, color 0.15s ease;
+    line-height: 1;
+    flex: 0 0 auto;
+}
+.ssr-code-fs-actions .ssr-code-iconbtn > svg {
+    width: 18px;
+    height: 18px;
+    flex: 0 0 auto;
+}
+.ssr-code-fs-actions .ssr-code-iconbtn:hover {
+    color: #e5e7eb;
+    background-color: #2c313a;
+}
+.ssr-code-fs-actions .ssr-code-iconbtn:active {
+    background-color: #3a3f4a;
+}
+
+/* 全屏蒙层里的复制按钮：3 状态 SVG 切换（与文章内复制按钮相同逻辑） */
+.ssr-code-fs-actions .ssr-code-copy-icon {
+    display: none;
+}
+.ssr-code-fs-actions .ssr-code-copy:not([data-copy-state]) .ssr-code-copy-icon--default {
+    display: block;
+}
+.ssr-code-fs-actions .ssr-code-copy[data-copy-state="success"] {
+    color: #98c379;
+}
+.ssr-code-fs-actions .ssr-code-copy[data-copy-state="success"] .ssr-code-copy-icon--success {
+    display: block;
+}
+.ssr-code-fs-actions .ssr-code-copy[data-copy-state="error"] {
+    color: #e06c75;
+}
+.ssr-code-fs-actions .ssr-code-copy[data-copy-state="error"] .ssr-code-copy-icon--error {
+    display: block;
+}
+
+/* 全屏内代码区：可滚动
+   注意：line-height / font-size / padding 全部对齐移动端常规态
+   （.article-body-ssr .ssr-code-block .ssr-code-pre 在 max-width:576px 下的取值），
+   保证用户从竖屏切到伪横屏时，每行视觉间距、字号完全一致，避免"突然变大"的违和感。 */
+.ssr-code-fs-pre {
+    flex: 1 1 auto;
+    margin: 0;
+    padding: 10px 0 16px;
+    overflow: auto;
+    background-color: #24292e;
+    line-height: 1.55;
+    font-size: 13px;
+    font-family: "JetBrains Mono", SFMono-Regular, Consolas, "Liberation Mono", Menlo, monospace;
+    -webkit-overflow-scrolling: touch;
+    /* 与常规态保持一致的 tab 宽度，避免横竖屏切换时缩进宽度变化造成视觉跳动 */
+    tab-size: 4;
+    -moz-tab-size: 4;
+    /* 自定义滚动条（Firefox） */
+    scrollbar-width: thin;
+    scrollbar-color: rgba(255, 255, 255, 0.28) transparent;
+}
+
+.ssr-code-fs-pre code.hljs {
+    background-color: transparent;
+    /* 默认前景色：与 Shiki github-dark 主题前景色对齐
+       （Shiki 输出的 token 都带 inline color，这里只是兜底"未着色 token / 空白"的默认色） */
+    color: #e1e4e8;
+    padding: 0;
+    display: block;
+    white-space: pre;
+    counter-reset: ssr-line;
+}
+
+/* 全屏态行号样式：与移动端常规态保持完全一致
+   （padding-left 44px、行号槽 34px），避免横竖屏切换时"行号槽宽度变化"的违和感。 */
+.ssr-code-fs-pre .ssr-code-line {
+    display: block;
+    padding-left: 44px;
+    position: relative;
+    counter-increment: ssr-line;
+    font-family: "JetBrains Mono", SFMono-Regular, Consolas, "Liberation Mono", Menlo, monospace;
+    font-size: inherit;
+    line-height: inherit;
+}
+
+.ssr-code-fs-pre .ssr-code-line:empty::after {
+    content: "\200B";
+}
+
+.ssr-code-fs-pre .ssr-code-line::before {
+    content: counter(ssr-line);
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 34px;
+    padding-right: 6px;
+    text-align: right;
+    color: #5c6370;
+    user-select: none;
+    pointer-events: none;
+    font-variant-numeric: tabular-nums;
+    font-family: "JetBrains Mono", SFMono-Regular, Consolas, "Liberation Mono", Menlo, monospace;
+    font-size: inherit;
+    line-height: inherit;
+}
+
+/* 实际承载代码的 pre：去掉默认 margin，由父容器统一处理
+   关键：水平滚动只发生在 .ssr-code-pre（右列），
+   左侧 .ssr-code-gutter 完全不参与滚动，
+   所以底部水平滚动条只出现在代码区域下方，不会延伸到行号槽。
+   padding-bottom 故意比 padding-top 大：为水平滚动条预留视觉缓冲带，
+   滚动条始终落在 padding 区，不会遮挡代码字符。 */
+.article-body-ssr .ssr-code-block .ssr-code-pre {
+    flex: 1 1 auto;
+    min-width: 0; /* flex 子项默认 min-width: auto，会撑爆容器，必须显式 0 */
+    margin: 0;
+    padding: 10px 0 10px 0;
+    background-color: transparent;
+    overflow-x: auto;
+    line-height: 1.55;
+    font-size: 14px;
+    box-shadow: none;
+    border-radius: 0;
+    /* tab 缩进宽度：CSS 规范默认是 8 字符，但 Go/Python 等语言习惯一个 tab = 4 空格，
+       用户笔记里 Go 源码用 \t 缩进时若不显式声明，默认 8 格会让"4 空格缩进"看起来变成"8 空格缩进"。
+       同步设置 -moz-tab-size 兼容旧版 Firefox（虽然 91+ 已支持标准 tab-size）。 */
+    tab-size: 4;
+    -moz-tab-size: 4;
+    scrollbar-width: thin;
+    scrollbar-color: rgba(255, 255, 255, 0.28) transparent;
+    overscroll-behavior-x: contain;
+}
+
+/* ============================================================
+ * 自定义水平滚动条样式（WebKit / Blink）
+ * ------------------------------------------------------------
+ * 设计目标：
+ * 1) 颜色：白色半透明（深色代码块背景下清晰可见，又不刺眼）
+ *    - 静态：rgba(255,255,255,0.28) 默认状态低调
+ *    - hover：rgba(255,255,255,0.55) 提升可见度但仍不喧宾夺主
+ * 2) 尺寸：6px，比常规 8/10px 更纤细
+ * 3) 不遮挡代码：通过显式声明 height + 给 .ssr-code-pre 加大 padding-bottom 实现：
+ *    - 显式 height 让 WebKit 走"经典占位滚动条"，不再 hover 变粗
+ *    - padding-bottom: 18px 给滚动条留出视觉缓冲，6px 滚动条 + 12px 间隔
+ * ============================================================ */
+.article-body-ssr .ssr-code-block .ssr-code-pre::-webkit-scrollbar,
+.ssr-code-fs-pre::-webkit-scrollbar {
+    height: 6px;
+    width: 6px;
+}
+.article-body-ssr .ssr-code-block .ssr-code-pre::-webkit-scrollbar-track,
+.ssr-code-fs-pre::-webkit-scrollbar-track {
+    background: transparent;
+}
+.article-body-ssr .ssr-code-block .ssr-code-pre::-webkit-scrollbar-thumb,
+.ssr-code-fs-pre::-webkit-scrollbar-thumb {
+    background-color: rgba(255, 255, 255, 0.28);
+    border-radius: 3px;
+}
+.article-body-ssr .ssr-code-block .ssr-code-pre::-webkit-scrollbar-thumb:hover,
+.ssr-code-fs-pre::-webkit-scrollbar-thumb:hover {
+    background-color: rgba(255, 255, 255, 0.55);
+}
+.article-body-ssr .ssr-code-block .ssr-code-pre::-webkit-scrollbar-corner,
+.ssr-code-fs-pre::-webkit-scrollbar-corner {
+    background: transparent;
+}
+
+/* ============================================================
+ * 表格全屏（移动端伪横屏）
+ * ------------------------------------------------------------
+ * 与代码块全屏（.ssr-code-fs-*）共用伪横屏底层方案：
+ * - 蒙层 position: fixed; inset: 0; 占满 viewport
+ * - 内部 stage 用 transform: rotate(90deg) 旋转 90 度，宽高互换
+ * - 使用 dvh/dvw 规避 iOS Safari 地址栏抖动
+ * 差异：
+ * - 内容区不是代码 <pre>，而是承载 <table> 的滚动容器，需要 overflow: auto
+ * - 顶部 head 多一行"提示横屏"小条，让用户在横屏后视觉密度最大化
+ * ============================================================ */
+.ssr-table-fs-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 9999;
+    background-color: #1c1f24;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+    height: 100dvh;
+}
+
+.ssr-table-fs-stage {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 100dvh;
+    height: 100dvw;
+    transform: translate(-50%, -50%) rotate(90deg);
+    transform-origin: center center;
+    background-color: #f8f9fa;
+    display: flex;
+    flex-direction: column;
+}
+
+.ssr-table-fs-head {
+    flex: 0 0 auto;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 2px 14px;
+    background-color: #21252b;
+    color: #e1e4e8;
+    font-size: 12px;
+    line-height: 1.2;
+    user-select: none;
+}
+
+.ssr-table-fs-info {
+    letter-spacing: 0.5px;
+    font-weight: 600;
+}
+
+.ssr-table-fs-actions {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+/* 全屏蒙层里的关闭按钮：与代码块全屏的 .ssr-code-iconbtn 视觉对齐，
+   但高度比代码块版本进一步收紧（22px vs 26px），让 head 整体更窄。 */
+.ssr-table-fs-actions .ssr-code-iconbtn {
+    appearance: none;
+    border: 0;
+    background: transparent;
+    color: #828a96;
+    width: 26px;
+    height: 22px;
+    padding: 0;
+    border-radius: 4px;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    transition: background-color 0.15s ease, color 0.15s ease;
+}
+.ssr-table-fs-actions .ssr-code-iconbtn:hover {
+    color: #e5e7eb;
+    background-color: #2c313a;
+}
+.ssr-table-fs-actions .ssr-code-iconbtn:active {
+    background-color: #3a3f4a;
+}
+
+.ssr-table-fs-body {
+    flex: 1 1 auto;
+    overflow: auto;
+    -webkit-overflow-scrolling: touch;
+    padding: 0;
+    background-color: #f8f9fa;
+}
+
+/* 全屏表格本身：自然宽度 + 完整外框，无圆角，贴边显示 */
+.ssr-table-fs-body table {
+    width: max-content;
+    min-width: 100%;
+    border-collapse: separate;
+    border-spacing: 0;
+    background-color: #fff;
+    border: 1px solid #4a6079;
+    border-radius: 0;
+    overflow: hidden;
+    font-size: 14px;
+}
+.ssr-table-fs-body th {
+    color: #fff;
+    word-break: normal;
+    text-align: center;
+    font-weight: 700;
+    background-color: #4a6079;
+    border: 0;
+    border-right: 1px solid rgba(255, 255, 255, 0.18);
+    padding: 10px 12px;
+    letter-spacing: 0.02em;
+    white-space: normal;
+}
+.ssr-table-fs-body td {
+    text-align: left;
+    border: 0;
+    border-right: 1px solid #d8dee5;
+    border-bottom: 1px solid #d8dee5;
+    padding: 8px 12px;
+    color: #333;
+    white-space: normal;
+}
+.ssr-table-fs-body th:last-child,
+.ssr-table-fs-body td:last-child {
+    border-right: 0;
+}
+.ssr-table-fs-body tbody tr:last-child td {
+    border-bottom: 0;
+}
+.ssr-table-fs-body tr:nth-child(even) td {
+    background-color: #fafafa;
+}
+.ssr-table-fs-body tbody tr:hover td {
+    background-color: #f3f6f8;
+}
+
+.article-body-ssr .ssr-code-block .ssr-code-pre code.hljs {
+    background-color: transparent;
+    /* 与 Shiki github-dark 主题前景色对齐 */
+    color: #e1e4e8;
+    padding: 0;
+    padding-right: 2px;
+    border-radius: 0;
+    /* 关键：font-size/line-height 必须 inherit 自 .ssr-code-pre，
+       这样 PC（14px）与移动端（13px）的字号会随父元素自动切换，
+       避免与左侧 .ssr-code-gutter 出现"行高不一致 → 行号错位"的 bug。 */
+    font-size: inherit;
+    line-height: inherit;
+    font-family: "JetBrains Mono", SFMono-Regular, Consolas, "Liberation Mono", Menlo, monospace;
+    display: inline-block;
+    min-width: 100%;
+    box-sizing: border-box;
+    white-space: pre;
+}
+
+/* ============================================================
+ * 双列布局：左 .ssr-code-gutter 固定行号 + 右 .ssr-code-pre 可横滚
+ * ------------------------------------------------------------
+ * 为什么这样设计：
+ * - 老方案是 .ssr-code-line::before 在 <pre> 内部画行号，水平滚动条会
+ *   贯穿整个代码块（视觉上滚动条左端紧贴代码块外框）；
+ * - 新方案把行号抽成独立 DOM 列，<pre> 单独 overflow-x: auto，
+ *   滚动条只出现在代码列下方，与 VSCode / GitHub 常见样式一致。
+ * - .ssr-code-pane 是 flex，左列定宽、右列 flex:1 + min-width:0 防溢出。
+ * ============================================================ */
+.article-body-ssr .ssr-code-pane {
+    display: flex;
+    align-items: stretch;
+}
+
+.article-body-ssr .ssr-code-gutter {
+    flex: 0 0 auto;
+    padding: 12px 8px 12px 14px;
+    width: 44px;
+    box-sizing: border-box;
+    background-color: transparent;
+    color: #5c6370;
+    user-select: none;
+    pointer-events: none;
+    text-align: right;
+    font-family: "JetBrains Mono", SFMono-Regular, Consolas, "Liberation Mono", Menlo, monospace;
+    font-size: 14px;
+    line-height: 1.55;
+    font-variant-numeric: tabular-nums;
+}
+
+.article-body-ssr .ssr-code-num {
+    display: block;
+}
+
+/* 单行：行号已迁出到 gutter，这里清掉左 padding 与伪元素 */
+.article-body-ssr .ssr-code-line {
+    display: block;
+    position: relative;
+    /* 关键：显式继承 pre/code 的 monospace 与字号，避免 span 在某些字体回退栈下变 sans-serif */
+    font-family: "JetBrains Mono", SFMono-Regular, Consolas, "Liberation Mono", Menlo, monospace;
+    font-size: inherit;
+    line-height: inherit;
+}
+
+/* 空行修复：当 markdown 源码里有空行时，对应 span 没有 inline content，
+   按 CSS 规范不会生成行盒，高度塌缩为 0，导致相邻多个空行的行号画在同一像素位置上看起来"合并"。
+   给 :empty 的 span 插一个零宽空格作为 inline 内容，它就会按 line-height 撑起一行的高度。
+   选 \200B 是因为：① 不可见 ② textContent 复制时虽然会带上但视觉无影响 ③ 不影响选区。 */
+.article-body-ssr .ssr-code-line:empty::after {
+    content: "\200B";
+}
+
+/* 兼容老的 .article-body-ssr pre（极少数 markdown 用缩进式代码块走 code_block 规则才会命中） */
+.article-body-ssr pre:not(.ssr-code-pre) {
+    margin: 1em 0;
+    padding: 16px 18px;
+    background-color: #24292e;
+    border-radius: 6px;
+    overflow-x: auto;
+    line-height: 1.55;
+    font-size: 14px;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08);
+    /* 与 fence 代码块保持一致：tab 渲染宽度 4 字符，避免缩进式代码块出现 8 格 tab */
+    tab-size: 4;
+    -moz-tab-size: 4;
+}
+
+.article-body-ssr pre:not(.ssr-code-pre) code {
+    background-color: transparent;
+    color: #abb2bf;
+    padding: 0;
+    border-radius: 0;
+    font-size: 14px;
+    font-family: "JetBrains Mono", SFMono-Regular, Consolas, "Liberation Mono", Menlo, monospace;
+    white-space: pre;
+    display: block;
+}
+
+/* 表格 */
+/* 表格双层 DOM 容器：
+   - .ssr-table-wrap：外层，position: relative 作为全屏按钮的定位参照系，自身不滚动；
+     这样按钮 right: 4px 始终对齐"屏幕可见的 wrap 右边缘"，不会随表格横滑漂移。
+   - .ssr-table-scroll：内层，真正承担横向滚动 (overflow-x: auto)。
+   PC 端外层宽度撑满 100%，仅在表格真的超过容器宽度时由内层出现滚动条；
+   移动端 ≤576px 表格 width 改为 max-content，强制走内层的横向滚动，避免 cell 被挤压。
+   双层 DOM 由 markdown 渲染管线（utils/markdown.ts 中 table_open/close）注入。 */
+.article-body-ssr .ssr-table-wrap {
+    width: 100%;
+    margin: 1em 0;
+    position: relative;
+}
+.article-body-ssr .ssr-table-scroll {
+    width: 100%;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    /* 让滚动条不要紧贴底部 cell：iOS Safari 默认滚动条更短，留点呼吸空间 */
+    padding-bottom: 2px;
+}
+
+.article-body-ssr table {
+    width: 100%;
+    border-collapse: separate;
+    border-spacing: 0;
+    margin: 1em 0;
+    font-size: 14px;
+    background-color: #fff;
+    /* 与 H1 (#2c3e50) 同色系但更轻盈的藏青色，避免抢 H1 视觉权重 */
+    border: 1px solid #4a6079;
+    border-radius: 6px;
+    overflow: hidden;
+}
+
+/* 包裹层内部的 table：margin 由 wrap 接管，避免双倍上下间距 */
+.article-body-ssr .ssr-table-wrap table {
+    margin: 0;
+}
+
+/* 表格全屏入口按钮（SSR 注入）：默认隐藏，CSS 仅在"移动端 + wrap 真的横向溢出"时显示，
+   避免给小表格也暴露入口，保持视觉简洁。
+   data-overflow="true" 由 [id].vue 的 ResizeObserver 在客户端检测后注入到外层 wrap。
+   按钮挂在 .ssr-table-wrap（不滚动层）上，right: 4px 永远锚定屏幕可见的 wrap 右上角，
+   表格在 .ssr-table-scroll 内滚动也不会让按钮位移。 */
+.article-body-ssr .ssr-table-fs-btn {
+    appearance: none;
+    border: 0;
+    background: rgba(255, 255, 255, 0.55);
+    color: #4a5568;
+    width: 30px;
+    height: 26px;
+    padding: 0;
+    border-radius: 4px;
+    cursor: pointer;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    position: absolute;
+    top: 4px;
+    right: 4px;
+    z-index: 2;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08);
+    transition: background-color 0.15s ease, color 0.15s ease;
+}
+.article-body-ssr .ssr-table-fs-btn:hover {
+    /* hover 时再加深到接近不透明，给出明确反馈 */
+    background-color: rgba(255, 255, 255, 0.9);
+    color: #1a202c;
+}
+.article-body-ssr .ssr-table-fs-btn:active {
+    background-color: #edf2f7;
+}
+
+.article-body-ssr table th {
+    color: #fff;
+    word-break: normal;
+    text-align: center;
+    font-weight: 700;
+    /* 表头：与 H1 (#2c3e50) 同色系但更轻盈的藏青色，避免大面积深色块抢标题权重 */
+    background-color: #4a6079;
+    border: 0;
+    border-right: 1px solid rgba(255, 255, 255, 0.18);
+    padding: 10px 12px;
+    letter-spacing: 0.02em;
+}
+
+.article-body-ssr table td {
+    text-align: left;
+    border: 0;
+    border-right: 1px solid #d8dee5;
+    border-bottom: 1px solid #d8dee5;
+    padding: 8px 12px;
+    color: #333;
+}
+
+.article-body-ssr table th:last-child,
+.article-body-ssr table td:last-child {
+    border-right: 0;
+}
+
+.article-body-ssr table tbody tr:last-child td {
+    border-bottom: 0;
+}
+
+.article-body-ssr table tr:nth-child(even) td {
+    background-color: #fafafa;
+}
+
+.article-body-ssr table tbody tr:hover td {
+    background-color: #f3f6f8;
+}
+
+/* 图片 */
+.article-body-ssr img {
+    max-width: 100%;
+    height: auto;
+    display: block;
+    margin: 1em auto;
+    border: 0;
+    border-radius: 4px;
+}
+
+/* 分割线：使用极轻的浅灰，作为段落间的弱分隔，不抢正文视觉权重 */
+.article-body-ssr hr {
+    border: 0;
+    border-top: 1px solid #e5e7eb;
+    height: 0;
+    background: transparent;
+    margin: 1.6em 0;
+}
+
+/* ============================================================
+   文章正文与代码块的"渐变量"流式排版
+   ------------------------------------------------------------
+   p / li / pre / 代码块 head/gutter 的字号、padding 全部走 clamp，
+   320px ~ 1280px 平滑过渡，删除原"576px 跳变"的 media query。
+   只有"PC 默认隐藏全屏按钮 / 移动端显示"这一类二选一的结构性切换才保留下方 @media。
+   ============================================================ */
+.article-body-ssr p,
+.article-body-ssr li {
+    /* 流式：手机 14px，PC 16px */
+    font-size: clamp(14px, 13px + 0.3vw, 16px);
+    word-break: normal;
+}
+.article-body-ssr pre {
+    /* 流式：手机 12px padding + 13px 字号，PC 16px padding + 14px 字号 */
+    padding: clamp(12px, 8px + 1vw, 16px);
+    font-size: clamp(13px, 12px + 0.3vw, 14px);
+}
+.article-body-ssr .ssr-code-head {
+    padding: clamp(5px, 3px + 0.5vw, 8px) clamp(10px, 6px + 1vw, 14px);
+    font-size: clamp(11px, 10px + 0.3vw, 13px);
+}
+.article-body-ssr .ssr-code-block .ssr-code-pre {
+    padding: clamp(10px, 8px + 0.5vw, 14px) clamp(12px, 10px + 0.5vw, 16px) clamp(10px, 8px + 0.5vw, 14px) 0;
+    font-size: clamp(13px, 12px + 0.3vw, 14px);
+}
+.article-body-ssr .ssr-code-gutter {
+    padding: clamp(10px, 8px + 0.5vw, 14px) clamp(6px, 5px + 0.3vw, 8px) clamp(10px, 8px + 0.5vw, 14px) clamp(10px, 8px + 0.5vw, 14px);
+    width: clamp(34px, 30px + 1vw, 42px);
+    font-size: clamp(13px, 12px + 0.3vw, 14px);
+}
+
+/* 仅保留"结构性"二选一规则：移动端打开代码块全屏按钮 + 收紧折叠行数 */
+@media (max-width: 576px) {
+    /* 移动端正文代码块头部三按钮背景统一成 34×30，提升触控热区。 */
+    .article-body-ssr .ssr-code-actions .ssr-code-iconbtn {
+        width: 34px;
+        height: 30px;
+    }
+    /* 移动端开启全屏按钮显示；背景与其他按钮保持一致，但图标仍略大一档，
+       让"全屏=主操作"的视觉权重保留下来。 */
+    .article-body-ssr .ssr-code-fullscreen {
+        display: inline-flex;
+    }
+    .article-body-ssr .ssr-code-fullscreen > svg {
+        width: 20px;
+        height: 20px;
+        flex: 0 0 auto;
+    }
+    /* 移动端折叠态展示更少行（避免占满屏幕） */
+    .article-body-ssr .ssr-code-block[data-collapsible="true"] {
+        --ssr-code-collapsed-rows: 15;
+    }
+    .article-body-ssr
+        .ssr-code-block[data-collapsible="true"][data-collapsed="true"]
+        .ssr-code-body {
+        max-height: calc(
+            var(--ssr-code-collapsed-rows) * 1.55 * 13px + 10px * 2
+        );
+    }
+
+    /* 移动端表格强制保留自然宽度，由 .ssr-table-scroll 提供横向滚动。
+       不改 width 的话，table 仍会被父级压成 100%，cell 被挤成多行甚至溢出，
+       内层 overflow-x: auto 也无从触发。
+       注意：选择器用后代选择（不带 >），因为 DOM 是 wrap > scroll > table 三层。 */
+    .article-body-ssr .ssr-table-wrap table {
+        width: max-content;
+        min-width: 100%;
+    }
+    /* cell 内边距与字号同步收紧：让数据型表格能塞下更多列；
+       white-space: nowrap 强制单行展示，避免被压成多行影响阅读。 */
+    .article-body-ssr .ssr-table-wrap th,
+    .article-body-ssr .ssr-table-wrap td {
+        padding: 6px 8px;
+        font-size: 13px;
+        white-space: nowrap;
+    }
+
+    .article-body-ssr img.article-img {
+        background-color: #f1f3f5;
+    }
+
+    /* 表格全屏按钮：仅在移动端 + 表格确实溢出时（data-overflow="true"）才显示。
+       data-overflow 由 [id].vue 的 ResizeObserver 在客户端写入；首屏 SSR 时该属性不存在，
+       按钮保持 display: none 状态，避免短暂闪现。 */
+    .article-body-ssr .ssr-table-wrap[data-overflow="true"] .ssr-table-fs-btn {
+        display: inline-flex;
+    }
+}
+
+/* ============================================================
+   Mermaid 图表
+   ------------------------------------------------------------
+   SSR 阶段输出占位 .mermaid-block + 内嵌 <pre class="mermaid-source">，
+   客户端 mermaid.render 生成 svg 后整段替换 innerHTML。
+   两套样式：未渲染态（展示源码，类似代码块）+ 已渲染态（svg 居中 + 限宽）。
+   ============================================================ */
+.article-body-ssr .mermaid-block {
+    position: relative;
+    margin: 1em 0;
+    /* 流式 padding：手机 8px ~ PC 12px，连续过渡 */
+    padding: clamp(8px, 6px + 0.5vw, 12px);
+    background-color: #fafbfc;
+    border: 1px solid #e1e4e8;
+    border-radius: 6px;
+    text-align: center;
+    overflow-x: auto;
+}
+
+/* 右上角全屏按钮：与表格全屏按钮 .ssr-table-fs-btn 视觉对齐
+   （半透明白底、无边框、浅阴影、hover 加深、active 浅灰反馈），
+   保持文章内"全屏入口"统一观感。 */
+.article-body-ssr .mermaid-fullscreen-btn {
+    appearance: none;
+    border: 0;
+    background: rgba(255, 255, 255, 0.55);
+    color: #4a5568;
+    width: 30px;
+    height: 26px;
+    padding: 0;
+    border-radius: 4px;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    position: absolute;
+    top: 4px;
+    right: 4px;
+    z-index: 2;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08);
+    transition: background-color 0.15s ease, color 0.15s ease;
+}
+.article-body-ssr .mermaid-fullscreen-btn:hover {
+    background-color: rgba(255, 255, 255, 0.9);
+    color: #1a202c;
+}
+.article-body-ssr .mermaid-fullscreen-btn:active {
+    background-color: #edf2f7;
+}
+
+/* 未渲染态：隐藏源码 pre，避免刷新时短暂闪一段深色源码块。
+   - JS 仍能从 DOM 里读到 .mermaid-source.textContent 用于 mermaid.render
+   - 视觉上用 .mermaid-content::before 显示轻量 loading 占位，给容器一个稳定高度，
+     防止 svg 回填时页面发生明显跳动
+   - 渲染完成（data-mermaid-rendered="true"）后，整段 innerHTML 被 svg 或 .mermaid-error 替换，
+     ::before 占位自然失效，无需额外清理。 */
+.article-body-ssr .mermaid-block[data-mermaid-rendered="false"] .mermaid-source {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: 0;
+    padding: 0;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    visibility: hidden;
+}
+
+.article-body-ssr .mermaid-block[data-mermaid-rendered="false"] .mermaid-content {
+    min-height: 80px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+/* loading 文字：默认透明，250ms 后才淡入显示。
+   mermaid 在快速网络下通常 < 250ms 就完成渲染，此时 svg 直接替换 innerHTML、
+   ::before 一同消失，用户全程看不到"加载中"文字 → 几乎无感知；
+   只有真的慢的时候（图表复杂或网络慢）才出现，避免长时间空白让人以为坏了。 */
+.article-body-ssr
+    .mermaid-block[data-mermaid-rendered="false"]
+    .mermaid-content::before {
+    content: "图表加载中…";
+    color: #909399;
+    font-size: 13px;
+    line-height: 1.5;
+    letter-spacing: 0.02em;
+    opacity: 0;
+    animation: mermaid-loading-fade-in 0.2s ease 0.25s forwards;
+}
+
+@keyframes mermaid-loading-fade-in {
+    to {
+        opacity: 1;
+    }
+}
+
+/* 已渲染态：svg 居中、保持原始尺寸或自适应宽度；
+   附带一段 0.18s 的 opacity 淡入，避免 innerHTML 替换瞬间"啪"地闪现。 */
+.article-body-ssr .mermaid-block[data-mermaid-rendered="true"] svg {
+    max-width: 100%;
+    height: auto;
+    display: inline-block;
+    animation: mermaid-svg-fade-in 0.18s ease both;
+}
+
+@keyframes mermaid-svg-fade-in {
+    from {
+        opacity: 0;
+    }
+    to {
+        opacity: 1;
+    }
+}
+
+/* mermaid 渲染失败时的降级展示 */
+.article-body-ssr .mermaid-block .mermaid-error {
+    text-align: left;
+    margin: 0;
+    padding: 12px;
+    background-color: #fff5f5;
+    color: #c53030;
+    border: 1px solid #fed7d7;
+    border-radius: 4px;
+    font-family: "JetBrains Mono", SFMono-Regular, Consolas, "Liberation Mono", Menlo, monospace;
+    font-size: 13px;
+    line-height: 1.55;
+    white-space: pre-wrap;
+    word-break: break-word;
+}
+
+/* （原 mermaid 移动端微调已并入流式 clamp，无需 media query） */
+
+/* ============================================================
+   数学公式（KaTeX）
+   ------------------------------------------------------------
+   - .math-block 是 SSR 包出来的"块级公式容器"，单独成段、居中、允许横向滚动
+     （某些超长公式 katex 输出宽度可能超过文章列宽）
+   - 行内公式由 katex 自身的 .katex 类负责，不需要单独样式
+   - .katex-error 用于 KaTeX 编译失败时的降级红字提示（见 utils/markdown.ts renderKatex）
+   ============================================================ */
+.article-body-ssr .math-block {
+    margin: 1em 0;
+    text-align: center;
+    overflow-x: auto;
+    overflow-y: hidden;
+    padding: 4px 0;
+}
+
+.article-body-ssr .math-block .katex-display {
+    margin: 0;
+}
+
+.article-body-ssr .katex-error {
+    color: #c53030;
+    background-color: #fff5f5;
+    border: 1px solid #fed7d7;
+    border-radius: 3px;
+    padding: 1px 4px;
+    font-family: "JetBrains Mono", SFMono-Regular, Consolas, "Liberation Mono", Menlo, monospace;
+    font-size: 0.95em;
+}
+
+/* ============================================================
+   Mermaid 全屏蒙层（带缩放/拖拽）
+   ------------------------------------------------------------
+   挂载到 document.body，与文章正文无样式作用域关系，所以选择器没有 .article-body-ssr 前缀。
+   层叠：z-index: 9999，比代码块全屏蒙层（如有冲突）也要稳定在前；
+   舞台 stage 撑满 viewport 减去顶部工具栏高度，canvas 用 transform 做缩放/平移。
+   ============================================================ */
+.mermaid-fs-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 9999;
+    background-color: rgba(255, 255, 255, 0.98);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    touch-action: none; /* 阻止浏览器默认双指缩放，把手势全部交给我们 */
+}
+
+/* 顶部工具栏：缩小 / 缩放比例 / 重置 / 放大 / 关闭 */
+.mermaid-fs-toolbar {
+    flex: 0 0 auto;
+    display: flex;
+    align-items: center;
+    /* 流式 gap：手机 6px，PC 8px */
+    gap: clamp(6px, 5px + 0.3vw, 8px);
+    /* 流式 padding：手机 8px/10px，PC 10px/14px */
+    padding: clamp(8px, 7px + 0.3vw, 10px) clamp(10px, 8px + 0.5vw, 14px);
+    background-color: #f6f8fa;
+    border-bottom: 1px solid #e1e4e8;
+    user-select: none;
+}
+
+.mermaid-fs-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    /* 流式按钮尺寸：手机 34px，PC 36px */
+    width: clamp(34px, 33px + 0.3vw, 36px);
+    height: clamp(34px, 33px + 0.3vw, 36px);
+    padding: 0;
+    border: 1px solid #d1d5da;
+    border-radius: 4px;
+    background-color: #fff;
+    color: #24292e;
+    cursor: pointer;
+    transition: background-color 0.15s ease, color 0.15s ease;
+}
+.mermaid-fs-btn:hover {
+    background-color: #f0f3f6;
+}
+.mermaid-fs-btn:active {
+    background-color: #e1e4e8;
+}
+
+/* 关闭按钮推到最右边 */
+.mermaid-fs-close {
+    margin-left: auto;
+}
+
+/* 缩放比例文字：等宽数字，避免抖动 */
+.mermaid-fs-scale {
+    /* 流式 min-width：手机 48px，PC 56px */
+    min-width: clamp(48px, 44px + 1vw, 56px);
+    text-align: center;
+    font-family: "JetBrains Mono", SFMono-Regular, Consolas, "Liberation Mono", Menlo, monospace;
+    /* 流式 font-size：手机 12px，PC 13px */
+    font-size: clamp(12px, 11px + 0.3vw, 13px);
+    color: #24292e;
+    font-variant-numeric: tabular-nums;
+}
+
+/* 舞台：放图表的可视区，cursor: grab 提示可拖动 */
+.mermaid-fs-stage {
+    flex: 1 1 auto;
+    position: relative;
+    overflow: hidden;
+    cursor: grab;
+    /* checker pattern 用低对比度背景，便于看清白色 svg 边界 */
+    background-color: #fafbfc;
+    background-image:
+        linear-gradient(45deg, #f0f3f6 25%, transparent 25%),
+        linear-gradient(-45deg, #f0f3f6 25%, transparent 25%),
+        linear-gradient(45deg, transparent 75%, #f0f3f6 75%),
+        linear-gradient(-45deg, transparent 75%, #f0f3f6 75%);
+    background-size: 20px 20px;
+    background-position: 0 0, 0 10px, 10px -10px, -10px 0;
+}
+
+/* canvas：被 transform 控制位置和缩放
+   - top:0/left:0 让 canvas 的 (0,0) 与 stage 的 (0,0) 对齐，
+     使 zoomAtPoint 的几何推导（屏幕坐标 = T + S * 局部坐标）成立；
+   - 初始居中由 JS 在挂载时通过 stage / svg 的 boundingRect 算出 tx/ty 实现，
+     不在 CSS 里做"top:50% + translate(-50%)"耦合，避免与 transform 复合后失真。
+   - transform-origin: 0 0 保证缩放点是 canvas 左上角，配合 zoomAtPoint 公式。 */
+.mermaid-fs-canvas {
+    position: absolute;
+    top: 0;
+    left: 0;
+    transform-origin: 0 0;
+    will-change: transform;
+}
+.mermaid-fs-canvas svg {
+    display: block;
+}
+
+/* 底部右下角的提示文字 */
+.mermaid-fs-tip {
+    position: absolute;
+    /* 流式定位：手机距边 8px，PC 14px */
+    right: clamp(8px, 6px + 0.5vw, 14px);
+    bottom: clamp(8px, 6px + 0.5vw, 12px);
+    /* 流式 padding：手机 3px/8px，PC 4px/10px */
+    padding: clamp(3px, 2px + 0.2vw, 4px) clamp(8px, 6px + 0.5vw, 10px);
+    background-color: rgba(36, 41, 46, 0.78);
+    color: #fff;
+    border-radius: 4px;
+    /* 流式：手机 11px ~ PC 12px */
+    font-size: clamp(11px, 10px + 0.3vw, 12px);
+    pointer-events: none;
+    user-select: none;
+}
+
+/* （原 mermaid-fs 的 @media (max-width:576px) 已并入流式 clamp，无需 media query） */
+
+/* ============================================================
+ * 文章图片：点击全屏暗示
+ * ------------------------------------------------------------
+ * markdown 渲染后所有正文图片会带 .article-img-zoomable，
+ * 这里只补 cursor: zoom-in 给 PC 用户视觉提示——
+ * 不做缩放/边框等持续视觉变化，避免长篇文章里图片"看起来有反应"的浮夸感。
+ * 触屏没有 hover 状态，移动端用户通过尝试点击发现可放大行为。
+ * ============================================================ */
+.article-body-ssr .article-img-zoomable {
+    cursor: zoom-in;
+}
+
+/* ============================================================
+ * 图片全屏蒙层（点击文章正文图片放大）
+ * ------------------------------------------------------------
+ * 视觉与 mermaid 全屏对齐（顶部工具栏 + 大舞台 + canvas 缩放），
+ * 但背景做成深色（#000 + 0.92 alpha），更适合看图细节。
+ * ============================================================ */
+.image-fs-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 9999;
+    background-color: rgba(0, 0, 0, 0.92);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    touch-action: none;
+}
+
+.image-fs-toolbar {
+    flex: 0 0 auto;
+    display: flex;
+    align-items: center;
+    /* 流式：手机 6px，PC 8px */
+    gap: clamp(6px, 5px + 0.3vw, 8px);
+    /* 流式 padding：手机 8px/10px，PC 10px/14px */
+    padding: clamp(8px, 7px + 0.3vw, 10px) clamp(10px, 8px + 0.5vw, 14px);
+    background-color: rgba(20, 22, 26, 0.95);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    user-select: none;
+}
+
+.image-fs-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    /* 流式按钮尺寸：手机 34px，PC 36px */
+    width: clamp(34px, 33px + 0.3vw, 36px);
+    height: clamp(34px, 33px + 0.3vw, 36px);
+    padding: 0;
+    border: 1px solid rgba(255, 255, 255, 0.18);
+    border-radius: 4px;
+    background-color: rgba(255, 255, 255, 0.06);
+    color: #e5e7eb;
+    cursor: pointer;
+    transition: background-color 0.15s ease, color 0.15s ease,
+        border-color 0.15s ease;
+}
+.image-fs-btn:hover {
+    background-color: rgba(255, 255, 255, 0.12);
+    border-color: rgba(255, 255, 255, 0.3);
+}
+.image-fs-btn:active {
+    background-color: rgba(255, 255, 255, 0.18);
+}
+
+.image-fs-close {
+    margin-left: auto;
+}
+
+/* spacer：把工具栏拆成"左：图集导航 / 右：缩放+关闭"两段。
+   单张时 .is-single 整段隐藏 prev/next/counter，spacer 退化为 0 宽度也无影响。 */
+.image-fs-spacer {
+    flex: 1 1 auto;
+}
+
+/* 计数器："1 / 8" 风格，等宽数字防抖动 */
+.image-fs-counter {
+    /* 流式：手机 44px，PC 56px */
+    min-width: clamp(44px, 38px + 1.5vw, 56px);
+    text-align: center;
+    font-family: "JetBrains Mono", SFMono-Regular, Consolas, "Liberation Mono", Menlo, monospace;
+    /* 流式：手机 12px，PC 13px */
+    font-size: clamp(12px, 11px + 0.3vw, 13px);
+    color: #e5e7eb;
+    font-variant-numeric: tabular-nums;
+    user-select: none;
+}
+
+/* 单张图片时隐藏图集导航相关元素 */
+.image-fs-toolbar.is-single .image-fs-prev,
+.image-fs-toolbar.is-single .image-fs-next,
+.image-fs-toolbar.is-single .image-fs-counter {
+    display: none;
+}
+
+.image-fs-scale {
+    /* 流式：手机 48px，PC 56px */
+    min-width: clamp(48px, 44px + 1vw, 56px);
+    text-align: center;
+    font-family: "JetBrains Mono", SFMono-Regular, Consolas, "Liberation Mono", Menlo, monospace;
+    /* 流式：手机 12px，PC 13px */
+    font-size: clamp(12px, 11px + 0.3vw, 13px);
+    color: #e5e7eb;
+    font-variant-numeric: tabular-nums;
+}
+
+.image-fs-stage {
+    flex: 1 1 auto;
+    position: relative;
+    overflow: hidden;
+    cursor: grab;
+    background-color: transparent;
+}
+
+/* 舞台内左右边缘的大按钮：浮动在画面两侧，不挡内容（半透明 + hover 加深）。
+   优点：移动端可点的箭头比顶部工具栏的小按钮更顺手。
+   z-index 高于 canvas，pointer-events 正常接收点击；
+   isolation 防止 image 与 stage 拖拽事件冒泡冲突。 */
+.image-fs-edge {
+    position: absolute;
+    top: 50%;
+    transform: translateY(-50%);
+    /* 流式按钮尺寸：手机 40px，PC 48px */
+    width: clamp(40px, 36px + 1vw, 48px);
+    height: clamp(40px, 36px + 1vw, 48px);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    border: 1px solid rgba(255, 255, 255, 0.18);
+    border-radius: 999px;
+    background-color: rgba(0, 0, 0, 0.45);
+    color: #fff;
+    cursor: pointer;
+    z-index: 2;
+    transition: background-color 0.15s ease, border-color 0.15s ease,
+        transform 0.15s ease;
+}
+.image-fs-edge:hover {
+    background-color: rgba(0, 0, 0, 0.7);
+    border-color: rgba(255, 255, 255, 0.35);
+}
+.image-fs-edge:active {
+    transform: translateY(-50%) scale(0.95);
+}
+.image-fs-edge--prev {
+    /* 流式：手机距边 8px，PC 16px */
+    left: clamp(8px, 4px + 1vw, 16px);
+}
+.image-fs-edge--next {
+    right: clamp(8px, 4px + 1vw, 16px);
+}
+.image-fs-edge.is-hidden {
+    display: none;
+}
+
+/* canvas：与 mermaid 全屏同款 transform-origin + absolute 定位约束。
+   transform-origin: 0 0 是 zoomAtPoint 公式成立的前提。 */
+.image-fs-canvas {
+    position: absolute;
+    top: 0;
+    left: 0;
+    transform-origin: 0 0;
+    will-change: transform;
+}
+.image-fs-canvas .image-fs-img {
+    display: block;
+    /* 防止图片被浏览器拖拽出舞台 */
+    -webkit-user-drag: none;
+    user-select: none;
+    /* 全屏态下不再用 zoom-in cursor，由 stage 的 grab/grabbing 接管 */
+    cursor: inherit;
+    /* 透明背景下加一个微弱阴影提升边界辨识度 */
+    box-shadow: 0 8px 28px rgba(0, 0, 0, 0.4);
+}
+
+.image-fs-tip {
+    position: absolute;
+    /* 流式定位：手机距边 8px，PC 14px */
+    right: clamp(8px, 6px + 0.5vw, 14px);
+    bottom: clamp(8px, 6px + 0.5vw, 12px);
+    /* 流式 padding：手机 3px/8px，PC 4px/10px */
+    padding: clamp(3px, 2px + 0.2vw, 4px) clamp(8px, 6px + 0.5vw, 10px);
+    background-color: rgba(255, 255, 255, 0.12);
+    color: #e5e7eb;
+    border-radius: 4px;
+    /* 流式：手机 11px ~ PC 12px */
+    font-size: clamp(11px, 10px + 0.3vw, 12px);
+    pointer-events: none;
+    user-select: none;
+}
+
+/* ============================================================ */
+/* 脚注（markdown-it-footnote）：[^1] 上标 + 底部 [^1]: 定义       */
+/* ============================================================ */
+.article-body-ssr .footnotes {
+    margin-top: 32px;
+    padding-top: 16px;
+    border-top: 1px solid #e5e7eb;
+    color: #6b7280;
+    font-size: 0.9em;
+    line-height: 1.7;
+}
+.article-body-ssr .footnotes-sep {
+    display: none; /* 已经用 border-top 画了分隔线，去掉默认 hr */
+}
+.article-body-ssr .footnotes-list {
+    padding-left: 24px;
+    margin: 0;
+}
+.article-body-ssr .footnote-item {
+    margin-bottom: 8px;
+}
+.article-body-ssr .footnote-item p {
+    margin: 0;
+    display: inline;
+}
+.article-body-ssr .footnote-ref > a,
+.article-body-ssr .footnote-backref {
+    color: #2563eb;
+    text-decoration: none;
+    border-bottom: 0;
+    padding: 0 2px;
+}
+.article-body-ssr .footnote-ref > a {
+    /* [^1] 在正文中渲染为上标 */
+    font-size: 0.85em;
+    vertical-align: super;
+    line-height: 0;
+}
+.article-body-ssr .footnote-ref > a:hover,
+.article-body-ssr .footnote-backref:hover {
+    text-decoration: underline;
+}
+.article-body-ssr .footnote-ref > a:target,
+.article-body-ssr .footnote-item:target {
+    /* 跳转后高亮目标，便于定位 */
+    background-color: #fef3c7;
+    border-radius: 3px;
+}
+/* 表头里的注脚：表头底色是深色（#4a6079）+ 白字，
+   注脚默认蓝色（#2563eb）在深底上对比度极差，几乎看不见。
+   这里把表头内的注脚 ref 强制改为白色，hover 加下划线即可，
+   保持与表头标题一致的视觉权重。 */
+.article-body-ssr table th .footnote-ref > a {
+    color: #fff;
+}
+.article-body-ssr table th .footnote-ref > a:hover {
+    color: #fff;
+    text-decoration: underline;
+}

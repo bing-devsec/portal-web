@@ -156,7 +156,6 @@ const scrollElement = ".scrollable-content";
 const article = ref<ArticleDetail | null>(null);
 const loadingState = ref<string>("正在加载文章...");
 const fingerprintReady = ref(false);
-const fingerprintValue = ref("");
 const pendingRequest = ref<Promise<any> | null>(null); // 请求去重
 
 // ==================== 浏览量打点（view-log）====================
@@ -648,14 +647,10 @@ const fetchArticleContent = async () => {
   }
 
   try {
-    // 构建请求头：客户端打文章详情接口时统一带 x-client-id（指纹密文）
+    // 构建请求头
     const headers: Record<string, string> = {
       "Content-Type": "application/json",
     };
-
-    if (fingerprintValue.value) {
-      headers["x-client-id"] = fingerprintValue.value;
-    }
 
     // 创建请求 Promise 并保存
     const requestPromise = fetch(
@@ -752,10 +747,11 @@ const initArticleContent = async () => {
   }
 
   try {
-    // 客户端兜底拉取文章：直接计算指纹后请求
+    // 客户端兜底拉取文章：文章详情接口本身不需要指纹，
+    // 这里仍预热一次指纹（浏览量打点 view-log 会用到），并标记客户端初始化完成。
     const { $recalculateFingerprint } = useNuxtApp();
     if (typeof $recalculateFingerprint === "function") {
-      fingerprintValue.value = await $recalculateFingerprint();
+      await $recalculateFingerprint();
       fingerprintReady.value = true;
       await fetchArticleContent();
     } else {
@@ -1099,7 +1095,7 @@ const fallbackCopy = (text: string): boolean => {
   const textarea = document.createElement("textarea");
   textarea.value = text;
   textarea.style.position = "fixed";
-  textarea.style.left = "-9999px";
+  textarea.style.left = "-999999px";
   textarea.style.opacity = "0";
   document.body.appendChild(textarea);
   textarea.select();
@@ -2134,6 +2130,58 @@ const handleImageClick = (event: Event) => {
 };
 
 // ============================================================
+// 注脚链接点击拦截（修复刷新页面自动跳到注脚的问题）
+// ------------------------------------------------------------
+// markdown-it-footnote 默认渲染：
+//   <sup class="footnote-ref"><a href="#fn1" id="fnref1">[1]</a></sup>
+//   <a href="#fnref1" class="footnote-backref">↩</a>
+// 浏览器原生 hash 跳转会把 #fn1 写到 URL，刷新页面时浏览器又会
+// 按 hash 自动滚动到注脚位置——但本应用真正的滚动容器是
+// .scrollable-content（不是 window），导致体验异常：
+//   1) 注脚跳转完毕后 URL 上残留 #fnX
+//   2) 刷新后浏览器原生行为试图跳到锚点，让用户落点不在文章顶部
+// 解决：拦截点击，preventDefault 阻止 hash 写入，自己用容器
+// scrollTop 平滑滚到目标，行为与目录、router.options.ts 一致。
+// ============================================================
+const handleFootnoteClick = (event: Event) => {
+  const target = event.target as HTMLElement | null;
+  if (!target) return;
+  const a = target.closest("a") as HTMLAnchorElement | null;
+  if (!a) return;
+  const isFootnoteRef = !!a.parentElement?.classList.contains("footnote-ref");
+  const isFootnoteBackref = a.classList.contains("footnote-backref");
+  if (!isFootnoteRef && !isFootnoteBackref) return;
+
+  const href = a.getAttribute("href") || "";
+  if (!href.startsWith("#")) return;
+
+  let targetEl: HTMLElement | null = null;
+  try {
+    targetEl = document.querySelector(href) as HTMLElement | null;
+  } catch {
+    targetEl = null;
+  }
+  if (!targetEl) return;
+
+  // 阻止默认行为：避免浏览器把 #fnX 写到 URL，刷新时也就不会再跳
+  event.preventDefault();
+
+  const container = document.querySelector(
+    ".scrollable-content"
+  ) as HTMLElement | null;
+  if (container) {
+    const cRect = container.getBoundingClientRect();
+    const tRect = targetEl.getBoundingClientRect();
+    container.scrollTo({
+      top: container.scrollTop + (tRect.top - cRect.top) - 12,
+      behavior: "smooth",
+    });
+  } else {
+    targetEl.scrollIntoView({ block: "start", behavior: "smooth" });
+  }
+};
+
+// ============================================================
 // Mermaid 客户端渲染
 // ------------------------------------------------------------
 // SSR 阶段把 ```mermaid``` 代码块输出为：
@@ -2238,6 +2286,9 @@ onMounted(async () => {
     document.addEventListener("click", handleMermaidFullscreenClick);
     // 文章图片点击全屏：事件委托
     document.addEventListener("click", handleImageClick);
+    // 注脚链接点击拦截：阻止浏览器写入 #fnX hash，自定义滚动到目标，
+    // 避免刷新页面时浏览器按原生 hash 行为跳到注脚位置
+    document.addEventListener("click", handleFootnoteClick);
 
     // 浏览量打点：onMounted 后延迟 1500ms 触发（避开 prerender / 误触）。
     // 详细设计见上方 ==================== 浏览量打点 ==================== 段。
@@ -2283,6 +2334,7 @@ onBeforeUnmount(() => {
     document.removeEventListener("click", handleTableFullscreenClick);
     document.removeEventListener("click", handleMermaidFullscreenClick);
     document.removeEventListener("click", handleImageClick);
+    document.removeEventListener("click", handleFootnoteClick);
     // 如果用户路由切走时全屏蒙层还在，需要主动清理
     closeCodeFullscreen();
     closeTableFullscreen();
@@ -2567,4 +2619,8 @@ watch(
     font-size: 13px;
   }
 }
+</style>
+
+<style>
+@import "~/assets/article-detail.css";
 </style>

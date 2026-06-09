@@ -66,7 +66,6 @@ export default defineNuxtPlugin((nuxtApp) => {
 // 使用 useAsyncData 的自定义 API 请求函数
 export function useApiData<T>(url: string, options: any = {}) {
 	const config = useRuntimeConfig();
-	const nuxtApp = useNuxtApp();
 	const router = useRouter();
 
 	// 提取选项
@@ -134,21 +133,6 @@ export function useApiData<T>(url: string, options: any = {}) {
 					'Content-Type': 'application/json',
 					...(options.headers || {}),
 				};
-
-				// 获取指纹
-				if (import.meta.client && url.includes('/user/')) {
-					if (typeof nuxtApp.$fingerprint === 'function') {
-						try {
-							// 确保等待Promise执行完成
-							const fingerprint = await nuxtApp.$fingerprint();
-							if (fingerprint) {
-								headers['x-client-id'] = fingerprint;
-							}
-						} catch (e) {
-							throw e;
-						}
-					}
-				}
 
 				// 创建请求Promise
 				const requestPromise = $fetch<ApiResponse<T>>(url, {
