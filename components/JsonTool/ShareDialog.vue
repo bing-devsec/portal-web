@@ -19,7 +19,7 @@
             </template>
             <div class="share-dialog">
                 <!-- 分享设置 -->
-                <div v-if="!shareResult" class="share-settings">
+                <div class="share-settings">
                     <!-- 免费服务限制提示 -->
                     <el-alert type="info" :closable="false" style="margin-bottom: 20px">
                         <template #title>
@@ -142,40 +142,15 @@
                     </form>
                 </div>
 
-                <!-- 分享结果 -->
-                <div v-if="shareResult" class="share-result">
-                    <div class="form-item">
-                        <label class="form-label" for="share-url">{{ shareTxt.shareUrlLabel }}</label>
-                        <div class="share-url-container">
-                            <el-input id="share-url" v-model="shareResult.shareUrl" readonly class="share-url-input" />
-                            <el-button type="primary" @click="copyShareUrl" :loading="copyLoading">
-                                {{ copyLoading ? shareTxt.copying : shareTxt.btnCopyLink }}
-                            </el-button>
-                        </div>
-                    </div>
-
-                    <div class="form-item" v-if="shareResult.expiresAt">
-                        <label class="form-label">{{ shareTxt.expiresAtLabel }}</label>
-                        <div class="expires-info">
-                            {{ formatExpiresAt(shareResult.expiresAt) }}
-                        </div>
-                    </div>
-
-                    <div class="form-item" v-if="password">
-                        <label class="form-label" for="access-password">{{ shareTxt.accessPasswordLabel }}</label>
-                        <div class="password-info">
-                            <el-input id="access-password" v-model="password" readonly type="password" class="password-display" />
-                            <el-button type="info" @click="copyPassword" size="small"> {{ shareTxt.btnCopyPassword }} </el-button>
-                        </div>
-                    </div>
-                </div>
+                <!-- 分享结果展示视图已废弃：创建成功后直接复制链接 + toast 提示 + 关闭 dialog，
+                     用户可在"我的分享"区域查看历史记录。原有 shareResult 状态仅用于阻断
+                     loading 期间的重复点击，模板里不再渲染。 -->
             </div>
 
             <template #footer>
                 <div class="dialog-footer">
                     <el-button @click="handleDialogClose">{{ shareTxt.btnClose }}</el-button>
-                    <el-button v-if="!shareResult" type="primary" @click="createShare" :loading="loading"> {{ shareTxt.btnCreateShare }} </el-button>
-                    <el-button v-if="shareResult" type="primary" @click="resetForm"> {{ shareTxt.btnNewShare }} </el-button>
+                    <el-button type="primary" @click="createShare" :loading="loading"> {{ shareTxt.btnCreateShare }} </el-button>
                 </div>
             </template>
         </el-dialog>
@@ -183,10 +158,18 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch, nextTick } from 'vue';
+import { ref, computed, watch, nextTick, onBeforeUnmount } from 'vue';
 import { ElMessageBox } from 'element-plus';
-import { FingerprintDetector } from '~/utils/fingerprint';
 import { showMessageError } from '~/utils/api';
+
+// 风控守卫 v1 接入：
+// - useClientGuard 是 nuxt 自动 import 的；这里只显式 import 静态成员，
+//   原因与 article-detail/[id].vue 一致：从 composable 解构常量会丢失字面量类型，
+//   导致 SCENE_SHARE_CREATE 被推断为 number 而无法匹配 GuardScene 联合类型。
+// - createBehaviorRecorder 内部已对 SSR 做守卫，可在 setup 顶层安全引用。
+import { createBehaviorRecorder } from '~/composables/useBehaviorRecorder';
+import type { BehaviorRecorder } from '~/composables/useBehaviorRecorder';
+import { SCENE_SHARE_CREATE } from '~/composables/useClientGuard';
 
 // Props
 interface Props {
@@ -274,11 +257,16 @@ const SHARE_TXT_ZH = {
     msgExpiresTooLong: '过期时间不能超过3天',
     msgExpiresTooShort: '过期时间不能少于3分钟',
     msgFingerprintFail: '无法获取浏览器指纹，请刷新页面后重试',
+    msgPrecheckRejected: '操作过于频繁或相同内容刚刚分享过，请稍后再试',
+    msgRateLimited: '请求过于频繁，请稍后再试',
+    msgPrecheckNetwork: '风控校验失败，请检查网络后重试',
     msgCreateFail: '创建分享链接失败',
     msgCreateFailWithError: (err: string) => `创建分享链接失败: ${err}`,
     msgRequestTimeout: '请求超时，请稍后重试或尝试更小的 JSON 数据',
     msgNetworkError: '网络错误，请检查网络连接后重试',
     msgLinkCopied: '链接已复制',
+    msgCreateSuccess: '分享创建成功，链接已复制到剪贴板',
+    msgCreateSuccessNoCopy: '分享创建成功，可在「我的分享」中查看并复制链接',
     msgCopied: '已复制',
     msgCopyFail: '复制失败，请手动复制',
     msgMySharesLoadFail: '获取分享列表失败',
@@ -349,11 +337,16 @@ const SHARE_TXT_EN: ShareTxt = {
     msgExpiresTooLong: 'Expiration cannot exceed 3 days',
     msgExpiresTooShort: 'Expiration cannot be shorter than 3 minutes',
     msgFingerprintFail: 'Unable to get browser fingerprint. Please refresh the page and try again',
+    msgPrecheckRejected: 'Too many actions, or the same content was just shared. Please try again later.',
+    msgRateLimited: 'Too many requests. Please try again later.',
+    msgPrecheckNetwork: 'Risk check failed. Please check your network and retry.',
     msgCreateFail: 'Failed to create share link',
     msgCreateFailWithError: (err: string) => `Failed to create share link: ${err}`,
     msgRequestTimeout: 'Request timed out. Please try again later or use smaller JSON data',
     msgNetworkError: 'Network error. Please check your connection and try again',
     msgLinkCopied: 'Link copied',
+    msgCreateSuccess: 'Share created. The link has been copied to your clipboard',
+    msgCreateSuccessNoCopy: 'Share created. You can view and copy the link in "My Shares"',
     msgCopied: 'Copied',
     msgCopyFail: 'Copy failed. Please copy manually',
     msgMySharesLoadFail: 'Failed to load share list',
@@ -489,7 +482,6 @@ const shareResult = ref<{
 
 // 状态
 const loading = ref(false);
-const copyLoading = ref(false);
 const passwordInputRef = ref<any>(null); // 密码输入框引用
 
 // 我的分享（内嵌折叠）
@@ -615,9 +607,144 @@ watch(
                     }
                 }
             });
+            // 风控守卫 v1：dialog 打开即开始采集行为，dialog 关闭时停止。
+            // 用户在 dialog 上花的时间越长，行为样本越充足；createShare 时再 stop+sign。
+            startBehaviorRecorder();
+        } else {
+            // 对话框关闭：无论是否点击过创建按钮都要清理 recorder，避免下次打开重复 attach。
+            stopBehaviorRecorder();
         }
     }
 );
+
+// 组件卸载（路由切换 / 父组件销毁）：兜底清理。
+onBeforeUnmount(() => {
+    stopBehaviorRecorder();
+});
+
+/* -------------------------------------------------------------------------- */
+/*  风控守卫 v1：BehaviorRecorder 生命周期与 envelope 链路                       */
+/* -------------------------------------------------------------------------- */
+
+// 模块级 recorder 单例：dialog open/close 严格成对管理。
+// 不放在 ref 里是因为它本身不需要响应式（业务只需读 serialize 输出）。
+let behaviorRecorder: BehaviorRecorder | null = null;
+
+function startBehaviorRecorder() {
+    // 失败回落 try/catch：极少数环境下 createBehaviorRecorder 可能因为缺 window/document 抛错。
+    try {
+        if (!behaviorRecorder) {
+            behaviorRecorder = createBehaviorRecorder();
+        }
+        behaviorRecorder.start();
+    } catch {
+        behaviorRecorder = null;
+    }
+}
+
+function stopBehaviorRecorder() {
+    if (!behaviorRecorder) return;
+    try {
+        behaviorRecorder.stop();
+    } catch {
+        // 忽略
+    }
+    behaviorRecorder = null;
+}
+
+/**
+ * 计算 jsonData 的 sha256 截前 16B → hex（32 chars），作为 envelope 的 targetId。
+ *
+ * 与 spec §6.5 对齐：share-create 场景没有"自然资源 ID"，用内容 hash 绑定信封。
+ *
+ * SSR 守卫 + 兼容性：
+ *   - typeof window === 'undefined'：SSR 阶段；本组件理论上仅客户端渲染，但保险起见走守卫
+ *   - window.crypto?.subtle 不存在：极旧浏览器 / file:// 协议 / 非安全上下文 → 返回 null
+ *   - 任意失败均返回 null，调用方据此向用户报错
+ */
+async function computeShareTargetId(jsonData: string): Promise<string | null> {
+    if (typeof window === 'undefined') return null;
+    const subtle = window.crypto?.subtle;
+    if (!subtle) return null;
+    try {
+        const buf = new TextEncoder().encode(jsonData);
+        const digest = await subtle.digest('SHA-256', buf);
+        const bytes = new Uint8Array(digest, 0, 16); // 截前 16B
+        let hex = '';
+        for (let i = 0; i < bytes.length; i++) {
+            hex += bytes[i].toString(16).padStart(2, '0');
+        }
+        return hex;
+    } catch {
+        return null;
+    }
+}
+
+interface PrecheckResp {
+    code?: number;
+    message?: string;
+    token?: string;
+    expires_in?: number;
+}
+
+/**
+ * Precheck 失败原因。前端据此区分提示，避免把"被风控拒"
+ * 都报成"无法获取浏览器指纹"那种误导文案。
+ *
+ * - sign_failed：信封制备阶段失败（公钥拉取 / wasm 加载 / SubtleCrypto 不可用 / sign 抛错）
+ * - rate_limited：429（IP / fp 频控）
+ * - rejected：200 但 token 为空（dedup / 行为分 / L1-L2 静默拒）
+ * - network：fetch 抛错 / abort / 解析失败 / 5xx
+ */
+type PrecheckFailure =
+    | { kind: 'sign_failed' }
+    | { kind: 'rate_limited' }
+    | { kind: 'rejected' }
+    | { kind: 'network' };
+type PrecheckResult = { ok: true; token: string } | ({ ok: false } & PrecheckFailure);
+
+/**
+ * 调 meta-api /user/share/precheck，成功返回 64-hex token。
+ *
+ * 失败时附带具体原因，由调用方映射成对应的本地化文案。
+ *
+ * @param targetId  jsonData hash 截 16B hex
+ * @param envelope  useClientGuard().sign() 的产物
+ * @param signal    用于取消的 AbortSignal（与 createShare 整体超时复用同一个）
+ */
+async function callSharePrecheck(
+    targetId: string,
+    envelope: ArrayBuffer,
+    signal: AbortSignal,
+): Promise<PrecheckResult> {
+    const baseURL = (useRuntimeConfig().public.baseURL as string) || '/api-backend';
+    const url = `${baseURL}/user/share/precheck?target_id=${encodeURIComponent(targetId)}`;
+    try {
+        // $fetch 在 4xx/5xx 会抛错；用原生 fetch 对状态码做更细粒度判定。
+        const resp = await fetch(url, {
+            method: 'POST',
+            body: envelope,
+            headers: { 'Content-Type': 'application/octet-stream' },
+            signal,
+        });
+        if (resp.status === 429) {
+            return { ok: false, kind: 'rate_limited' };
+        }
+        if (!resp.ok) {
+            // 4xx（除 429）/ 5xx 视为信封路径异常
+            return { ok: false, kind: 'network' };
+        }
+        const data = (await resp.json()) as PrecheckResp;
+        if (data?.code === 2000 && typeof data.token === 'string' && /^[a-f0-9]{64}$/i.test(data.token)) {
+            return { ok: true, token: data.token };
+        }
+        // 静默拒：HTTP 200 + code 2000 但 token 为空，意味着 dedup / 行为分 / L1-L2 命中
+        return { ok: false, kind: 'rejected' };
+    } catch {
+        // 网络抖动 / abort / JSON 解析失败 → network
+        return { ok: false, kind: 'network' };
+    }
+}
 
 // 创建分享
 const createShare = async () => {
@@ -689,17 +816,69 @@ const createShare = async () => {
     const timeoutId = setTimeout(() => controller.abort(), 60000); // 60秒超时
 
     try {
-        // 获取加密的浏览器指纹
-        let encryptedFingerprint = '';
+        // 风控守卫 v1 信封链路（唯一路径）：
+        //   1. 计算 jsonData 的 sha256 截 16B → targetId
+        //   2. recorder stop + serialize（注意 stop 不清空 buf，sign 异常仍可保留）
+        //   3. useClientGuard().sign() → envelope
+        //   4. POST envelope 到 /user/share/precheck → 拿 64-hex token
+        //   5. 用 X-Guard-Token Header 调 /api/share-json
+        //
+        // 任意环节失败 → 按原因区分提示。
+        // - 信封制备阶段失败（recorder 缺失 / SubtleCrypto 不可用 / sign 抛错）→ "无法获取浏览器指纹"
+        // - precheck 网络异常 → "风控校验失败"
+        // - precheck 429 → "请求过于频繁"
+        // - precheck 静默拒（dedup / 行为分 / L1-L2）→ "操作过于频繁或内容刚分享过"
+        let guardToken: string | null = null;
+        let precheckFailureKind: PrecheckFailure['kind'] | null = null;
         try {
-            const fingerprintDetector = FingerprintDetector.getInstance();
-            const fingerprintResult = await fingerprintDetector.getFingerprint();
-            encryptedFingerprint = fingerprintResult.fingerprintId;
-        } catch (error: any) {
-            showMessageError(shareTxt.value.msgFingerprintFail);
+            const recorder = behaviorRecorder; // 本地拷贝，便于 TS narrow + 防并发置 null
+            if (!recorder) {
+                precheckFailureKind = 'sign_failed';
+            } else {
+                const targetId = await computeShareTargetId(props.jsonData);
+                if (!targetId) {
+                    precheckFailureKind = 'sign_failed';
+                } else {
+                    // stop 之后即可 serialize；不再继续采集，避免之后用户操作产生噪音
+                    recorder.stop();
+                    const { sign } = useClientGuard();
+                    const envelope = await sign({
+                        scene: SCENE_SHARE_CREATE,
+                        targetId,
+                        recorder,
+                    });
+                    const result = await callSharePrecheck(targetId, envelope, controller.signal);
+                    if (result.ok) {
+                        guardToken = result.token;
+                    } else {
+                        precheckFailureKind = result.kind;
+                    }
+                }
+            }
+        } catch {
+            // sign / 公钥拉取 / wasm 加载等任何抛错都归到 sign_failed
+            precheckFailureKind = 'sign_failed';
+        }
+
+        if (!guardToken) {
+            const txt = shareTxt.value;
+            const msg =
+                precheckFailureKind === 'rejected'
+                    ? txt.msgPrecheckRejected
+                    : precheckFailureKind === 'rate_limited'
+                      ? txt.msgRateLimited
+                      : precheckFailureKind === 'network'
+                        ? txt.msgPrecheckNetwork
+                        : txt.msgFingerprintFail;
+            showMessageError(msg);
             loading.value = false;
+            clearTimeout(timeoutId);
             return;
         }
+
+        const headers: Record<string, string> = {
+            'X-Guard-Token': guardToken,
+        };
 
         const response = await $fetch<{
             success: boolean;
@@ -711,9 +890,7 @@ const createShare = async () => {
             error?: string;
         }>('/api/share-json', {
             method: 'POST',
-            headers: {
-                'x-client-id': encryptedFingerprint,
-            },
+            headers,
             body: {
                 jsonData: props.jsonData,
                 password: password.value || undefined,
@@ -724,7 +901,22 @@ const createShare = async () => {
         });
 
         if (response.success && response.data) {
+            // 成功反馈：自动复制链接 + toast + 关闭 dialog。
+            // 复制失败（无 Clipboard API / 权限拒绝 / 非安全上下文）时降级提示让用户去"我的分享"取链接。
             shareResult.value = response.data;
+            const shareUrl = response.data.shareUrl;
+            let copied = false;
+            try {
+                if (navigator.clipboard?.writeText) {
+                    await navigator.clipboard.writeText(shareUrl);
+                    copied = true;
+                }
+            } catch {
+                copied = false;
+            }
+            showMessageSuccess(copied ? shareTxt.value.msgCreateSuccess : shareTxt.value.msgCreateSuccessNoCopy);
+            // 关闭 dialog（resetForm 由 watch(modelValue) 在再次打开时触发，这里不必显式调用）
+            dialogVisible.value = false;
         } else {
             showMessageError(localizeShareApiError(response.error, shareTxt.value.msgCreateFail));
         }
@@ -743,44 +935,7 @@ const createShare = async () => {
     }
 };
 
-// 复制分享链接
-const copyShareUrl = async () => {
-    if (!shareResult.value) return;
-
-    copyLoading.value = true;
-    try {
-        // 优先使用现代 Clipboard API
-        await navigator.clipboard.writeText(shareResult.value.shareUrl);
-        showMessageSuccess(shareTxt.value.msgLinkCopied);
-    } catch (error) {
-        // 降级方案：使用传统方法（execCommand 已废弃，但作为兼容性降级方案）
-        const textarea = document.createElement('textarea');
-        textarea.value = shareResult.value.shareUrl;
-        textarea.readOnly = true; // 防止用户看到选中内容
-        textarea.style.position = 'fixed';
-        textarea.style.left = '-999999px';
-        textarea.style.top = '-999999px';
-        textarea.style.opacity = '0';
-        document.body.appendChild(textarea);
-        textarea.focus();
-        textarea.select();
-        try {
-            // document.execCommand 已废弃，但作为降级方案仍可使用
-            const success = document.execCommand('copy');
-            if (!success) {
-                throw new Error('execCommand failed');
-            }
-        } catch (err) {
-            showMessageError(shareTxt.value.msgCopyFail);
-        } finally {
-            document.body.removeChild(textarea);
-        }
-    } finally {
-        copyLoading.value = false;
-    }
-};
-
-// 通用复制
+// 通用复制（loadShareIntoEditor 后续若有需求可复用；当前仅保留以保持工具函数完整性）
 const copyText = async (text: string, successTip = shareTxt.value.msgCopied) => {
     try {
         await navigator.clipboard.writeText(text);
@@ -811,60 +966,6 @@ const copyText = async (text: string, successTip = shareTxt.value.msgCopied) => 
     }
 };
 
-// 复制密码
-const copyPassword = async () => {
-    if (!password.value) return;
-
-    try {
-        // 优先使用现代 Clipboard API
-        await navigator.clipboard.writeText(password.value);
-    } catch (error) {
-        // 降级方案：使用传统方法（execCommand 已废弃，但作为兼容性降级方案）
-        const textarea = document.createElement('textarea');
-        textarea.value = password.value;
-        textarea.readOnly = true; // 防止用户看到选中内容
-        textarea.style.position = 'fixed';
-        textarea.style.left = '-999999px';
-        textarea.style.top = '-999999px';
-        textarea.style.opacity = '0';
-        document.body.appendChild(textarea);
-        textarea.focus();
-        textarea.select();
-        try {
-            // document.execCommand 已废弃，但作为降级方案仍可使用
-            const success = document.execCommand('copy');
-            if (!success) {
-                throw new Error('execCommand failed');
-            }
-        } catch (err) {
-            showMessageError(shareTxt.value.msgCopyFail);
-        } finally {
-            document.body.removeChild(textarea);
-        }
-    }
-};
-
-// 格式化过期时间
-const formatExpiresAt = (timestamp: number) => {
-    const now = new Date();
-    const diff = timestamp - now.getTime();
-
-    if (diff < 0) {
-        return shareTxt.value.expired;
-    }
-
-    const days = Math.floor(diff / (24 * 60 * 60 * 1000));
-    const hours = Math.floor((diff % (24 * 60 * 60 * 1000)) / (60 * 60 * 1000));
-
-    if (days > 0) {
-        return `${formatDateTime(timestamp)}`;
-    } else if (hours > 0) {
-        return `${formatDateTime(timestamp)}`;
-    } else {
-        return `${formatDateTime(timestamp)}`;
-    }
-};
-
 // 折叠开关
 const toggleMyShares = async () => {
     mySharesExpanded.value = !mySharesExpanded.value;
@@ -874,13 +975,76 @@ const toggleMyShares = async () => {
 };
 
 // 加载“我的分享”
+//
+// 复用 SCENE_SHARE_CREATE 信封链路（与 createShare 一致，唯一路径）：
+//   1. 临时 recorder（fetchMyShares 既可能在 dialog 已开后用户点刷新触发，
+//      也可能在 toggleMyShares 首次展开时触发，不能假设 createShare 用的
+//      recorder 仍可用 / 未 stop，所以这里独立采集一份）
+//   2. targetId：列表查询没有具体资源 hash 可绑，与后端约定使用 32 个 0
+//   3. POST envelope → /user/share/precheck 拿 64-hex token
+//   4. 凭 X-Guard-Token 调 /api/share-json?mine=1
 const fetchMyShares = async () => {
     mySharesLoading.value = true;
     try {
-        // 获取加密的浏览器指纹
-        const fingerprintDetector = FingerprintDetector.getInstance();
-        const fingerprintResult = await fingerprintDetector.getFingerprint();
-        const encryptedFingerprint = fingerprintResult.fingerprintId;
+        let guardToken: string | null = null;
+        // 与 createShare 一致：按原因区分提示，避免 dedup / 频控 / 网络问题都报"指纹获取失败"
+        let precheckFailureKind: PrecheckFailure['kind'] | null = null;
+
+        const tempRecorder = (() => {
+            try {
+                return createBehaviorRecorder();
+            } catch {
+                return null;
+            }
+        })();
+
+        if (!tempRecorder) {
+            precheckFailureKind = 'sign_failed';
+        } else {
+            try {
+                tempRecorder.start();
+                // 给 recorder 留一点点采集时间窗口；即使为 0 也不阻断后端评分（占位 targetId 已豁免行为分）
+                await new Promise(resolve => setTimeout(resolve, 50));
+                tempRecorder.stop();
+
+                const targetId = '0'.repeat(32);
+                const { sign } = useClientGuard();
+                const envelope = await sign({
+                    scene: SCENE_SHARE_CREATE,
+                    targetId,
+                    recorder: tempRecorder,
+                });
+
+                const controller = new AbortController();
+                const timeoutId = setTimeout(() => controller.abort(), 30000);
+                try {
+                    const result = await callSharePrecheck(targetId, envelope, controller.signal);
+                    if (result.ok) {
+                        guardToken = result.token;
+                    } else {
+                        precheckFailureKind = result.kind;
+                    }
+                } finally {
+                    clearTimeout(timeoutId);
+                }
+            } catch {
+                precheckFailureKind = 'sign_failed';
+            }
+        }
+
+        if (!guardToken) {
+            const txt = shareTxt.value;
+            const msg =
+                precheckFailureKind === 'rejected'
+                    ? txt.msgPrecheckRejected
+                    : precheckFailureKind === 'rate_limited'
+                      ? txt.msgRateLimited
+                      : precheckFailureKind === 'network'
+                        ? txt.msgPrecheckNetwork
+                        : txt.msgFingerprintFail;
+            showMessageError(msg);
+            return;
+        }
 
         const response = await $fetch<{
             success: boolean;
@@ -889,7 +1053,7 @@ const fetchMyShares = async () => {
         }>('/api/share-json?mine=1', {
             method: 'GET',
             headers: {
-                'x-client-id': encryptedFingerprint,
+                'X-Guard-Token': guardToken,
             },
         });
         if (response.success && Array.isArray(response.data)) {

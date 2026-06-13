@@ -3,68 +3,53 @@ import { randomBytes } from 'crypto';
 import { promises as fs, existsSync, mkdirSync } from 'fs';
 import { join, resolve, normalize } from 'path';
 
-// 通过 Go 后端解密浏览器指纹。
+// 风控守卫 v1：通过一次性 token 消费拿 fingerprint。
 //
-// 背景：新版 Node（>=18.19/20.11，含 CVE-2023-46809 修复）已禁用 privateDecrypt
-// 的 RSA_PKCS1_PADDING，导致 Nuxt 进程内无法解密前端 JSEncrypt(PKCS1) 加密的指纹。
-// 而 Go 后端的私钥与 PKCS1 解密一直可用（文章详情等接口即依赖它），
-// 因此这里把解密统一委托给 Go，Nuxt 仅做转发，自身不再持有/读取私钥。
+// 链路：浏览器在调用本接口前，已先 POST envelope 到 meta-api /user/share/precheck，
+// 通过 guard.Engine 风控判定后拿到 64-hex token；此处凭 X-Guard-Token Header 调
+// /user/share/consume 原子消费（GETDEL）→ 命中即返回 fingerprint，未命中 / 已用 / 过期返回 null。
 //
-// 约定接口见 docs/fingerprint-decrypt-backend-spec.md
-async function decryptFingerprintViaBackend(
-  encryptedFingerprint: string,
-): Promise<string | null> {
-  if (!encryptedFingerprint) return null;
+// 设计要点：
+//  - 不重复消费：consume 在 Go 侧已经 GETDEL，token 只能用一次。
+//  - 内网调用：ssrApiBase 仅在 Node 进程内可达，token 不会在公网被旁路消费。
+async function consumeShareTokenViaBackend(token: string): Promise<string | null> {
+  if (!token) return null;
+  // token 必须是 64 字符的 hex（与 meta-api/app/handler/share/share.go 校验对齐）
+  if (!/^[a-f0-9]{64}$/i.test(token)) return null;
 
-  // 服务端进程内访问 Go 后端需走内网直连地址 ssrApiBase（容器内 http://meta-api:8080），
-  // public.baseURL("/api-backend") 是给浏览器经 nginx 代理用的相对路径，Node 内请求会自请自身。
   const ssrApiBase = useRuntimeConfig().ssrApiBase as string;
-
   try {
     const res = await $fetch<{
       code: number;
       message?: string;
-      data?: { fingerprint?: string } | null;
-    }>(`${ssrApiBase}/user/fingerprint/decrypt`, {
+      fingerprint?: string;
+    }>(`${ssrApiBase}/user/share/consume`, {
       method: 'POST',
       headers: {
-        'Content-Type': 'application/json',
-        'x-client-id': encryptedFingerprint,
+        'X-Guard-Token': token,
       },
-      body: { encryptedFingerprint },
+      // 后端 consume 接口不需要 body，但部分中间件要求显式 body 占位
+      body: '',
     });
 
-    const fingerprint = res?.data?.fingerprint;
-    // 指纹必须是 32 位十六进制（与 FingerprintJS.hashComponents 输出对齐）
-    if (res?.code === 2000 && fingerprint && /^[a-f0-9]{32}$/i.test(fingerprint)) {
+    const fingerprint = res?.fingerprint;
+    if (res?.code === 2000 && fingerprint && /^[a-f0-9]{64}$/i.test(fingerprint)) {
       return fingerprint;
     }
     return null;
   } catch (error) {
-    console.warn('[share-json] decrypt fingerprint via backend failed', {
-      encLen: encryptedFingerprint?.length,
-      message: (error as Error)?.message,
-    });
     return null;
   }
 }
 
-// 从请求中获取并解密浏览器指纹（委托 Go 后端解密）
-async function getClientFingerprint(event: H3Event, body?: any): Promise<string | null> {
-  // 优先从请求头获取加密的指纹
+// 从请求中获取并解密浏览器指纹。
+//
+// 风控守卫 v1 信封链路：消费 X-Guard-Token Header 即可拿到 fingerprint。
+async function getClientFingerprint(event: H3Event): Promise<string | null> {
   const headers = event.node.req.headers;
-  let encryptedFingerprint = headers['x-client-id'] as string;
-
-  // 如果请求头没有，则从请求体获取（兼容性）
-  if (!encryptedFingerprint && body && body.encryptedFingerprint) {
-    encryptedFingerprint = body.encryptedFingerprint;
-  }
-
-  if (encryptedFingerprint) {
-    return decryptFingerprintViaBackend(encryptedFingerprint);
-  }
-
-  return null;
+  const guardToken = (headers['x-guard-token'] as string | undefined) || '';
+  if (!guardToken) return null;
+  return consumeShareTokenViaBackend(guardToken);
 }
 
 // 配置常量
@@ -593,7 +578,7 @@ export default defineEventHandler(async (event: H3Event) => {
       }
 
       // 1. 获取并验证浏览器指纹
-      const clientFingerprint = await getClientFingerprint(event, body);
+      const clientFingerprint = await getClientFingerprint(event);
       if (!clientFingerprint) {
         return {
           success: false,
@@ -766,71 +751,6 @@ export default defineEventHandler(async (event: H3Event) => {
           shareUrl: `${getRequestURL(event).origin}/tool/json?share=${id}`,
           expiresAt,
         },
-      };
-    }
-
-    // DELETE请求：删除分享
-    if (method === 'DELETE') {
-      const query = getQuery(event);
-      const id = query.id as string;
-      const body = await readBody(event).catch(() => ({}));
-      const password = body.password as string | undefined;
-      const clientFingerprint = await getClientFingerprint(event, body);
-
-      if (!id) {
-        return {
-          success: false,
-          error: '分享ID不能为空',
-        };
-      }
-
-      // 验证ID格式（防止路径遍历攻击）
-      if (!isValidShareId(id)) {
-        return {
-          success: false,
-          error: '分享ID格式不正确',
-        };
-      }
-
-      const shareData = await readShareData(id);
-      
-      if (!shareData) {
-        return {
-          success: false,
-          error: '分享链接不存在',
-        };
-      }
-
-      // 授权：创建者本人（指纹匹配）或提供正确密码（若有设置）
-      const isOwner = clientFingerprint && shareData.creatorFingerprint && clientFingerprint === shareData.creatorFingerprint;
-      const hasPasswordAccess = shareData.password ? (password && shareData.password === password) : true;
-      if (!isOwner && !hasPasswordAccess) {
-        return {
-          success: false,
-          error: '无权限删除该分享（需创建者身份或正确密码）',
-        };
-      }
-
-      await deleteShareData(id);
-      
-      // 更新索引
-      const index = await readIndex();
-      const entry = index.shares.find(s => s.id === id);
-      if (entry) {
-        index.shares = index.shares.filter(s => s.id !== id);
-        index.totalSize -= entry.size;
-        await writeIndex(index);
-      }
-      // 取消定时器
-      const t = shareDeletionTimers.get(id);
-      if (t) {
-        clearTimeout(t);
-        shareDeletionTimers.delete(id);
-      }
-
-      return {
-        success: true,
-        message: '分享链接已删除',
       };
     }
 

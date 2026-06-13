@@ -17,12 +17,6 @@
               </div>
 
               <div>
-                <!--
-                  纯 SSR 渲染：服务端用 markdown-it 把 markdown 渲染为 HTML，
-                  v-html 直出。无论是否水合、是否有 JS，DOM 永远只此一份，
-                  彻底避免"刷新瞬间样式抖动"以及客户端再次替换 DOM 带来的 hydration mismatch。
-                  富交互（代码块复制、行号、目录联动）由轻量的 SSR 友好方案单独承担。
-                -->
                 <div
                   v-if="article.renderedHtml"
                   class="article-body-ssr"
@@ -96,6 +90,15 @@ import {
   extractHeadingsFromHtml,
 } from "~/utils/markdown";
 import { ResponseCode } from "~/utils/api";
+// 风控守卫 v1：行为采集器 + 客户端签名 composable
+// - 仅在客户端使用（createBehaviorRecorder 内部已对 SSR 做守卫）
+// - useClientGuard 是 nuxt 自动 import 的；这里只显式 import 静态成员
+//   （SCENE_VIEW_LOG 在 composable 内是字面量常量，从 composable 解构时会被
+//    TS 推断成 `number`，跟参数类型 `GuardScene = 0x10 | 0x20` 无法对齐——
+//    所以从模块顶层直接 import 常量本体，保留字面量类型。）
+import { createBehaviorRecorder } from "~/composables/useBehaviorRecorder";
+import type { BehaviorRecorder } from "~/composables/useBehaviorRecorder";
+import { SCENE_VIEW_LOG } from "~/composables/useClientGuard";
 // 目录组件改为同步 import：
 // - SSR 阶段需要拿到组件实例直出 <ul>，不能再走 defineAsyncComponent 异步加载
 // - 组件 + 样式很小（一个 <ul> + 一个 IntersectionObserver），同步引入对首屏 JS 影响可忽略
@@ -155,19 +158,33 @@ const articleId = computed(() => route.params.id as string);
 const scrollElement = ".scrollable-content";
 const article = ref<ArticleDetail | null>(null);
 const loadingState = ref<string>("正在加载文章...");
-const fingerprintReady = ref(false);
 const pendingRequest = ref<Promise<any> | null>(null); // 请求去重
 
 // ==================== 浏览量打点（view-log）====================
-// 设计参考：docs/view-log-backend-spec.md
-// - 真实浏览触发：onMounted 后延迟 1500ms（避开预渲染、prefetch、误触）。
+// 设计参考：docs/view-log-backend-spec.md + docs/anti-bot-guard-v1-spec.md §5.5
+// - 真实浏览触发：onMounted 后延迟 3000ms（spec v1：从 1.5s 升级到 3s，
+//   覆盖更长行为采样窗口；同时避开预渲染、prefetch、误触）。
 // - 仅客户端发出；SPA 路由切换在 watch route.params.id 里再次触发。
-// - 使用 navigator.sendBeacon 优先：不阻塞页面、用户立即关页也能送出。
-// - 后端只看 token 内的 fingerprintId+articleId+ts+nonce 做风控决策；前端不做任何"是否+1"判断。
-// - 同一篇文章在一次"挂载/路由切换会话"内只触发一次，避免 watch 重入或重复定时器。
-const VIEW_LOG_DELAY_MS = 1500;
+// - 走风控守卫 v1 信封链路：useClientGuard().sign() → application/octet-stream
+//     - 后端 viewlog handler 校验信封头 4 字节 magic "GUAR" + 信封内
+//       fingerprintId+articleId+ts+nonce + 行为评分；前端不做"是否+1"判断。
+//     - 不能用 sendBeacon（octet-stream 非 simple request 会触发 preflight，sendBeacon 不支持）
+//     - 必须用 fetch + keepalive
+// - 同一篇文章在一次"挂载/路由切换会话"内只触发一次。
+// - 兜底打点（v1.1）：除 3s 定时器外，还监听 pagehide / visibilitychange→hidden，
+//   覆盖"用户在 3s 窗口内关掉 tab / 切到后台 / 系统级返回"等浏览器并不调用 unmount
+//   的场景；任何一条路径先发就先发，由 viewLogReportedFor 单次去重。
+const VIEW_LOG_DELAY_MS = 3000;
 let viewLogTimer: ReturnType<typeof setTimeout> | null = null;
 let viewLogReportedFor: string | null = null; // 已经打过点的 articleId，防止重复
+
+// 兜底监听器引用：onMounted 注册，onBeforeUnmount 解绑。
+let viewLogVisibilityHandler: (() => void) | null = null;
+let viewLogPagehideHandler: (() => void) | null = null;
+
+// 行为采集器：进入文章页就开始采，3s 后随信封一起发送。
+// 采集器在 onMounted 时创建（SSR 不创建），SPA 路由切换复用同一实例。
+let behaviorRecorder: BehaviorRecorder | null = null;
 
 const cancelPendingViewLog = () => {
   if (viewLogTimer !== null) {
@@ -176,183 +193,70 @@ const cancelPendingViewLog = () => {
   }
 };
 
-const buildViewLogBody = async (
+// reason 区分触发来源：
+//   - "timer"      ：3s 定时器到点（默认路径，页面可见时才发，避免后台 tab 误打）
+//   - "visibility" ：visibilitychange→hidden 兜底（用户切后台/锁屏前抢发）
+//   - "pagehide"   ：pagehide 兜底（用户关闭 tab / 前进后退 / iOS BFCache 触发）
+// 兜底路径必须忽略"页面已 hidden 提前 return"分支——那正是兜底要打的场景。
+const sendViewLog = async (
   targetArticleId: string,
-  encryptToken: (plaintext: string) => Promise<string>,
-  rawFingerprintId: string
-): Promise<{
-  token: string;
-  referer: string;
-  tz: string;
-  screen: string;
-  lang: string;
-  perfNav: string;
-} | null> => {
-  // 1) 组装 token 明文 JSON：fingerprintId + articleId + ts + nonce
-  //    后端 §2.2：长度需 < 245 字节（RSA 2048 PKCS#1 v1.5 单块上限），实际约 130 字节，足够。
-  const nonce =
-    typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
-      ? crypto.randomUUID()
-      : // 回落：极少数老浏览器没有 randomUUID 时手搓一个伪 UUID，仍是 v4 形态
-        "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (c) => {
-          const r = (Math.random() * 16) | 0;
-          const v = c === "x" ? r : (r & 0x3) | 0x8;
-          return v.toString(16);
-        });
-
-  const plain = JSON.stringify({
-    fingerprintId: rawFingerprintId,
-    articleId: targetArticleId,
-    ts: Date.now(),
-    nonce,
-  });
-
-  let token = "";
-  try {
-    token = await encryptToken(plain);
-  } catch {
-    // 公钥拿不到 / 加密失败：本次直接放弃打点，不影响页面
-    return null;
-  }
-  if (!token) return null;
-
-  // 2) 组装其他字段（后端 §1.2 所列）
-  // 安全防御：在极小概率的非常规环境（无 screen / Intl 等），逐字段 try/catch 给空串
-  const safeReferer = (() => {
-    try {
-      return document.referrer || "";
-    } catch {
-      return "";
-    }
-  })();
-  const safeTz = (() => {
-    try {
-      return Intl.DateTimeFormat().resolvedOptions().timeZone || "";
-    } catch {
-      return "";
-    }
-  })();
-  const safeScreen = (() => {
-    try {
-      return `${window.screen.width}x${window.screen.height}`;
-    } catch {
-      return "";
-    }
-  })();
-  const safeLang = (() => {
-    try {
-      return navigator.language || "";
-    } catch {
-      return "";
-    }
-  })();
-  const safePerfNav = (() => {
-    try {
-      const entry = performance.getEntriesByType("navigation")[0] as
-        | (PerformanceEntry & { type?: string })
-        | undefined;
-      return entry?.type || "";
-    } catch {
-      return "";
-    }
-  })();
-
-  return {
-    token,
-    referer: safeReferer,
-    tz: safeTz,
-    screen: safeScreen,
-    lang: safeLang,
-    perfNav: safePerfNav,
-  };
-};
-
-const sendViewLog = async (targetArticleId: string) => {
+  reason: "timer" | "visibility" | "pagehide" = "timer"
+) => {
   if (!import.meta.client) return;
   if (!targetArticleId) return;
   // 同一 articleId 不重复打点（即使 watch 重入或多次 nextTick 触发）
   if (viewLogReportedFor === targetArticleId) return;
 
-  // 页面不可见时直接放弃（背景 tab、prerender 等）。
-  // 后端虽然也会按 perfNav==="prerender" 拒绝，但前端先省一次请求更合算。
-  try {
-    if (typeof document !== "undefined" && document.visibilityState === "hidden") {
-      return;
+  // 仅在"定时器"路径下因不可见提前放弃（背景 tab、prerender 等），
+  // 后端会按 perfNav==="prerender" 拒绝，前端先省一次请求更合算。
+  // 兜底路径（visibility / pagehide）天然在 hidden 状态触发，必须放行。
+  if (reason === "timer") {
+    try {
+      if (typeof document !== "undefined" && document.visibilityState === "hidden") {
+        return;
+      }
+    } catch {
+      // 忽略
     }
-  } catch {
-    // 忽略
   }
-
-  const nuxtApp = useNuxtApp();
-  const $encryptToken = nuxtApp.$encryptToken as
-    | ((plaintext: string) => Promise<string>)
-    | undefined;
-  const $getFingerprintId = nuxtApp.$getFingerprintId as
-    | (() => Promise<string>)
-    | undefined;
-
-  if (typeof $encryptToken !== "function" || typeof $getFingerprintId !== "function") {
-    // 插件未注入：理论上不会发生（plugins/fingerprint.client.ts 是 client plugin）
-    return;
-  }
-
-  let rawFp = "";
-  try {
-    rawFp = await $getFingerprintId();
-  } catch {
-    return;
-  }
-  if (!rawFp) return;
-
-  // 路由可能已经切换到别的文章，这里再校验一次 articleId 是否还是目标
-  if (route.params.id !== targetArticleId) return;
-
-  const body = await buildViewLogBody(targetArticleId, $encryptToken, rawFp);
-  if (!body) return;
-
-  // 再次校验路由没变
-  if (route.params.id !== targetArticleId) return;
-
-  // 标记已打点（在真正发出前置位，确保即使 sendBeacon 失败也不会反复重试同一篇）
-  viewLogReportedFor = targetArticleId;
 
   const url = `${runtimeConfig.public.baseURL}/user/article/view-log/${targetArticleId}`;
-  const payload = JSON.stringify(body);
 
-  // 关键：Content-Type 使用 "text/plain;charset=UTF-8"（CORS-safelisted），不是 "application/json"。
-  // 原因：
-  //   1) navigator.sendBeacon 要求 simple request：Content-Type 必须是 text/plain /
-  //      application/x-www-form-urlencoded / multipart/form-data 三者之一，
-  //      其他类型会触发 CORS preflight（OPTIONS），但 sendBeacon 本身不支持 preflight，
-  //      因此写 "application/json" 会让 sendBeacon 直接 return false。
-  //   2) 在 LOCAL_DEBUG=false 等跨域调试场景下，"application/json" 同样会触发
-  //      preflight，而 Go 后端无 OPTIONS 路由 → 浏览器报 CORS 错误。
-  //   3) body 仍然是 JSON 字符串，Go 后端用 c.ShouldBindJSON 显式按 JSON 解析即可，
-  //      Content-Type 只是建议性提示，不影响实际反序列化。
-  const BEACON_CONTENT_TYPE = "text/plain;charset=UTF-8";
+  // 标记已打点（在真正发出前置位，确保即使所有路径都失败也不会反复重试同一篇）。
+  viewLogReportedFor = targetArticleId;
 
-  // 优先 sendBeacon：用户即使立刻关闭页面也能送出，浏览器在 unload 时不会取消。
-  // 注意 sendBeacon 不支持自定义 Content-Type 选项，但传 Blob 可以指定。
+  // 把 module-level 的 behaviorRecorder 拷到本地 const，TS 才能正确做 narrow 到非 null
+  const recorder = behaviorRecorder;
+  if (!recorder) return;
+  // 路由可能在 3s 等待期间切到别的文章
+  if (route.params.id !== targetArticleId) return;
+
   try {
-    if (typeof navigator !== "undefined" && typeof navigator.sendBeacon === "function") {
-      const blob = new Blob([payload], { type: BEACON_CONTENT_TYPE });
-      const ok = navigator.sendBeacon(url, blob);
-      if (ok) return;
-    }
-  } catch {
-    // 回落到 fetch
-  }
+    // 停止采集，序列化当前缓冲区。
+    // 注意 stop() 之后不清空 buf；这样即使 sign 抛错也只是丢一次发送，buf 不会泄漏。
+    recorder.stop();
+    const { sign } = useClientGuard();
+    const envelope = await sign({
+      scene: SCENE_VIEW_LOG,
+      targetId: targetArticleId,
+      recorder,
+    });
+    // 路由再校验一次：sign 路径可能耗时几十毫秒（公钥/wasm 首次冷启）
+    if (route.params.id !== targetArticleId) return;
 
-  // 回落：fetch + keepalive。后端响应 204 / 4xx / 5xx 都不影响页面，静默处理。
-  try {
+    const blob = new Blob([envelope], { type: "application/octet-stream" });
+    // sendBeacon 不能用：octet-stream 非 CORS-safelisted Content-Type，
+    // 浏览器会发 preflight，但 sendBeacon 不支持 OPTIONS。
+    // 改用 fetch + keepalive：用户即使立刻关闭页面也能尽量送出。
+    // 不读响应体（后端是 204 / 4xx 静默返回）。
     await fetch(url, {
       method: "POST",
-      headers: { "Content-Type": BEACON_CONTENT_TYPE },
-      body: payload,
+      body: blob,
+      headers: { "Content-Type": "application/octet-stream" },
       keepalive: true,
     });
   } catch {
-    // 网络异常：丢弃即可，view_count 少一次不影响业务
+    // 网络/签名异常：view_count 少一次不影响业务，静默丢弃。
   }
 };
 
@@ -364,8 +268,22 @@ const scheduleViewLog = (targetArticleId: string) => {
   if (viewLogReportedFor === targetArticleId) return;
   viewLogTimer = setTimeout(() => {
     viewLogTimer = null;
-    void sendViewLog(targetArticleId);
+    void sendViewLog(targetArticleId, "timer");
   }, VIEW_LOG_DELAY_MS);
+};
+
+// 兜底触发：把当前 articleId 的待发打点立即发掉。
+// 在 visibilitychange→hidden / pagehide 时调用，覆盖"3s 定时器没到、组件
+// 不会被 unmount"的边界场景（如直接关 tab、切后台、iOS BFCache）。
+// - 内部带 viewLogReportedFor 单次去重，多条路径同时触发也只发一次。
+// - 同步先 cancelPendingViewLog，避免后续 timer 再发一次。
+const flushViewLog = (reason: "visibility" | "pagehide") => {
+  if (!import.meta.client) return;
+  const id = articleId.value;
+  if (!id) return;
+  if (viewLogReportedFor === id) return;
+  cancelPendingViewLog();
+  void sendViewLog(id, reason);
 };
 // ==================== /浏览量打点 ====================
 
@@ -747,20 +665,8 @@ const initArticleContent = async () => {
   }
 
   try {
-    // 客户端兜底拉取文章：文章详情接口本身不需要指纹，
-    // 这里仍预热一次指纹（浏览量打点 view-log 会用到），并标记客户端初始化完成。
-    const { $recalculateFingerprint } = useNuxtApp();
-    if (typeof $recalculateFingerprint === "function") {
-      await $recalculateFingerprint();
-      fingerprintReady.value = true;
-      await fetchArticleContent();
-    } else {
-      loadingState.value = "加载失败，请刷新页面";
-      // 如果 SSR 有数据，至少可以显示 SSR 内容
-      if (serverArticle.value) {
-        article.value = normalizeArticleDetail(serverArticle.value);
-      }
-    }
+    // 客户端兜底拉取文章：文章详情接口本身不需要指纹。
+    await fetchArticleContent();
   } catch (error) {
     loadingState.value = "加载失败，请刷新页面";
 
@@ -2233,10 +2139,7 @@ const renderMermaidBlocks = async () => {
         securityLevel: "loose",
         flowchart: { htmlLabels: true, curve: "basis" },
       });
-    } catch (err) {
-      console.error("[mermaid] 加载失败", err);
-      return;
-    }
+    } catch (err) {return}
   }
 
   for (const block of Array.from(blocks)) {
@@ -2290,10 +2193,45 @@ onMounted(async () => {
     // 避免刷新页面时浏览器按原生 hash 行为跳到注脚位置
     document.addEventListener("click", handleFootnoteClick);
 
-    // 浏览量打点：onMounted 后延迟 1500ms 触发（避开 prerender / 误触）。
-    // 详细设计见上方 ==================== 浏览量打点 ==================== 段。
+    // 浏览量打点：onMounted 后延迟 3000ms 触发（避开 prerender / 误触，
+    // 同时让行为采集器有 3s 的真实采样窗口）。详细设计见上方
+    // ==================== 浏览量打点 ==================== 段。
     if (articleId.value) {
+      // 进页就开采，3s 后随信封一起发送（不等待文章正文加载，避免错过早期事件）。
+      // 失败回落 try/catch：极少数环境下 createBehaviorRecorder 可能因为缺 window/document 抛错。
+      try {
+        if (!behaviorRecorder) {
+          behaviorRecorder = createBehaviorRecorder();
+        }
+        behaviorRecorder.start();
+      } catch {
+        behaviorRecorder = null;
+      }
       scheduleViewLog(articleId.value);
+
+      // 兜底打点（v1.1）：监听 visibilitychange→hidden + pagehide。
+      // - visibilitychange→hidden：用户切到后台 / 锁屏 / 切 tab 前抢发
+      // - pagehide：tab 关闭 / 前进后退 / iOS BFCache 入栈，所有"页面离开"的统一终点
+      // 两条路径都靠 viewLogReportedFor 单次去重，重复触发只发一次。
+      // passive:true 避免某些 UA 把回调标记为阻塞 unload-related 事件。
+      viewLogVisibilityHandler = () => {
+        if (document.visibilityState === "hidden") {
+          flushViewLog("visibility");
+        }
+      };
+      viewLogPagehideHandler = () => {
+        flushViewLog("pagehide");
+      };
+      document.addEventListener(
+        "visibilitychange",
+        viewLogVisibilityHandler,
+        { passive: true } as AddEventListenerOptions
+      );
+      window.addEventListener(
+        "pagehide",
+        viewLogPagehideHandler,
+        { passive: true } as AddEventListenerOptions
+      );
     }
 
     // SSR 已经把正文直出到页面，客户端只在"SSR 没有拿到内容"时兜底拉取，
@@ -2347,6 +2285,29 @@ onBeforeUnmount(() => {
     pendingRequest.value = null;
     // 取消尚未触发的浏览量打点定时器
     cancelPendingViewLog();
+    // 解绑兜底打点监听器（visibilitychange / pagehide）。
+    // 注意：这里不再额外触发一次 flushViewLog——onBeforeUnmount 由 SPA 路由切换
+    // 触发时，watch route 分支会重置 viewLogReportedFor 并重新调度，没必要补打；
+    // 真正的"页面关闭"场景早已被 pagehide 监听器抢先处理。
+    if (viewLogVisibilityHandler) {
+      document.removeEventListener("visibilitychange", viewLogVisibilityHandler);
+      viewLogVisibilityHandler = null;
+    }
+    if (viewLogPagehideHandler) {
+      window.removeEventListener("pagehide", viewLogPagehideHandler);
+      viewLogPagehideHandler = null;
+    }
+    // 风控守卫行为采集器：组件卸载时一并停止，释放事件监听。
+    // 不重置为 null —— sendViewLog 内部 stop() 后还要 serialize() 一次。
+    // 但这里组件已经销毁，不会再发送，置 null 让下个组件实例重新创建。
+    if (behaviorRecorder) {
+      try {
+        behaviorRecorder.stop();
+      } catch {
+        // 忽略
+      }
+      behaviorRecorder = null;
+    }
   }
 });
 
@@ -2364,18 +2325,30 @@ watch(
       // 重置浏览量打点会话：路由切到新文章时，旧的定时器作废、新文章允许再次打点
       cancelPendingViewLog();
       viewLogReportedFor = null;
+      // 风控守卫行为采集器：旧文章可能已经 stop（sendViewLog 路径）或仍在跑
+      // （3s 内就路由切换的情况）；统一 stop + 新建（重置 buf + startedAt 基准），
+      // 避免新文章用旧文章的事件流去做评分。
+      if (behaviorRecorder) {
+        try {
+          behaviorRecorder.stop();
+        } catch {
+          // 忽略
+        }
+      }
+      if (import.meta.client) {
+        try {
+          behaviorRecorder = createBehaviorRecorder();
+          behaviorRecorder.start();
+        } catch {
+          behaviorRecorder = null;
+        }
+      }
 
       // 客户端：重新初始化文章内容
       if (import.meta.client) {
-        if (fingerprintReady.value) {
-          try {
-            await fetchArticleContent();
-          } catch (error) {}
-        } else {
-          try {
-            await initArticleContent();
-          } catch (error) {}
-        }
+        try {
+          await initArticleContent();
+        } catch (error) {}
 
         // 新文章 HTML 替换完毕后，重新跑一次 mermaid 渲染。
         // SPA 路由切换不会重新 mount 组件，onMounted 不会再触发，

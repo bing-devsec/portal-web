@@ -48,19 +48,9 @@ export const showExceptionNotification = (err: string) => {
 	}
 };
 
-// 创建全局请求拦截器 - 确保所有API请求添加指纹头
-export default defineNuxtPlugin((nuxtApp) => {
-	// 拦截所有客户端请求
-	nuxtApp.hook('app:mounted', () => {
-		if (import.meta.client) {
-			// 确保指纹已计算
-			if (typeof nuxtApp.$recalculateFingerprint === 'function') {
-				nuxtApp.$recalculateFingerprint().catch((e: Error) => {
-					throw e;
-				});
-			}
-		}
-	});
+// 创建全局请求拦截器
+export default defineNuxtPlugin((_nuxtApp) => {
+	// 预留扩展点
 });
 
 // 使用 useAsyncData 的自定义 API 请求函数
