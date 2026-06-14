@@ -5,6 +5,8 @@
     "type": "module",
     "overrides": {
         "uuid": ">=14.0.0",
+        "esbuild": "^0.28.1",
+        "shell-quote": "^1.8.4",
         "serialize-javascript": "^7.0.4",
         "minimatch": "^10.2.1",
         "glob": {
